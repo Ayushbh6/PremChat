@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://socrates.local/evals/flow-convergence/phase-0-baseline.schema.json",
+  "title": "Socrates Flow Convergence Phase 0 Baseline",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "capturedAt", "runtimeInventory", "scenarios"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "capturedAt": { "type": "string", "format": "date" },
+    "runtimeInventory": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "anchors", "finding"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 },
+          "anchors": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "finding": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "observed", "turns", "targetInvariant", "ownerPhase", "status", "futureTestSurface"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "observed": { "type": "string", "minLength": 1 },
+          "turns": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["role", "content"],
+              "properties": {
+                "role": { "enum": ["user", "assistant", "runtime"] },
+                "content": { "type": "string" }
+              }
+            }
+          },
+          "targetInvariant": { "type": "string", "minLength": 1 },
+          "ownerPhase": { "type": "integer", "minimum": 1 },
+          "status": { "enum": ["pending", "passing"] },
+          "futureTestSurface": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,161 @@
+{
+  "$schema": "./phase-0-baseline.schema.json",
+  "version": 1,
+  "capturedAt": "2026-07-25",
+  "runtimeInventory": [
+    {
+      "id": "main-agent-provider-loop",
+      "path": "packages/core/src/agent/SocratesAgent.ts",
+      "anchors": ["export class SocratesAgent", "for await (const modelEvent of this.provider.stream", "runPostEvidenceMemoryLoop"],
+      "finding": "Classic, Flow, and Skill Writer use the full streaming Socrates loop."
+    },
+    {
+      "id": "structured-worker-provider-loop",
+      "path": "packages/core/src/agent/StructuredToolAgentRunner.ts",
+      "anchors": ["export class StructuredToolAgentRunner", "for await (const event of input.provider.stream", "input.provider.generateStructured"],
+      "finding": "Routers and bounded structured workers use a second provider/tool loop."
+    },
+    {
+      "id": "flow-goal-router-empty-tools",
+      "path": "packages/core/src/tools/registry.ts",
+      "anchors": ["createGoalRouterToolRegistry", "new ToolRegistry([])"],
+      "finding": "The Flow Goal Router cannot invoke goal search during its run."
+    },
+    {
+      "id": "flow-goal-router-context-shape",
+      "path": "packages/core/src/prompts/goalRouterPrompt.ts",
+      "anchors": ["recentTurns: (input.recentTurns ?? []).slice(-3)", "currentCandidate", "candidates:"],
+      "finding": "The router receives a compact latest-message, recent-exchange, and candidate JSON object."
+    },
+    {
+      "id": "post-router-completion-before-final",
+      "path": "packages/core/src/agent/SocratesAgent.ts",
+      "anchors": ["route.goalFinalization", "await input.applyGoalFinalization", "After verification, give the user the final answer."],
+      "finding": "The post-turn Memory Router may mutate goal state before the final answer is generated."
+    },
+    {
+      "id": "focus-ledger-second-completion-authority",
+      "path": "apps/server/src/services/v2/flowStore.ts",
+      "anchors": ["input.request.operation === \"complete_current\"", "Completion is staged and will commit after the final response is saved."],
+      "finding": "Flow also permits the main model to stage completion through focus_ledger."
+    },
+    {
+      "id": "completion-selects-general",
+      "path": "apps/server/src/services/v2/flowStore.ts",
+      "anchors": ["Returned to General Conversation after goal finalization.", "foregroundGoalId: general.id"],
+      "finding": "Completing the foreground work goal currently changes the selected goal to General Conversation."
+    },
+    {
+      "id": "bridge-copies-visible-messages",
+      "path": "apps/server/src/services/v2/flowStore.ts",
+      "anchors": ["mirrorV2TurnToClassic", "importClassicBridgeTurns"],
+      "finding": "The released bridge creates view-specific message rows instead of projecting canonical Q&A identities."
+    },
+    {
+      "id": "direct-soul-provider-call",
+      "path": "apps/server/src/services/store/memoryStore.ts",
+      "anchors": ["runSoulConfirmationModel", "this.options.provider!.stream"],
+      "finding": "Soul confirmation bypasses both shared agent execution classes."
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "native-invalid-tool-input-recovers",
+      "observed": "trace_retrieve with an empty object and search with unsupported contextLines were persisted as invalid_tool_input; the turn continued.",
+      "turns": [
+        { "role": "runtime", "content": "trace_retrieve({}) -> invalid_tool_input" },
+        { "role": "runtime", "content": "search({ query, contextLines }) -> invalid_tool_input" }
+      ],
+      "targetInvariant": "A malformed native tool call is visible as a failed call, gives bounded corrective feedback, and does not corrupt the final answer.",
+      "ownerPhase": 1,
+      "status": "pending",
+      "futureTestSurface": "shared AgentRuntime tool normalization and Flow runtime persistence"
+    },
+    {
+      "id": "plaintext-tool-envelope-is-not-an-answer",
+      "observed": "A DSML-like tool envelope emitted as plain text during the no-tools final step was accepted and persisted as the answer.",
+      "turns": [
+        { "role": "assistant", "content": "<DSML><tool_calls><invoke name=\"search\">...</invoke></tool_calls></DSML>" }
+      ],
+      "targetInvariant": "Malformed tool envelopes, internal control text, and empty prose fail final-answer integrity validation and cannot complete a goal.",
+      "ownerPhase": 1,
+      "status": "pending",
+      "futureTestSurface": "structured main final result and answer integrity gate"
+    },
+    {
+      "id": "short-followup-preserves-meaning",
+      "observed": "After the malformed answer, the user asked what???? and Socrates explained an invented internal runtime dump instead of answering the original review request.",
+      "turns": [
+        { "role": "user", "content": "Review Flow mode and its connection with Classic View." },
+        { "role": "assistant", "content": "I have a thorough picture... <DSML tool envelope>" },
+        { "role": "user", "content": "what????" },
+        { "role": "assistant", "content": "It looks like internal Socrates runtime context was dumped..." },
+        { "role": "user", "content": "No, tell me what you found out." }
+      ],
+      "targetInvariant": "A short repair or clarification stays attached to the preceding task and receives enough uncorrupted exchange context to answer what the user meant.",
+      "ownerPhase": 2,
+      "status": "pending",
+      "futureTestSurface": "Flow goal routing and working-message assembly"
+    },
+    {
+      "id": "completion-does-not-deselect-goal",
+      "observed": "The completed review focus was replaced by General Conversation in Current Focus, including while viewing the historical query.",
+      "turns": [
+        { "role": "user", "content": "Check how the focus ledger is built." },
+        { "role": "assistant", "content": "The inspection is complete." }
+      ],
+      "targetInvariant": "Goal lifecycle status and selectedGoal are independent; completion retains the goal on screen and historical queries show their bound goal.",
+      "ownerPhase": 2,
+      "status": "pending",
+      "futureTestSurface": "canonical focus state, Flow store, API snapshot, and Flow UI"
+    },
+    {
+      "id": "meaningful-followup-reopens-same-goal",
+      "observed": "The current router/store model can treat a completed answer as the end of the focus even when the next request directly extends that work.",
+      "turns": [
+        { "role": "user", "content": "Check how the focus ledger is built." },
+        { "role": "assistant", "content": "The inspection is complete." },
+        { "role": "user", "content": "Now update the focus ledger by adding this information." }
+      ],
+      "targetInvariant": "The completed goal is reopened and expanded with a new task instead of creating a disconnected goal.",
+      "ownerPhase": 2,
+      "status": "pending",
+      "futureTestSurface": "Classic and Flow routers against one canonical goal/task store"
+    },
+    {
+      "id": "related-new-goal-has-transition-context",
+      "observed": "Flow context can isolate the latest goal so aggressively that an adjacent transition must be reconstructed through retrieval.",
+      "turns": [
+        { "role": "user", "content": "Review the memory ledger." },
+        { "role": "assistant", "content": "The verified memory-ledger outcome is..." },
+        { "role": "user", "content": "Great, now let's move to trace retrieve." }
+      ],
+      "targetInvariant": "A genuinely new goal receives a bounded transition bridge containing the immediately preceding exchange and verified prior-goal outcome.",
+      "ownerPhase": 2,
+      "status": "pending",
+      "futureTestSurface": "Flow context assembler"
+    },
+    {
+      "id": "classic-flow-roundtrip-does-not-copy-qna",
+      "observed": "The released bridge mirrors and imports view-specific message rows with different ids.",
+      "turns": [
+        { "role": "user", "content": "Open this Classic work in Flow, continue it, then return to Classic." }
+      ],
+      "targetInvariant": "Both views project the same canonical turns, tools, evidence, task state, and continuation without replacement Q&A copies.",
+      "ownerPhase": 3,
+      "status": "pending",
+      "futureTestSurface": "canonical persistence migration and cross-view API contracts"
+    },
+    {
+      "id": "single-live-activity-line",
+      "observed": "The current Flow presentation exposes detailed live trace rows rather than the target one-slot activity choreography.",
+      "turns": [
+        { "role": "runtime", "content": "Finding the right focus -> Searching the tool registry -> Reading traceRetrieveTool.ts -> Preparing the answer" }
+      ],
+      "targetInvariant": "Exactly one bounded runtime-authored activity sentence is replaced in place beneath the orb; it never accumulates into a list.",
+      "ownerPhase": 4,
+      "status": "pending",
+      "futureTestSurface": "Flow event contract and responsive browser UI"
+    }
+  ]
+}
