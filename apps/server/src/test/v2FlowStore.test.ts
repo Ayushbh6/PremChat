@@ -672,6 +672,15 @@ describe("V2FlowStore isolation and lifecycle", () => {
     expect(snapshot.foregroundGoal).toMatchObject({ id: work.id, status: "completed" })
     expect(() => store.updateFocus({ projectId: "proj_one", flowId: initial.flow.id, goalId: general.id, action: "finish" })).toThrow(/cannot be finished/i)
 
+    store.updateFocus({ projectId: "proj_one", flowId: initial.flow.id, goalId: general.id, action: "select" })
+    snapshot = store.getSnapshot("proj_one", initial.flow.id)
+    expect(snapshot.foregroundGoal?.id).toBe(general.id)
+    expect(snapshot.goals.find((goal) => goal.id === work.id)?.status).toBe("completed")
+    store.updateFocus({ projectId: "proj_one", flowId: initial.flow.id, goalId: work.id, action: "select" })
+    snapshot = store.getSnapshot("proj_one", initial.flow.id)
+    expect(snapshot.foregroundGoal).toMatchObject({ id: work.id, status: "completed" })
+    expect(snapshot.goals.find((goal) => goal.id === general.id)?.status).toBe("parked")
+
     store.updateFocus({ projectId: "proj_one", flowId: initial.flow.id, goalId: work.id, action: "reopen" })
     store.updateFocus({ projectId: "proj_one", flowId: initial.flow.id, goalId: work.id, action: "pause" })
     handle.sqlite.prepare("UPDATE v2_goals SET last_active_at = ?, pinned = 0 WHERE id = ?").run("2026-07-01T00:00:00.000Z", work.id)

@@ -347,7 +347,9 @@ export function FlowWorkspaceNotes({
         onPositionChange={updatePosition}
         onNoteRef={(id, element) => { noteRefs.current[id] = element; }}
       >
-        <span className={styles.noteEyebrow}>Current focus</span>
+        <span className={styles.noteEyebrow}>
+          Current focus{activeGoal ? ` · ${activeGoal.status.replaceAll("_", " ")}` : ""}
+        </span>
         <strong className={styles.noteTitle}>{activeGoal?.title ?? "No current focus"}</strong>
         <span className={styles.noteTask}>
           <small>Current task</small>

@@ -104,9 +104,15 @@ const contextItemLabel = (sourceLocator: string, sourceType: string): string => 
   return tail?.trim() || sourceLocator.trim() || sourceType.replaceAll("_", " ");
 };
 
+const presenceForActivity = (phase: string): FlowPresenceState => {
+  if (phase === "routing") return "routing";
+  if (phase === "thinking" || phase === "preparing_answer") return "thinking";
+  if (phase === "awaiting_input") return "awaiting_input";
+  return "working";
+};
+
 const presentationFromMessages = (
   messages: V2Message[],
-  streams: Record<string, { answer: string; reasoning?: string; turnId?: string }>,
 ): { messages: Message[]; goalIdByMessageId: Record<string, string | undefined> } => {
   const visibleMessages = messages
     .filter((message): message is V2Message & { role: "user" | "assistant" | "system" } =>
@@ -114,28 +120,12 @@ const presentationFromMessages = (
     .map((message) => {
       return flowMessageToClassicMessage({
         ...message,
-        content: `${message.content}${streams[message.id]?.answer ?? ""}`,
-        ...(`${message.reasoning ?? ""}${streams[message.id]?.reasoning ?? ""}`
-          ? { reasoning: `${message.reasoning ?? ""}${streams[message.id]?.reasoning ?? ""}` }
+        content: message.content,
+        ...(message.reasoning
+          ? { reasoning: message.reasoning }
           : {}),
       });
     });
-  const messageIds = new Set(messages.map((message) => message.id));
-  for (const [messageId, stream] of Object.entries(streams)) {
-    if (!messageIds.has(messageId) && stream.answer) {
-      visibleMessages.push({
-        id: messageId,
-        conversationId: messages[0]?.flowId ?? "flow",
-        sessionId: messages[0]?.flowId ?? "flow",
-        ...(stream.turnId ? { turnId: stream.turnId } : {}),
-        role: "assistant",
-        content: stream.answer,
-        ...(stream.reasoning ? { reasoning: stream.reasoning } : {}),
-        status: "streaming",
-        createdAt: new Date().toISOString(),
-      });
-    }
-  }
   return {
     messages: visibleMessages,
     goalIdByMessageId: Object.fromEntries(messages.map((message) => [message.id, message.goalId])),
@@ -164,6 +154,7 @@ export function SeamlessProjectRoute({ projectId }: SeamlessProjectRouteProps) {
     [handoffSnapshot, projectId],
   );
   const [draftTextOverride, setDraftTextOverride] = useState<string | null>(null);
+  const [selectedGoalIdOverride, setSelectedGoalIdOverride] = useState<string | null>(null);
   const draftText = draftTextOverride ?? pendingViewHandoff?.text ?? "";
   const [draftAttachments, setDraftAttachments] = useState<V2MessageAttachment[]>([]);
   const appliedHandoffAttachmentsRef = useRef(false);
@@ -302,9 +293,9 @@ export function SeamlessProjectRoute({ projectId }: SeamlessProjectRouteProps) {
     );
   }
 
-  const activeTools = Object.values(runtime.state.toolCalls).filter((tool) =>
-    tool.status === "pending" || tool.status === "awaiting_approval" || tool.status === "running");
-  const activeTool = activeTools.at(-1);
+  const selectedGoalId = selectedGoalIdOverride && snapshot.goals.some((goal) => goal.id === selectedGoalIdOverride)
+    ? selectedGoalIdOverride
+    : snapshot.flow.foregroundGoalId;
   const awaitingInput = Boolean(runtime.state.pendingClarification)
     || snapshot.pendingApprovals.length > 0
     || Object.keys(runtime.state.credentialRequests).length > 0
@@ -323,30 +314,27 @@ export function SeamlessProjectRoute({ projectId }: SeamlessProjectRouteProps) {
   } else if (voice.status === "synthesizing" || voice.status === "speaking") {
     presenceState = "working";
     statusLabel = voice.status === "speaking" ? "Reading aloud" : "Preparing local speech";
+  } else if (runtime.state.liveActivity) {
+    presenceState = presenceForActivity(runtime.state.liveActivity.phase);
+    statusLabel = runtime.state.liveActivity.label;
   } else if (awaitingInput) {
     presenceState = "awaiting_input";
     statusLabel = runtime.state.pendingClarification ? "One quick focus clarification" : "Waiting for your input";
-  } else if (snapshot.activeTurn?.status === "routing") {
-    presenceState = "routing";
-    statusLabel = "Routing this thought";
   } else if (snapshot.activeTurn) {
-    presenceState = activeTool || snapshot.activeTerminals.length > 0 ? "working" : "thinking";
-    statusLabel = activeTool ? `Using ${activeTool.toolName}` : snapshot.activeTerminals.at(-1)?.name ?? "Socrates is thinking";
+    presenceState = snapshot.activeTurn.status === "routing" ? "routing" : "thinking";
+    statusLabel = snapshot.activeTurn.status === "routing" ? "Finding the right focus…" : "Working on your request…";
   }
 
   const visibleError = actionError ?? voice.error ?? runtime.state.lastRuntimeError ?? runtime.socketError ?? modelError;
   if (visibleError) {
     presenceState = "error";
-    statusLabel = visibleError;
+    statusLabel = "Flow needs attention";
   }
 
-  const presentation = presentationFromMessages(
-    snapshot.messages,
-    runtime.state.streams,
-  );
-  const messageById = new Map(snapshot.messages.map((message) => [message.id, message]));
   const isClarifying = Boolean(runtime.state.pendingClarification && snapshot.activeTurn?.status === "awaiting_clarification");
   const isSending = Boolean(snapshot.activeTurn && !isClarifying && !["completed", "failed", "cancelled"].includes(snapshot.activeTurn.status));
+  const presentation = presentationFromMessages(snapshot.messages);
+  const messageById = new Map(snapshot.messages.map((message) => [message.id, message]));
   const composerConnected = runtime.isConnected && Boolean(runtimeConfig);
   const contextSummary = runtime.contextState ? (() => {
     const activeItems = runtime.contextState.items.filter((item) => item.active);
@@ -407,10 +395,11 @@ export function SeamlessProjectRoute({ projectId }: SeamlessProjectRouteProps) {
     <FlowWorkspace
       projectId={projectId}
       projectName={projectData.project.name}
-      sidebarProjects={projectsData.map(({ project }) => ({ project, conversations: [] }))}
+      projects={projectsData.map(({ project }) => project)}
       messages={presentation.messages}
       goalIdByMessageId={presentation.goalIdByMessageId}
       activeTurnId={isSending ? snapshot.activeTurn?.id : undefined}
+      liveActivity={runtime.state.liveActivity}
       goals={snapshot.goals.map((goal) => ({
         id: goal.id,
         title: goal.title,
@@ -420,14 +409,17 @@ export function SeamlessProjectRoute({ projectId }: SeamlessProjectRouteProps) {
         pinned: goal.pinned,
         updatedAt: goal.updatedAt,
       }))}
-      activeGoalId={snapshot.flow.foregroundGoalId}
+      selectedGoalId={selectedGoalId}
       currentTaskLabel={isClarifying
         ? "Choose the intended focus"
-        : snapshot.activeTurn
-          ? activeTool ? `Using ${activeTool.toolName}` : snapshot.activeTurn.status.replaceAll("_", " ")
+        : runtime.state.liveActivity
+          ? runtime.state.liveActivity.label
+          : snapshot.activeTurn
+            ? "Working on your request…"
           : "Ready for your next thought"}
       presenceState={presenceState}
       statusLabel={statusLabel}
+      errorMessage={visibleError ?? undefined}
       contextSummary={contextSummary}
       approvals={approvalActivity}
       toolRuns={toolRuns}
@@ -441,6 +433,10 @@ export function SeamlessProjectRoute({ projectId }: SeamlessProjectRouteProps) {
       earlierMessagesError={runtime.earlierMessagesError ?? undefined}
       onLoadEarlierMessages={() => {
         void runtime.loadEarlierMessages();
+      }}
+      onSelectGoal={(goalId) => {
+        setSelectedGoalIdOverride(goalId);
+        guardAction(() => runtime.updateFocus(goalId, "select"));
       }}
       onVoiceOptionChange={(optionId) => {
         voice.setTranscriberId(optionId as V2TranscriberId);
@@ -541,9 +537,11 @@ export function SeamlessProjectRoute({ projectId }: SeamlessProjectRouteProps) {
               content,
               attachmentIds: attachments.map((attachment) => attachment.id),
               runtimeConfig,
+              ...(selectedGoalId ? { preferredGoalId: selectedGoalId } : {}),
             });
           }
           clearCurrentViewHandoff();
+          setSelectedGoalIdOverride(null);
           setDraftTextOverride("");
           setActionError(null);
         },

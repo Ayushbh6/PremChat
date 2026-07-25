@@ -6,6 +6,7 @@ import type {
   V2Message,
   V2MessageWindow,
   V2GoalRoutingRun,
+  V2LiveActivity,
   V2ServerEvent,
   V2Terminal,
   V2ToolCall,
@@ -29,6 +30,7 @@ export interface V2FlowRuntimeState {
   credentialRequests: Record<string, V2CredentialInputRequest>;
   feedbackByMessageId: Record<string, V2Feedback>;
   pendingClarification?: V2GoalRoutingRun;
+  liveActivity?: V2LiveActivity;
   lastRuntimeError: string | null;
 }
 
@@ -50,6 +52,7 @@ export const initialV2FlowRuntimeState = (snapshot: V2FlowSnapshot): V2FlowRunti
   credentialRequests: {},
   feedbackByMessageId: {},
   ...(snapshot.pendingClarification ? { pendingClarification: snapshot.pendingClarification } : {}),
+  ...(snapshot.liveActivity ? { liveActivity: snapshot.liveActivity } : {}),
   lastRuntimeError: null,
 });
 
@@ -142,6 +145,9 @@ export function v2FlowRuntimeReducer(
         ...(event.payload.snapshot.pendingClarification
           ? { pendingClarification: event.payload.snapshot.pendingClarification }
           : { pendingClarification: undefined }),
+        ...(event.payload.snapshot.liveActivity
+          ? { liveActivity: event.payload.snapshot.liveActivity }
+          : { liveActivity: undefined }),
       };
     case "v2.turn.started":
       return {
@@ -156,12 +162,15 @@ export function v2FlowRuntimeReducer(
       const terminal = ["completed", "failed", "cancelled"].includes(event.payload.turn.status);
       return {
         ...state,
+        ...(terminal ? { liveActivity: undefined } : {}),
         snapshot: {
           ...state.snapshot,
           ...(terminal ? { activeTurn: undefined } : { activeTurn: event.payload.turn }),
         },
       };
     }
+    case "v2.activity.updated":
+      return { ...state, liveActivity: event.payload.activity };
     case "v2.terminal.output": {
       const current = state.terminalOutputs[event.payload.terminalId] ?? [];
       if (current.some((chunk) => chunk.sequence === event.payload.sequence)) return state;
@@ -330,6 +339,7 @@ export function v2FlowRuntimeReducer(
 
 const recentActivityEvent = (event: V2ServerEvent): boolean =>
   event.type === "v2.tool.call.updated"
+  || event.type === "v2.activity.updated"
   || event.type === "v2.approval.updated"
   || event.type === "v2.feedback.updated"
   || event.type === "v2.terminal.updated"

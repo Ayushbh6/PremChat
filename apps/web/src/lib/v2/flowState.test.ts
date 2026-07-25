@@ -76,4 +76,47 @@ describe("V2 Flow runtime focus state", () => {
     expect(next.snapshot.flow.foregroundGoalId).toBe(completed.id);
     expect(next.snapshot.foregroundGoal).toEqual(completed);
   });
+
+  it("replaces live activity in one slot and clears it when the turn becomes terminal", () => {
+    const active = goal("foreground");
+    const initial = initialV2FlowRuntimeState(snapshot(active));
+    const activityEvent = (id: string, label: string): V2ServerEvent => ({
+      id,
+      schemaVersion: 2,
+      timestamp,
+      projectId: "project_1",
+      flowId: "flow_1",
+      turnId: "turn_1",
+      actor: { type: "system" },
+      type: "v2.activity.updated",
+      payload: { activity: { turnId: "turn_1", phase: "tool", label } },
+    });
+    const first = v2FlowRuntimeReducer(initial, { type: "event", event: activityEvent("event_2", "Searching the workspace…") });
+    const replaced = v2FlowRuntimeReducer(first, { type: "event", event: activityEvent("event_3", "Reading runtime.ts…") });
+    expect(replaced.liveActivity).toMatchObject({ label: "Reading runtime.ts…" });
+
+    const terminalEvent = {
+      id: "event_4",
+      schemaVersion: 2,
+      timestamp,
+      projectId: "project_1",
+      flowId: "flow_1",
+      turnId: "turn_1",
+      actor: { type: "system" },
+      type: "v2.turn.updated",
+      payload: {
+        turn: {
+          id: "turn_1",
+          flowId: "flow_1",
+          projectId: "project_1",
+          ordinal: 1,
+          status: "completed",
+          startedAt: timestamp,
+          completedAt: timestamp,
+          updatedAt: timestamp,
+        },
+      },
+    } satisfies V2ServerEvent;
+    expect(v2FlowRuntimeReducer(replaced, { type: "event", event: terminalEvent }).liveActivity).toBeUndefined();
+  });
 });

@@ -4,6 +4,7 @@ import {
   v2ServerEventSchema,
   type V2ClientCommand,
   type V2FlowSnapshot,
+  type V2LiveActivity,
   type SocratesFinalAnswer,
   type V2RuntimeConfig,
   type V2ServerEvent,
@@ -24,6 +25,8 @@ import type { V2ContinuedTerminalTask, V2FlowStore, V2ReadyTerminalTask } from "
 import { ActiveTurns } from "../ws/activeTurns"
 import { makeV2Event } from "./eventSender"
 import { resolveFlowGoal } from "./goalRoutingCoordinator"
+import { createV2LiveActivity, v2ToolActivity } from "./liveActivity"
+import { actorForRuntimeSource, recordV2ModelUsage, safeRuntimeStringify } from "./runtimeTelemetry"
 import { V2FlowSubscriptions } from "./flowSubscriptions"
 import { V2TerminalRuntime } from "./terminalRuntime"
 import { createV2ToolExecutors } from "./toolExecutors"
@@ -82,7 +85,7 @@ export class V2ExecutionRuntime {
         flowId: persisted.flowId,
         ...(persisted.goalId ? { goalId: persisted.goalId } : {}),
         ...(persisted.turnId ? { turnId: persisted.turnId } : {}),
-        actor: actorForSource(persisted.source),
+        actor: actorForRuntimeSource(persisted.source),
         type: persisted.type,
         payload: persisted.payload,
       })
@@ -124,6 +127,11 @@ export class V2ExecutionRuntime {
       { turn: created.turn, userMessage: created.userMessage },
       { projectId: command.projectId, flowId: command.flowId, turnId: created.turn.id },
       "main_agent",
+      socket,
+    )
+    this.emitActivity(
+      createV2LiveActivity(created.turn.id, "routing", "Finding the right focus…"),
+      { projectId: command.projectId, flowId: command.flowId, turnId: created.turn.id },
       socket,
     )
     const execution = this.executeTurn({
@@ -386,11 +394,25 @@ export class V2ExecutionRuntime {
     let sawToolActivity = false
     let suspended = false
     let frontierHandoverActive = false
+    let lastActivitySignature = "routing:Finding the right focus…"
+    const publishActivity = (activity: V2LiveActivity) => {
+      const signature = `${activity.phase}:${activity.label}`
+      if (signature === lastActivitySignature) return
+      lastActivitySignature = signature
+      this.emitActivity(activity, {
+        projectId: command.projectId,
+        flowId: command.flowId,
+        ...(goalId ? { goalId } : {}),
+        turnId: created.turn.id,
+      }, input.socket)
+    }
     try {
       const workspacePath = this.deps.sharedStore.getPrimaryWorkspacePath(command.projectId)
       let activeGoalId: string
       if (continuation) {
         activeGoalId = continuation.goalId
+        goalId = activeGoalId
+        publishActivity(createV2LiveActivity(created.turn.id, "thinking", "Resuming the current task…"))
         this.emit(
           "v2.turn.updated",
           { turn: continuation.turn },
@@ -404,14 +426,18 @@ export class V2ExecutionRuntime {
           turnId: created.turn.id,
           messageId: created.userMessage.id,
           messageContent: command.payload.content,
+          ...(command.payload.foregroundGoalIdAtCompose
+            ? { preferredGoalId: command.payload.foregroundGoalIdAtCompose }
+            : {}),
           workspacePath,
           store: this.deps.store,
           sharedStore: this.deps.sharedStore,
-          recordUsage: (modelCallId, usage) => this.recordUsage(modelCallId, usage),
+          recordUsage: (modelCallId, usage) => recordV2ModelUsage(this.deps.store, modelCallId, usage),
           ...(clarificationAnswer ? { clarificationAnswer } : {}),
           ...(this.deps.routerProvider ? { routerProvider: this.deps.routerProvider } : {}),
         })
         if (resolution.status === "clarification") {
+          publishActivity(createV2LiveActivity(created.turn.id, "awaiting_input", "Waiting for your focus choice…"))
           this.emit("v2.routing.clarification.requested", {
             routingRun: resolution.routingRun,
             message: resolution.message,
@@ -422,6 +448,8 @@ export class V2ExecutionRuntime {
         }
         const applied = resolution.applied
         activeGoalId = resolution.goalId
+        goalId = activeGoalId
+        publishActivity(createV2LiveActivity(created.turn.id, "thinking", "Reviewing the relevant context…"))
         this.deps.sharedStore.indexGoalRetrieval(command.projectId, activeGoalId)
         this.deps.store.assertV2FocusOwnership(command.projectId, command.flowId, activeGoalId)
         this.emit(
@@ -542,7 +570,7 @@ export class V2ExecutionRuntime {
               response: { phase: run.phase, status: run.status, attempt: index + 1, startedAt: run.startedAt, completedAt: run.completedAt },
               ...(error && isLastAttempt ? { errorId: error.id } : {}),
             })
-            if (usage) this.recordUsage(modelCallId, usage)
+            if (usage) recordV2ModelUsage(this.deps.store, modelCallId, usage)
           }
         },
         contextCompression: createV2ContextCompressionRuntime({
@@ -581,6 +609,7 @@ export class V2ExecutionRuntime {
           return id
         },
         requestApproval: async (request) => {
+          publishActivity(createV2LiveActivity(created.turn.id, "awaiting_input", "Waiting for your approval…"))
           const approval = this.deps.store.createApproval({
             id: request.approvalId,
             projectId: command.projectId,
@@ -608,6 +637,7 @@ export class V2ExecutionRuntime {
               if (value) return { decision: "submitted" as const, value, source: "workspace_env" as const }
             }
           }
+          publishActivity(createV2LiveActivity(created.turn.id, "awaiting_input", "Waiting for a required credential…"))
           const persisted = this.deps.store.createCredentialRequest({
             id: request.credentialRequestId,
             projectId: command.projectId,
@@ -630,6 +660,7 @@ export class V2ExecutionRuntime {
         if (event.type === "agent.final_result") {
           finalResult = event.result
         } else if (event.type === "model.answer.delta") {
+          publishActivity(createV2LiveActivity(created.turn.id, "preparing_answer", "Preparing the answer…"))
           answerText += event.text
           this.emit("v2.message.delta", { messageId: streamMessageId, channel: "answer", text: event.text, ...(event.modelCallId ? { modelCallId: event.modelCallId } : {}) }, { projectId: command.projectId, flowId: command.flowId, goalId: activeGoalId, turnId: created.turn.id }, frontierHandoverActive ? "frontier_agent" : "main_agent")
         } else if (event.type === "model.reasoning.delta") {
@@ -641,11 +672,11 @@ export class V2ExecutionRuntime {
           responseMetadata.set(event.modelCallId, event.response)
         } else if (event.type === "model.usage" && event.modelCallId) {
           usageByCall.set(event.modelCallId, event.usage)
-          this.recordUsage(event.modelCallId, event.usage)
+          recordV2ModelUsage(this.deps.store, event.modelCallId, event.usage)
         } else if (event.type === "model.completed" && event.modelCallId) {
           if (event.usage) {
             usageByCall.set(event.modelCallId, event.usage)
-            this.recordUsage(event.modelCallId, event.usage)
+            recordV2ModelUsage(this.deps.store, event.modelCallId, event.usage)
           }
           this.deps.store.completeModelCall({
             modelCallId: event.modelCallId,
@@ -653,8 +684,11 @@ export class V2ExecutionRuntime {
             ...(responseMetadata.has(event.modelCallId) ? { providerResponse: responseMetadata.get(event.modelCallId) } : {}),
           })
           completedModelCalls.add(event.modelCallId)
+        } else if (event.type === "model.started") {
+          publishActivity(createV2LiveActivity(created.turn.id, "thinking", "Thinking through your request…"))
         } else if (event.type === "agent.handover") {
           frontierHandoverActive = true
+          publishActivity(createV2LiveActivity(created.turn.id, "thinking", "Calling the Frontier model…"))
           this.emit("v2.agent.handover", {
             toolCallId: event.toolCallId,
             stepIndex: event.stepIndex,
@@ -665,6 +699,7 @@ export class V2ExecutionRuntime {
             ...(event.focus ? { focus: event.focus } : {}),
           }, { projectId: command.projectId, flowId: command.flowId, goalId: activeGoalId, turnId: created.turn.id }, "frontier_agent")
         } else if (event.type === "context.compaction.started") {
+          publishActivity(createV2LiveActivity(created.turn.id, "thinking", "Condensing the working context…"))
           this.emit("v2.context.compaction.started", {
             snapshotId: event.snapshotId,
             reason: event.reason,
@@ -690,10 +725,14 @@ export class V2ExecutionRuntime {
             },
           }, { projectId: command.projectId, flowId: command.flowId, goalId: activeGoalId, turnId: created.turn.id }, "context_compactor")
         } else {
+          if (event.type === "tool.call.started") {
+            publishActivity(v2ToolActivity(created.turn.id, event.toolName, event.input))
+          }
           this.handleToolEvent(event, { projectId: command.projectId, flowId: command.flowId, goalId: activeGoalId, turnId: created.turn.id })
           if (event.type.startsWith("tool.") || event.type.startsWith("approval.")) sawToolActivity = true
           if (event.type === "agent.suspended") {
             suspended = true
+            publishActivity(createV2LiveActivity(created.turn.id, "awaiting_input", "Waiting for Terminal…"))
             break
           }
         }
@@ -724,6 +763,7 @@ export class V2ExecutionRuntime {
       if (!finalResult) {
         throw new SocratesError("agent_final_result_missing", "Socrates completed without a validated final result.", { recoverable: true })
       }
+      publishActivity(createV2LiveActivity(created.turn.id, "preparing_answer", "Preparing the answer…"))
       const assistantMessage = this.deps.store.completeTurn({
         projectId: command.projectId,
         flowId: command.flowId,
@@ -865,7 +905,7 @@ export class V2ExecutionRuntime {
           sourceKind: event.toolName === "bash" ? "terminal_output" : "tool_output",
           sourceId: event.toolCallId,
           title: `${event.toolName}: ${event.summary}`.slice(0, 1_000),
-          content: safeStringify(event.output),
+          content: safeRuntimeStringify(event.output),
           rank: 30,
           includeInContext: false,
         })
@@ -903,19 +943,6 @@ export class V2ExecutionRuntime {
     }
   }
 
-  private recordUsage(modelCallId: string, usage: ModelUsage): void {
-    this.deps.store.recordUsage({
-      modelCallId,
-      ...(usage.inputTokens === undefined ? {} : { inputTokens: usage.inputTokens }),
-      ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
-      ...(usage.reasoningTokens === undefined ? {} : { reasoningTokens: usage.reasoningTokens }),
-      ...(usage.cachedInputTokens === undefined ? {} : { cachedInputTokens: usage.cachedInputTokens }),
-      ...(usage.totalTokens === undefined ? {} : { totalTokens: usage.totalTokens }),
-      ...(usage.costUsd === undefined ? {} : { costUsd: usage.costUsd }),
-      ...(usage.raw === undefined ? {} : { raw: usage.raw }),
-    })
-  }
-
   private emit<T extends V2ServerEvent["type"]>(
     type: T,
     payload: Extract<V2ServerEvent, { type: T }>["payload"],
@@ -934,11 +961,19 @@ export class V2ExecutionRuntime {
       schemaVersion: 2,
       timestamp: persisted.createdAt,
       ...scope,
-      actor: actorForSource(source),
+      actor: actorForRuntimeSource(source),
       type,
       payload,
     })
     this.subscriptions.emit(event, fallbackSocket)
+  }
+
+  private emitActivity(
+    activity: V2LiveActivity,
+    scope: { projectId: string; flowId: string; goalId?: string; turnId: string },
+    fallbackSocket?: WebSocket,
+  ): void {
+    this.emit("v2.activity.updated", { activity }, scope, "system", fallbackSocket)
   }
 
   private emitUntyped(
@@ -953,28 +988,10 @@ export class V2ExecutionRuntime {
       schemaVersion: 2,
       timestamp: persisted.createdAt,
       ...scope,
-      actor: actorForSource(source),
+      actor: actorForRuntimeSource(source),
       type,
       payload,
     })
     this.subscriptions.emit(event)
-  }
-}
-
-const actorForSource = (source: string): { type: "user" | "main_agent" | "worker" | "tool" | "system"; label?: string } => {
-  if (source === "user") return { type: "user" }
-  if (source === "main_agent" || source === "frontier_agent") return { type: "main_agent", ...(source === "frontier_agent" ? { label: "Frontier" } : {}) }
-  if (source === "tool" || source === "terminal") return { type: "tool", label: source }
-  if (source === "goal_router") return { type: "worker", label: "Goal Router" }
-  if (source === "memory_router") return { type: "worker", label: "Memory Router" }
-  if (source === "context_compactor" || source === "context_distiller") return { type: "worker", label: source === "context_compactor" ? "Context Compactor" : "Context Distiller" }
-  return { type: "system" }
-}
-
-const safeStringify = (value: unknown): string => {
-  try {
-    return typeof value === "string" ? value : JSON.stringify(value)
-  } catch {
-    return String(value)
   }
 }

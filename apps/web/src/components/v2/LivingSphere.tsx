@@ -9,6 +9,7 @@ interface LivingSphereProps {
   state: FlowPresenceState;
   size?: "compact" | "full" | "mini";
   statusLabel: string;
+  showStatus?: boolean;
 }
 
 const stateClass: Record<FlowPresenceState, string> = {
@@ -23,7 +24,7 @@ const stateClass: Record<FlowPresenceState, string> = {
   error: styles.sphereError,
 };
 
-export function LivingSphere({ state, size = "full", statusLabel }: LivingSphereProps) {
+export function LivingSphere({ state, size = "full", statusLabel, showStatus = true }: LivingSphereProps) {
   const reduceMotion = useReducedMotion();
   const active = state !== "offline" && state !== "error";
 
@@ -69,10 +70,12 @@ export function LivingSphere({ state, size = "full", statusLabel }: LivingSphere
         <span className={styles.sphereWave} data-wave="three" />
         <span className={styles.sphereGlint} />
       </motion.div>
-      <p className={styles.sphereStatus} role="status" aria-live="polite" aria-atomic="true">
-        <span className={styles.sphereStatusDot} data-state={state} aria-hidden="true" />
-        {statusLabel}
-      </p>
+      {showStatus ? (
+        <p className={styles.sphereStatus} role="status" aria-live="polite" aria-atomic="true">
+          <span className={styles.sphereStatusDot} data-state={state} aria-hidden="true" />
+          {statusLabel}
+        </p>
+      ) : null}
     </div>
   );
 }

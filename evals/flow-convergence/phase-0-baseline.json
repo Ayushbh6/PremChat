@@ -56,6 +56,16 @@
       "path": "packages/core/src/agent/SoulConfirmationAgent.ts",
       "anchors": ["export class SoulConfirmationAgent", "new AgentRuntime()", "soulConfirmationAgentOutputSchema"],
       "finding": "Soul confirmation is a strict no-tool agent using the same AgentRuntime boundary."
+    },
+    {
+      "id": "flow-live-activity-presentation",
+      "path": "apps/server/src/v2/liveActivity.ts",
+      "anchors": [
+        "export const v2ToolActivity",
+        "export const fallbackV2LiveActivity",
+        "Working with the project tools"
+      ],
+      "finding": "The server owns one typed, bounded, privacy-safe live activity sentence; the Flow client replaces that single slot instead of deriving or stacking raw tool state."
     }
   ],
   "scenarios": [
@@ -148,14 +158,14 @@
     },
     {
       "id": "single-live-activity-line",
-      "observed": "The current Flow presentation exposes detailed live trace rows rather than the target one-slot activity choreography.",
+      "observed": "The server emits one typed bounded activity value, the reducer replaces that value in one slot, and Flow withholds provisional answer text until the durable final message arrives.",
       "turns": [
         { "role": "runtime", "content": "Finding the right focus -> Searching the tool registry -> Reading traceRetrieveTool.ts -> Preparing the answer" }
       ],
       "targetInvariant": "Exactly one bounded runtime-authored activity sentence is replaced in place beneath the orb; it never accumulates into a list.",
       "ownerPhase": 4,
-      "status": "pending",
-      "futureTestSurface": "Flow event contract and responsive browser UI"
+      "status": "passing",
+      "futureTestSurface": "apps/server/src/v2/liveActivity.test.ts, apps/web/src/lib/v2/flowState.test.ts, and responsive browser UI"
     }
   ]
 }

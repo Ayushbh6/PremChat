@@ -10,6 +10,7 @@ type ResolveFlowGoalInput = {
   turnId: string
   messageId: string
   messageContent: string
+  preferredGoalId?: string
   workspacePath: string
   store: V2FlowStore
   sharedStore: SocratesStore
@@ -24,7 +25,9 @@ export type ResolvedFlowGoal =
 
 export const resolveFlowGoal = async (input: ResolveFlowGoalInput): Promise<ResolvedFlowGoal> => {
   const snapshot = input.store.getSnapshot(input.projectId, input.flowId)
-  const selectedGoalId = snapshot.flow.foregroundGoalId
+  const selectedGoalId = input.preferredGoalId && snapshot.goals.some((goal) => goal.id === input.preferredGoalId)
+    ? input.preferredGoalId
+    : snapshot.flow.foregroundGoalId
   const previousGoalId = input.store.previousRoutingGoalId(input.flowId, selectedGoalId)
   const retrievedGoalIds = await input.sharedStore.searchGoalCards(input.projectId, input.messageContent, 12).catch(() => [] as string[])
   const setting = input.sharedStore.getWorkerModelSetting("goal_router")

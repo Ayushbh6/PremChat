@@ -192,13 +192,16 @@ export function useV2FlowRuntime({ projectId }: UseV2FlowRuntimeInput) {
     content: string;
     attachmentIds: string[];
     runtimeConfig: V2RuntimeConfig;
+    preferredGoalId?: string;
   }) => {
     const scope = requireScope();
     socket.send(makeV2Command("v2.message.send", {
       clientMessageId: createClientMessageId(),
       content: input.content,
       ...(input.attachmentIds.length > 0 ? { attachmentIds: input.attachmentIds } : {}),
-      ...(scope.goalId ? { foregroundGoalIdAtCompose: scope.goalId } : {}),
+      ...(input.preferredGoalId ?? scope.goalId
+        ? { foregroundGoalIdAtCompose: input.preferredGoalId ?? scope.goalId }
+        : {}),
       runtimeConfig: input.runtimeConfig,
     }, scope));
   }, [requireScope, socket]);
@@ -215,7 +218,7 @@ export function useV2FlowRuntime({ projectId }: UseV2FlowRuntimeInput) {
     }, { ...scope, turnId: state.snapshot.activeTurn.id }));
   }, [requireScope, socket, state]);
 
-  const updateFocus = useCallback((goalId: string, action: "switch" | "pause" | "finish" | "reopen" | "archive" | "pin" | "unpin") => {
+  const updateFocus = useCallback((goalId: string, action: "select" | "switch" | "pause" | "finish" | "reopen" | "archive" | "pin" | "unpin") => {
     const scope = requireScope();
     socket.send(makeV2Command("v2.focus.update", { goalId, action }, { ...scope, goalId }));
   }, [requireScope, socket]);

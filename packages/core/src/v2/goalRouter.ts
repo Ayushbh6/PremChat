@@ -245,6 +245,8 @@ export const deterministicV2GoalRoutingFallback = (
   userMessage: string,
   candidates: V2GoalRoutingCandidateSet,
 ): V2GoalRoutingDecision => {
+  const explicitNewGoalTitle = explicitNewGoalFallbackTitle(userMessage)
+  if (explicitNewGoalTitle) return { action: "create", title: explicitNewGoalTitle }
   if (candidates.foreground) {
     return {
       action: candidates.foreground.goal.status === "foreground" ? "continue" : "resume",
@@ -252,6 +254,18 @@ export const deterministicV2GoalRoutingFallback = (
     }
   }
   return { action: "create", title: fallbackGoalTitle(userMessage) }
+}
+
+const explicitNewGoalFallbackTitle = (userMessage: string): string | undefined => {
+  // Provider failure must remain conservative, except when the user directly
+  // commands the product to create a goal. This is an explicit control phrase,
+  // not a semantic substitute for the Goal Router.
+  const remainder = userMessage.replace(
+    /^\s*(?:please\s+)?(?:start|create|begin|open)\s+(?:a\s+)?(?:new\s+)?(?:focused\s+)?(?:goal|focus|workstream)\s*(?::|-)?\s*/i,
+    "",
+  ).replace(/^to\s+/i, "").trim()
+  if (remainder === userMessage.trim() || !remainder) return undefined
+  return fallbackGoalTitle(remainder)
 }
 
 export const planV2GoalRoutingTransition = (input: {

@@ -14,21 +14,22 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ConversationTerminal, ConversationToolRun, Message, V2MessageAttachment } from "@socrates/contracts";
+import type { ConversationTerminal, ConversationToolRun, Message, Project, V2LiveActivity, V2MessageAttachment } from "@socrates/contracts";
 import { ChatComposer, type ChatComposerProps } from "@/components/chat/ChatComposer";
 import { ChatTranscript, type LiveActivityStep } from "@/components/chat/ChatTranscript";
-import { ProjectChatSidebar, type SidebarProject } from "@/components/chat/ProjectChatSidebar";
 import { TerminalDockPanel } from "@/components/chat/TerminalPanel";
 import type { PendingApproval, PendingCredentialInput } from "@/components/chat/ToolTimelineTypes";
 import { toolRunToTimelineItem } from "@/components/chat/ToolTimelineTypes";
 import { WorkspaceTopbar } from "@/components/chat/WorkspaceTopbar";
-import { goalIdForFlowExchange, groupFlowExchanges, selectFlowExchange } from "@/lib/v2/flowTranscriptWindow";
+import { flowQueriesForGoal, flowQueryCountsByGoal } from "@/lib/v2/flowNavigation";
 import { LivingSphere } from "./LivingSphere";
 import { V2ViewLink } from "./V2ViewLink";
 import { V2SpeechPackManager } from "./V2SpeechPackManager";
 import { FlowWorkspaceNotes } from "./FlowWorkspaceNotes";
 import { FlowWorkspaceInspector, type FlowInspectorView } from "./FlowWorkspaceInspector";
 import { DeleteFlowItemDialog } from "./DeleteFlowItemDialog";
+import { FlowLiveStage } from "./FlowLiveStage";
+import { FlowNavigationSidebar } from "./FlowNavigationSidebar";
 import styles from "./seamless.module.css";
 import type {
   FlowContextSummary,
@@ -40,15 +41,17 @@ import type {
 export interface FlowWorkspaceProps {
   projectId: string;
   projectName: string;
-  sidebarProjects: SidebarProject[];
+  projects: Project[];
   messages?: Message[];
   activeTurnId?: string;
+  liveActivity?: V2LiveActivity;
   goals?: FlowGoalView[];
-  activeGoalId?: string;
+  selectedGoalId?: string;
   goalIdByMessageId?: Readonly<Record<string, string | undefined>>;
   currentTaskLabel?: string;
   presenceState?: FlowPresenceState;
   statusLabel?: string;
+  errorMessage?: string;
   contextSummary?: FlowContextSummary;
   approvals?: PendingApproval[];
   toolRuns?: ConversationToolRun[];
@@ -72,6 +75,7 @@ export interface FlowWorkspaceProps {
   onTerminalStop?: (terminalId: string) => void;
   onTerminalRename?: (terminalId: string, name: string) => void;
   onLoadEarlierMessages?: () => void;
+  onSelectGoal?: (goalId: string) => void;
   onFocusAction?: (goalId: string, action: "switch" | "pause" | "finish" | "reopen" | "archive" | "pin" | "unpin") => void;
   onDeleteGoal?: (goalId: string) => Promise<void>;
   onDeleteExchange?: (turnId: string) => Promise<void>;
@@ -81,15 +85,17 @@ export interface FlowWorkspaceProps {
 export function FlowWorkspace({
   projectId,
   projectName,
-  sidebarProjects,
+  projects,
   messages = [],
   activeTurnId,
+  liveActivity,
   goals = [],
-  activeGoalId,
+  selectedGoalId,
   goalIdByMessageId = {},
   currentTaskLabel = "Ready for your next thought",
   presenceState = "offline",
   statusLabel = "Seamless runtime disconnected",
+  errorMessage,
   contextSummary,
   approvals = [],
   toolRuns = [],
@@ -113,6 +119,7 @@ export function FlowWorkspace({
   onTerminalStop,
   onTerminalRename,
   onLoadEarlierMessages,
+  onSelectGoal,
   onFocusAction,
   onDeleteGoal,
   onDeleteExchange,
@@ -136,54 +143,58 @@ export function FlowWorkspace({
   const displayedExchangeKeyRef = useRef<string | undefined>(undefined);
   const shouldFollowCurrentRef = useRef(true);
   const reduceMotion = useReducedMotion();
-  const exchanges = useMemo(() => groupFlowExchanges(messages), [messages]);
-  const currentExchange = useMemo(
-    () => selectFlowExchange(messages, null, activeTurnId),
-    [activeTurnId, messages],
+  const queries = useMemo(() => flowQueriesForGoal({
+    messages,
+    goalIdByMessageId,
+    goalId: selectedGoalId,
+    activeTurnId,
+  }), [activeTurnId, goalIdByMessageId, messages, selectedGoalId]);
+  const queryCounts = useMemo(
+    () => flowQueryCountsByGoal(messages, goalIdByMessageId),
+    [goalIdByMessageId, messages],
   );
-  const displayedExchange = useMemo(
-    () => selectFlowExchange(messages, selectedExchangeKey, activeTurnId),
-    [activeTurnId, messages, selectedExchangeKey],
+  const currentQuery = useMemo(
+    () => queries.find((query) => query.isCurrent) ?? queries.at(-1),
+    [queries],
   );
+  const displayedQuery = useMemo(
+    () => queries.find((query) => query.id === selectedExchangeKey) ?? currentQuery,
+    [currentQuery, queries, selectedExchangeKey],
+  );
+  const displayedExchange = displayedQuery?.exchange;
   const displayedMessages = useMemo(() => displayedExchange?.messages ?? [], [displayedExchange]);
-  const displayedIsCurrent = Boolean(displayedExchange && displayedExchange.key === currentExchange?.key);
-  const displayedGoalId = useMemo(
-    () => displayedIsCurrent ? activeGoalId : goalIdForFlowExchange(displayedExchange, goalIdByMessageId),
-    [activeGoalId, displayedExchange, displayedIsCurrent, goalIdByMessageId],
-  );
+  const displayedIsCurrent = Boolean(displayedQuery?.isCurrent);
   const activeGoal = useMemo(
-    () => goals.find((goal) => goal.id === displayedGoalId) ?? goals.find((goal) => goal.id === activeGoalId),
-    [activeGoalId, displayedGoalId, goals],
+    () => goals.find((goal) => goal.id === selectedGoalId),
+    [goals, selectedGoalId],
   );
   const pausedGoalCount = useMemo(
     () => goals.filter((goal) => goal.status === "parked" || goal.status === "blocked").length,
     [goals],
   );
-  const liveSteps = useMemo<LiveActivityStep[]>(() => {
-    const assistantTurnIds = new Set(
-      messages.filter((message) => message.role === "assistant" && message.turnId).map((message) => message.turnId as string),
-    );
-    const toolsByStep = new Map<string, ConversationToolRun[]>();
-    for (const tool of toolRuns) {
-      if (!activeTurnId || tool.turnId !== activeTurnId) continue;
-      if (assistantTurnIds.has(tool.turnId)) continue;
-      const stepKey = `${tool.turnId}:${tool.modelCallId ?? "intent"}`;
-      const grouped = toolsByStep.get(stepKey) ?? [];
-      grouped.push(tool);
-      toolsByStep.set(stepKey, grouped);
+  const settledLiveTurns = useMemo<Record<string, LiveActivityStep[]>>(() => {
+    const settled: Record<string, LiveActivityStep[]> = {};
+    for (const message of messages) {
+      if (message.role !== "assistant" || message.status !== "completed" || !message.turnId) continue;
+      const runs = toolRuns.filter((tool) => tool.turnId === message.turnId);
+      if (runs.length === 0 && !message.reasoning?.trim()) continue;
+      settled[message.turnId] = [{
+        key: `flow-settled-${message.turnId}`,
+        turnId: message.turnId,
+        kind: "agent",
+        stepIndex: 0,
+        reasoning: message.reasoning ?? "",
+        answer: "",
+        tools: runs.map(toolRunToTimelineItem),
+      }];
     }
-    return [...toolsByStep.entries()].map(([stepKey, runs], index) => ({
-      key: `flow-live-${stepKey}`,
-      turnId: runs[0]?.turnId,
-      ...(runs[0]?.modelCallId
-        ? { modelCallId: runs[0].modelCallId, kind: "agent" as const }
-        : { kind: "intent" as const }),
-      stepIndex: index,
-      reasoning: "",
-      answer: "",
-      tools: runs.map(toolRunToTimelineItem),
-    }));
-  }, [activeTurnId, messages, toolRuns]);
+    return settled;
+  }, [messages, toolRuns]);
+  const isLiveDisplayed = Boolean(
+    activeTurnId
+    && displayedExchange?.turnId === activeTurnId
+    && displayedExchange.assistantMessage?.status !== "completed",
+  );
   const contentVersion = useMemo(() => {
     const last = displayedMessages.at(-1);
     const toolVersion = toolRuns.map((tool) => `${tool.toolCallId}:${tool.status}:${tool.resultPreview?.length ?? 0}`).join("|");
@@ -288,35 +299,33 @@ export function FlowWorkspace({
     <main className={styles.flowPage}>
       <div className={styles.oceanNoise} aria-hidden="true" />
 
-      <ProjectChatSidebar
-        projects={sidebarProjects}
+      <FlowNavigationSidebar
+        projects={projects}
         currentProjectId={projectId}
+        goals={goals}
+        selectedGoalId={selectedGoalId}
+        queries={queries}
+        selectedQueryId={displayedQuery?.id}
         isCollapsed={isSidebarCollapsed}
         onCollapse={() => setIsSidebarCollapsed(true)}
         onExpand={() => setIsSidebarCollapsed(false)}
-        mode="projects"
-        overlay
-        projectHref={(targetProjectId) => `/seamless/projects/${encodeURIComponent(targetProjectId)}`}
-        flowOutline={{
-          items: exchanges.slice().reverse().map((exchange) => ({
-            id: exchange.key,
-            label: exchange.label,
-            isCurrent: exchange.key === currentExchange?.key,
-          })),
-          selectedId: displayedExchange?.key,
-          hasEarlier: hasEarlierMessages,
-          isLoadingEarlier: isLoadingEarlierMessages,
-          error: earlierMessagesError,
-          onSelect: (exchangeKey) => {
-            setSelectedExchangeKey(exchangeKey === currentExchange?.key ? null : exchangeKey);
-            setIsSidebarCollapsed(true);
-          },
-          onReturnToCurrent: () => {
-            setSelectedExchangeKey(null);
-            setIsSidebarCollapsed(true);
-          },
-          onLoadEarlier: onLoadEarlierMessages,
+        hasEarlier={hasEarlierMessages}
+        isLoadingEarlier={isLoadingEarlierMessages}
+        earlierError={earlierMessagesError}
+        queryCounts={queryCounts}
+        onSelectGoal={(goalId) => {
+          setSelectedExchangeKey(null);
+          onSelectGoal?.(goalId);
         }}
+        onSelectQuery={(queryId) => {
+          setSelectedExchangeKey(queryId === currentQuery?.id ? null : queryId);
+          setIsSidebarCollapsed(true);
+        }}
+        onReturnToCurrent={() => {
+          setSelectedExchangeKey(null);
+          setIsSidebarCollapsed(true);
+        }}
+        onLoadEarlier={onLoadEarlierMessages}
       />
 
       <section className={styles.flowShell} data-inspector={isInspectorOpen ? "open" : "closed"}>
@@ -386,20 +395,29 @@ export function FlowWorkspace({
               data-presence={presenceState}
               data-has-exchange={displayedMessages.length > 0 || undefined}
             >
-              <div
-                className={styles.orbBackdrop}
-                data-active={composer.isSending || ["listening", "routing", "thinking", "working", "awaiting_input"].includes(presenceState) || undefined}
-              >
-                <LivingSphere
-                  state={presenceState}
-                  size="full"
-                  statusLabel={statusLabel}
-                />
-              </div>
+              <AnimatePresence initial={false}>
+                {!isLiveDisplayed ? (
+                  <motion.div
+                    key="resting-orb"
+                    className={styles.orbBackdrop}
+                    initial={reduceMotion ? false : { opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <LivingSphere
+                      state={presenceState}
+                      size="full"
+                      statusLabel={statusLabel}
+                      showStatus={false}
+                    />
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
               <FlowWorkspaceNotes
                 projectId={projectId}
                 activeGoal={activeGoal}
-                currentTaskLabel={currentTaskLabel}
+                currentTaskLabel={displayedExchange?.label ?? currentTaskLabel}
                 contextSummary={contextSummary}
                 pausedGoalCount={pausedGoalCount}
                 compact={messages.length > 0}
@@ -412,10 +430,19 @@ export function FlowWorkspace({
                   <ChatTranscript
                     messages={displayedMessages}
                     toolRuns={toolRuns}
-                    liveSteps={displayedIsCurrent ? liveSteps : []}
+                    liveSteps={isLiveDisplayed && activeTurnId ? [{
+                      key: `flow-active-${activeTurnId}`,
+                      turnId: activeTurnId,
+                      kind: "agent",
+                      stepIndex: 0,
+                      reasoning: "",
+                      answer: "",
+                      tools: [],
+                    }] : []}
+                    settledLiveTurns={settledLiveTurns}
                     approvals={approvals}
                     credentialRequests={credentialRequests}
-                    isStreaming={displayedIsCurrent && composer.isSending}
+                    isStreaming={false}
                     scrollContainerRef={transcriptRef}
                     scrollContainerClassName={styles.timelineScroller}
                     contentClassName={styles.sharedTranscriptContent}
@@ -426,36 +453,57 @@ export function FlowWorkspace({
                         <button type="button" onClick={() => setSelectedExchangeKey(null)}>Return to current</button>
                       </div>
                     ) : undefined}
-                    renderAfterMessage={(message) => message.role === "assistant" && message.status === "completed" && message.content.trim() ? (
-                      <div className={styles.messageActions}>
-                        {onReadAloud && (
-                          <button
-                            type="button"
-                            className={styles.readAloudControl}
-                            onClick={() => onReadAloud(message.id)}
-                            disabled={Boolean(activeReadAloudMessageId && activeReadAloudMessageId !== message.id)}
-                            data-active={activeReadAloudMessageId === message.id || undefined}
-                            aria-label={activeReadAloudMessageId === message.id ? "Stop reading response" : "Read response aloud"}
-                            title={activeReadAloudMessageId === message.id
-                              ? readAloudStatus === "synthesizing" ? "Preparing speech — click to stop" : "Stop reading"
-                              : "Read aloud"}
-                          >
-                            {activeReadAloudMessageId === message.id ? <Square aria-hidden="true" /> : <Volume2 aria-hidden="true" />}
-                          </button>
-                        )}
-                        {onDeleteExchange && message.turnId && (
-                          <button
-                            type="button"
-                            className={styles.readAloudControl}
-                            onClick={() => setTurnToDelete(message.turnId ?? null)}
-                            aria-label="Delete exchange"
-                            title="Delete exchange"
-                          >
-                            <Trash2 aria-hidden="true" />
-                          </button>
-                        )}
-                      </div>
-                    ) : null}
+                    renderAfterMessage={(message) => (
+                      <>
+                        <AnimatePresence initial={false}>
+                          {message.role === "user" && isLiveDisplayed && activeTurnId && message.turnId === activeTurnId ? (
+                            <FlowLiveStage
+                              key={`live-${activeTurnId}`}
+                              activity={liveActivity}
+                              presenceState={presenceState}
+                              turnId={activeTurnId}
+                              toolRuns={toolRuns.filter((tool) => tool.turnId === activeTurnId)}
+                              approvals={approvals.filter((approval) => !approval.toolCallId || toolRuns.some(
+                                (tool) => tool.turnId === activeTurnId && tool.toolCallId === approval.toolCallId,
+                              ))}
+                              credentialRequests={credentialRequests.filter((request) => request.turnId === activeTurnId)}
+                              onApprovalDecision={onApprovalDecision}
+                              onCredentialInput={onCredentialResolve}
+                            />
+                          ) : null}
+                        </AnimatePresence>
+                        {message.role === "assistant" && message.status === "completed" && message.content.trim() ? (
+                          <div className={styles.messageActions}>
+                            {onReadAloud && (
+                              <button
+                                type="button"
+                                className={styles.readAloudControl}
+                                onClick={() => onReadAloud(message.id)}
+                                disabled={Boolean(activeReadAloudMessageId && activeReadAloudMessageId !== message.id)}
+                                data-active={activeReadAloudMessageId === message.id || undefined}
+                                aria-label={activeReadAloudMessageId === message.id ? "Stop reading response" : "Read response aloud"}
+                                title={activeReadAloudMessageId === message.id
+                                  ? readAloudStatus === "synthesizing" ? "Preparing speech — click to stop" : "Stop reading"
+                                  : "Read aloud"}
+                              >
+                                {activeReadAloudMessageId === message.id ? <Square aria-hidden="true" /> : <Volume2 aria-hidden="true" />}
+                              </button>
+                            )}
+                            {onDeleteExchange && message.turnId && (
+                              <button
+                                type="button"
+                                className={styles.readAloudControl}
+                                onClick={() => setTurnToDelete(message.turnId ?? null)}
+                                aria-label="Delete exchange"
+                                title="Delete exchange"
+                              >
+                                <Trash2 aria-hidden="true" />
+                              </button>
+                            )}
+                          </div>
+                        ) : null}
+                      </>
+                    )}
                     onApprovalDecision={onApprovalDecision}
                     onCredentialInput={onCredentialResolve}
                     onScroll={(event) => {
@@ -468,6 +516,11 @@ export function FlowWorkspace({
             </div>
 
             <div className={styles.composerDock}>
+              {errorMessage ? (
+                <p role="alert" className="mx-auto mb-2 w-full max-w-3xl rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
+                  {errorMessage}
+                </p>
+              ) : null}
               <div className={styles.sharedComposerFrame}>
                 <ChatComposer {...composer} onSend={sendFromComposer} />
               </div>

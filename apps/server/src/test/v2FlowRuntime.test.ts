@@ -461,6 +461,14 @@ describe("V2ExecutionRuntime", () => {
     const context = testRuntime.flowStore.getCoreContextState(flow.id)
     expect(context.evidence.some((record) => record.exactContent.includes("immutable V2 tool evidence"))).toBe(true)
     expect(liveSocket.sent.some((event) => event.type === "v2.goal.capsule.updated" && event.payload.capsule.version === 2)).toBe(true)
+    const activityLabels = liveSocket.sent
+      .filter((event): event is Extract<V2ServerEvent, { type: "v2.activity.updated" }> => event.type === "v2.activity.updated")
+      .map((event) => event.payload.activity.label)
+    expect(activityLabels[0]).toBe("Finding the right focus…")
+    expect(activityLabels).toContain("Reading note.txt…")
+    expect(activityLabels.at(-1)).toBe("Preparing the answer…")
+    expect(activityLabels.join(" ")).not.toMatch(/undefined|v2tcall_|v2mcall_/i)
+    expect(snapshot.liveActivity).toBeUndefined()
     expect(testRuntime.flowStore.countV1Rows()).toEqual(baselineV1Rows)
     expect(fs.existsSync(path.join(testRuntime.workspace, ".socrates"))).toBe(true)
 
@@ -468,6 +476,7 @@ describe("V2ExecutionRuntime", () => {
     testRuntime.runtime.subscribe(asWebSocket(replaySocket), subscribeCommand("proj_one", flow.id))
     expect(replaySocket.sent[0]?.type).toBe("v2.connection.ready")
     expect(replaySocket.sent.some((event) => event.type === "v2.tool.call.updated")).toBe(true)
+    expect(replaySocket.sent.some((event) => event.type === "v2.activity.updated")).toBe(true)
     const finalReplayEvent = replaySocket.sent.at(-1)
     expect(finalReplayEvent?.type).toBe("v2.flow.snapshot")
     if (finalReplayEvent?.type === "v2.flow.snapshot") {

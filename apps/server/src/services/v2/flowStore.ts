@@ -25,6 +25,7 @@ import {
   type V2Feedback,
   type V2Flow,
   type V2FlowSnapshot,
+  type V2LiveActivity,
   type V2Goal,
   type V2GoalCapsule,
   type V2GoalMessageLink,
@@ -42,6 +43,7 @@ import {
   type V2ToolCall,
   type V2Turn,
   type V2UsageEvent,
+  v2LiveActivityUpdatedPayloadSchema,
   v2RuntimeConfigSchema,
 } from "@socrates/contracts"
 import type { V2SpeechArtifactContent, V2SpeechJobUpdate } from "../../routes/v2SpeechRoutes"
@@ -61,6 +63,7 @@ import { createId, nowIso, SocratesError } from "@socrates/shared"
 import { storeAttachmentFile } from "@socrates/workspace"
 import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm"
 import type { DatabaseHandle } from "../../db/client"
+import { fallbackV2LiveActivity } from "../../v2/liveActivity"
 import {
   CanonicalWorkStore,
   toFlowProjectedMessage,
@@ -356,6 +359,17 @@ export class V2FlowStore {
     const flow = mapFlow(flowRow)
     const mappedGoals = goals.map(mapGoal)
     const activeTurn = activeTurnRow ? mapTurn(activeTurnRow) : this.canonicalWork.findActiveFlowTurn(flowRow.id)
+    const canonicalToolCalls = this.canonicalWork.listFlowToolCalls(flowRow.id)
+    const activeTerminals = terminalRows.map(mapTerminal)
+    const pendingApprovals = approvalRows.map(mapApproval)
+    const liveActivity = activeTurn
+      ? this.readLiveActivity(flowRow.id, activeTurn.id) ?? fallbackV2LiveActivity({
+          turn: activeTurn,
+          tools: canonicalToolCalls.filter((tool) => tool.turnId === activeTurn.id),
+          terminals: activeTerminals.filter((terminal) => terminal.turnId === activeTurn.id),
+          hasPendingApproval: pendingApprovals.some((approval) => approval.turnId === activeTurn.id),
+        })
+      : undefined
     return {
       flow,
       ...(flow.foregroundGoalId
@@ -366,9 +380,10 @@ export class V2FlowStore {
       messages: messagePage.messages,
       messageWindow: messagePage.messageWindow,
       ...(activeTurn ? { activeTurn } : {}),
-      canonicalToolCalls: this.canonicalWork.listFlowToolCalls(flowRow.id),
-      activeTerminals: terminalRows.map(mapTerminal),
-      pendingApprovals: approvalRows.map(mapApproval),
+      ...(liveActivity ? { liveActivity } : {}),
+      canonicalToolCalls,
+      activeTerminals,
+      pendingApprovals,
       ...(pendingClarificationRow ? { pendingClarification: mapRoutingRun(pendingClarificationRow) } : {}),
       lastEventSequence: flowRow.lastEventSequence,
     }
@@ -1033,7 +1048,7 @@ export class V2FlowStore {
     projectId: string
     flowId: string
     goalId: string
-    action: "switch" | "pause" | "finish" | "reopen" | "archive" | "pin" | "unpin"
+    action: "select" | "switch" | "pause" | "finish" | "reopen" | "archive" | "pin" | "unpin"
     note?: string
   }): { goal: V2Goal; transitions: V2GoalTransition[] } {
     const operation = this.handle.sqlite.transaction(() => {
@@ -1044,6 +1059,12 @@ export class V2FlowStore {
       const transitions: V2GoalTransition[] = []
       if (input.action === "pin" || input.action === "unpin") {
         this.handle.db.update(v2Goals).set({ pinned: input.action === "pin", updatedAt: now }).where(eq(v2Goals.id, target.id)).run()
+      } else if (input.action === "select") {
+        this.handle.db.update(v2Flows).set({
+          foregroundGoalId: target.id,
+          revision: sql`${v2Flows.revision} + 1`,
+          updatedAt: now,
+        }).where(eq(v2Flows.id, input.flowId)).run()
       } else {
         if (target.kind === "general" && (input.action === "finish" || input.action === "archive")) {
           throw new SocratesError("v2_general_focus_protected", "General Conversation cannot be finished or archived.", { recoverable: true })
@@ -1110,6 +1131,23 @@ export class V2FlowStore {
       this.handle.db.update(conversations).set({ status: archived ? "archived" : "active", archivedAt: archived ? nowIso() : null, updatedAt: nowIso() }).where(eq(conversations.id, home.conversationId)).run()
     }
     return result
+  }
+
+  private readLiveActivity(flowId: string, turnId: string): V2LiveActivity | undefined {
+    const row = this.handle.db
+      .select({ payloadJson: v2RuntimeEvents.payloadJson })
+      .from(v2RuntimeEvents)
+      .where(and(
+        eq(v2RuntimeEvents.flowId, flowId),
+        eq(v2RuntimeEvents.turnId, turnId),
+        eq(v2RuntimeEvents.type, "v2.activity.updated"),
+      ))
+      .orderBy(desc(v2RuntimeEvents.sequence))
+      .limit(1)
+      .get()
+    if (!row) return undefined
+    const parsed = v2LiveActivityUpdatedPayloadSchema.safeParse(parseJson(row.payloadJson))
+    return parsed.success ? parsed.data.activity : undefined
   }
 
   archiveDormantGoals(projectId: string, flowId: string, now = new Date()): V2Goal[] {

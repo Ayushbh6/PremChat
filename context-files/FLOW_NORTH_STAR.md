@@ -1,6 +1,6 @@
 # Socrates Flow North Star
 
-This document is the product-intent authority for how Classic and Flow must feel and behave as Socrates converges on one underlying runtime state. It defines the durable user model and invariants. `V2_FLOW_ARCHITECTURE.md` records the current implementation, migration constraints, and technical mechanics; when current bridge mechanics conflict with this North Star, they are migration debt rather than product precedent.
+This document is the product-intent authority for how Classic and Flow must feel and behave as Socrates converges on one underlying runtime state. It defines the durable user model and invariants. `V2_FLOW_ARCHITECTURE.md` records the current implementation, migration constraints, and technical mechanics; `FLOW_CONVERGENCE_PHASE_4.md` records the implemented presentation endpoint. When current bridge mechanics conflict with this North Star, they are migration debt rather than product precedent.
 
 ## User Promise
 

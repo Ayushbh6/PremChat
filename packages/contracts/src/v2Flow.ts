@@ -3,6 +3,7 @@ import { MAX_INLINE_MESSAGE_CHARS, MAX_MESSAGE_ATTACHMENTS } from "./attachments
 import { apiErrorSchema } from "./api"
 import { idSchema, timestampSchema } from "./entities"
 import { providerAuthModeSchema, providerIdSchema, thinkingEffortSchema } from "./models"
+import { v2LiveActivitySchema, v2LiveActivityUpdatedPayloadSchema } from "./v2FlowPresentation"
 
 /**
  * V2 Flow is intentionally a standalone contract surface.
@@ -801,6 +802,7 @@ export const v2FlowSnapshotSchema = z
     messages: z.array(v2MessageSchema),
     messageWindow: v2MessageWindowSchema,
     activeTurn: v2TurnSchema.optional(),
+    liveActivity: v2LiveActivitySchema.optional(),
     canonicalToolCalls: z.array(v2ToolCallSchema),
     activeTerminals: z.array(v2TerminalSchema),
     pendingApprovals: z.array(v2ApprovalSchema),
@@ -1014,7 +1016,7 @@ export const v2RoutingClarificationRespondPayloadSchema = z
   })
   .strict()
 
-export const v2FocusActionSchema = z.enum(["switch", "pause", "finish", "reopen", "archive", "pin", "unpin"])
+export const v2FocusActionSchema = z.enum(["select", "switch", "pause", "finish", "reopen", "archive", "pin", "unpin"])
 export const v2FocusUpdatePayloadSchema = z
   .object({
     goalId: idSchema,
@@ -1226,6 +1228,7 @@ export const v2ConnectionReadyEventSchema = v2SocketEnvelopeSchema("v2.connectio
 export const v2FlowSnapshotEventSchema = v2SocketEnvelopeSchema("v2.flow.snapshot", v2FlowSnapshotPayloadSchema)
 export const v2TurnStartedEventSchema = v2SocketEnvelopeSchema("v2.turn.started", v2TurnStartedPayloadSchema)
 export const v2TurnUpdatedEventSchema = v2SocketEnvelopeSchema("v2.turn.updated", v2TurnUpdatedPayloadSchema)
+export const v2LiveActivityUpdatedEventSchema = v2SocketEnvelopeSchema("v2.activity.updated", v2LiveActivityUpdatedPayloadSchema)
 export const v2MessageDeltaEventSchema = v2SocketEnvelopeSchema("v2.message.delta", v2MessageDeltaPayloadSchema)
 export const v2MessageCompletedEventSchema = v2SocketEnvelopeSchema("v2.message.completed", v2MessageCompletedPayloadSchema)
 export const v2GoalRoutedEventSchema = v2SocketEnvelopeSchema("v2.goal.routed", v2GoalRoutedPayloadSchema)
@@ -1278,6 +1281,7 @@ export const v2ServerEventSchema = z.discriminatedUnion("type", [
   v2FlowSnapshotEventSchema,
   v2TurnStartedEventSchema,
   v2TurnUpdatedEventSchema,
+  v2LiveActivityUpdatedEventSchema,
   v2MessageDeltaEventSchema,
   v2MessageCompletedEventSchema,
   v2GoalRoutedEventSchema,

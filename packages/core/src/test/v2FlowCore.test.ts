@@ -112,6 +112,25 @@ describe("V2 Flow goal routing", () => {
     expect(result.decision).toMatchObject({ action: "continue", primaryGoalId: "active" })
   })
 
+  it("honors an explicit new-goal command when the model router fails", async () => {
+    const provider = providerWithStructured(async () => {
+      throw new Error("provider unavailable")
+    })
+    const result = await routeV2Goal({
+      projectId: "project_1",
+      flowId,
+      turnId: "turn_1",
+      workspacePath: "/workspace",
+      userMessage: "Start a focused goal: design a README acceptance checklist",
+      goals: [goal("active", "foreground", "General Conversation")],
+      provider,
+      model: { providerId: "openrouter", modelId: "router-model", thinkingEnabled: false },
+    })
+
+    expect(result.source).toBe("fallback")
+    expect(result.decision).toEqual({ action: "create", title: "design a README acceptance checklist" })
+  })
+
   it("falls back on timeout even when a provider ignores abort", async () => {
     const provider = providerWithStructured(async () => new Promise(() => undefined))
     const result = await routeV2Goal({
