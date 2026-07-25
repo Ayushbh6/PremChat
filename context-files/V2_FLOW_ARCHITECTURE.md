@@ -1,8 +1,10 @@
 # Socrates V2 Flow Architecture
 
-This document is the architecture authority for the experimental Socrates V2 Seamless Flow experience.
+This document records the current implemented architecture, migration constraints, and technical mechanics of the experimental Socrates V2 Seamless Flow experience. `FLOW_NORTH_STAR.md` is the product-intent authority for the target Classic/Flow model. Where the released namespaced persistence or mirror-based bridge described here conflicts with that North Star, this document describes current migration reality rather than the desired endpoint.
 
 Status: the isolated first product cut is implemented behind the V2 boundary. Whole-workspace regression, production builds, normal runtime packaging, and a real browser E2E have passed. Formal accessibility automation, cross-platform release archives, full local speech-pack runs, and extended reliability validation remain; implementation does not mean that a 24-hour unattended soak has already passed.
+
+The next convergence architecture is fixed by `FLOW_NORTH_STAR.md`: one canonical Socrates work state behind Classic and Flow; Goals containing Tasks; completion separated from view selection; Projects → Goals → Queries navigation; one runtime-authored live activity sentence beneath the prominent orb; the validated answer replacing that live state while the orb recedes; and one public `AgentRuntime` beneath the current `SocratesAgent` and `StructuredToolAgentRunner` paths. The released bridge, flat query outline, detached final Memory Router, and dual runner abstractions below remain current-state descriptions and migration inputs, not endpoint requirements.
 
 ## Absolute V1 And V2 Boundary
 
@@ -94,6 +96,8 @@ V2 uses the same Memory Router behavior around Socrates turns, but its routing a
 V2 does not invoke the Classic conversation-title rewriter and does not make a separate capsule-writing model call. New goal titles and rich capsule snapshots are derived deterministically from authoritative V2 state, and capsule versions provide the resumable semantic label/state. The Goal Router uses its own configurable `goal_router` worker selection and calls its strict V2 routing schema through the shared structured-agent runner rather than the Classic title-rewrite service.
 
 ## Product North Star
+
+The authoritative product North Star now lives in `FLOW_NORTH_STAR.md`. The section below records the original V2 product framing that led to the current implementation; it must be read through the newer one-Socrates, goal/task-continuity, completion-without-deselection, and canonical-state invariants in that document.
 
 The user should not have to manage chat boundaries.
 

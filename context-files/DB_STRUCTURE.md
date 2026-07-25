@@ -1,6 +1,6 @@
 # Socrates DB Structure
 
-This document defines the detailed V1 Classic SQLite database design for Socrates and records the implemented V2 Seamless Flow persistence boundary. V2 architecture and lifecycle semantics are documented separately in `V2_FLOW_ARCHITECTURE.md`; executable V2 columns and constraints live in `apps/server/src/db/schema.ts` and migrations `0026_outgoing_typhoid_mary.sql` plus `0027_long_terror.sql`.
+This document defines the detailed V1 Classic SQLite database design for Socrates and records the implemented V2 Seamless Flow persistence boundary. `FLOW_NORTH_STAR.md` defines the target one-state/two-view product model; `V2_FLOW_ARCHITECTURE.md` records the current architecture and migration constraints. Executable V2 columns and constraints live in `apps/server/src/db/schema.ts` and its migrations.
 
 The database is the source of truth for conversations, runtime state, model calls, tool calls, approvals, usage, errors, and replayable event history. The goal is that any single user query can be reconstructed later from the database:
 

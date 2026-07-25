@@ -4,7 +4,7 @@ This document is the handshake between the frontend and backend workstreams.
 
 Both sides must build against this contract. The backend owns persistence, agent execution, providers, tools, approvals, and WebSocket event emission. The frontend owns routes, screens, user interactions, rendering, local view state, and event presentation.
 
-The executable source of truth for shared TypeScript types and schemas lives in `packages/contracts`. This document explains the V1 Classic frontend/backend contract in human-readable form and records the implemented V2 Seamless Flow boundary. The complete V2 schemas live in the standalone `packages/contracts/src/v2Flow.ts` module; lifecycle policy lives in `V2_FLOW_ARCHITECTURE.md`.
+The executable source of truth for shared TypeScript types and schemas lives in `packages/contracts`. This document explains the frontend/backend contract and records the implemented V2 Seamless Flow boundary. `FLOW_NORTH_STAR.md` owns the target product semantics; the complete current V2 schemas live in `packages/contracts/src/v2Flow.ts`, and current lifecycle mechanics and migration constraints live in `V2_FLOW_ARCHITECTURE.md`.
 
 ## Contract Goals
 
@@ -62,9 +62,32 @@ V2 reuses the same normalized provider, tool semantics, approvals, Terminal supe
 
 V2 also renders the same shared web `ChatComposer` used by Classic. The component owns identical model/thinking menus, send/stop behavior, attachment picker, pasted and drag/dropped images, previews, vision warning, Agent Skill ZIP support, large-paste conversion, and optional microphone presentation in both views. V2 supplies V2-scoped attachment upload/send and voice callbacks; Classic supplies its existing attachment/send callbacks plus its conversation-scoped transcription callback. There is no V2-specific Tools toggle or second composer implementation.
 
-The web shell follows the same rule: Classic and Flow both render the `ProjectChatSidebar` shell and `WorkspaceTopbar`. The shared sidebar has a fixed viewport height/width and an overflow-hidden outer shell; its heading and controls are non-scrolling, and only the active bounded names list may scroll. `ProjectChatSidebar` has two data modes: Classic renders nested conversations and New Chat actions; Flow opens on a typed Queries-only outline for the selected persistent Flow and uses a small back control to show a separate Projects-only level targeting `/seamless/projects/:projectId`, with no Flow conversation rows or chat-creation controls. Choosing a project returns to its Queries level. The outline selects one loaded exchange for display, marks the current exchange, and may request earlier message batches through its mode-owned callback; it does not mutate goal routing. V2 sets the shared sidebar to overlay mode so its 320px drawer covers the Flow canvas instead of changing canvas/composer coordinates. V2 may supply different center-workspace content and header actions, but it must not implement a parallel project rail, collapsed icon strip, separate header geometry, or a mixed projects-and-queries scroll surface. Collapsing the shared sidebar removes it completely and leaves only the shared expand button.
+The web shell follows the same rule: Classic and Flow both render the `ProjectChatSidebar` shell and `WorkspaceTopbar`. The shared sidebar has a fixed viewport height/width and an overflow-hidden outer shell; its heading and controls are non-scrolling, and only the active bounded names list may scroll. The target Flow navigation contract has three typed levels: Projects, Goals in the selected project, and Queries/tasks in the selected goal. Flow opens on the current goal's Queries level, backs into Goals, then Projects. The levels never share one scroll surface. Selecting a completed goal changes presentation/composer scope without mutating goal state; the next send still passes through semantic routing. V2 keeps overlay mode so its drawer covers the Flow canvas without changing canvas/composer coordinates and must not implement a parallel project rail or separate header geometry.
 
-The V2 center workspace renders one selected/current exchange through the shared `ChatTranscript`, including the same reasoning, tool, approval, credential, attachment, and incomplete-turn components used by Classic. Long user requests may be presentation-collapsed without changing message content. A selected historical exchange receives no live activity stream and does not replace the backend-authoritative active goal; returning to current restores the active/latest exchange. The living sphere is an absolute background layer and may become visually prominent only for active presence states. Two single movable notes summarize Live Context and Current Focus/Task. Their circular paperclip buttons are the only drag handles, also support keyboard arrow movement, and store clamped per-project coordinates locally. Selecting a note opens the larger typed Context/Focuses/Activity inspector, whose pinned/open state is presentation-only local state.
+The V2 center workspace renders one selected/current exchange through the shared transcript primitives. During an active turn, the living sphere becomes the prominent anchor and exactly one fixed-height `activityLabel` appears beneath it; every later routing/thinking/tool/finalizing state replaces that value in place. The frontend must never accumulate these values into rows or tags. The backend owns the bounded human-facing label from typed execution state, including deterministic safe formatting/grouping for tools; the frontend does not render raw tool syntax, opaque ids, secrets, `undefined`, or unbounded provider reasoning in that slot. User-action states such as approvals, credentials, and Terminal input keep their full components.
+
+After the structured final answer passes schema/integrity validation and is saved, the answer becomes the foreground reading layer, the sphere recedes behind it, and the live label clears. Persisted reasoning/tool activity is available through one collapsed disclosure and the normal detailed trace components. Historical exchanges never receive a live label. Long user requests may be presentation-collapsed without changing message content. Two single movable notes summarize Live Context and Current Focus/Task; their drag/open state remains presentation-only.
+
+### Target Flow activity status contract
+
+The current V2 event set exposes message deltas and tool updates but does not yet provide the single backend-authored display status required by the Flow North Star. Convergence must add one strict event in the existing V2 socket namespace rather than make the frontend infer copy from raw events:
+
+```ts
+type V2AgentActivityUpdatedPayload = {
+  turnId: string
+  phase: "routing" | "thinking" | "tool" | "finalizing" | "waiting" | "cleared"
+  label: string | null // null only for cleared
+  occurredAt: string
+}
+
+type V2AgentActivityUpdatedEvent = {
+  type: "v2.agent.activity.updated"
+  payload: V2AgentActivityUpdatedPayload
+  // normal V2 envelope scope/source fields
+}
+```
+
+Only the latest event for the current turn occupies the live slot. Labels are bounded, single-line, human-facing runtime output. Tool definitions/runtime formatters own safe labels and parallel-call grouping. The event is presentation state, not semantic conversation history and not a replacement for persisted reasoning/tool audit rows. Completion emits `phase: "cleared", label: null` after the validated answer is saved; hydration of a completed turn derives only the collapsed trace summary and never restores a live activity label.
 
 The implemented V2 Voice V1 configuration is:
 

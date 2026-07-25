@@ -101,6 +101,7 @@ Socrates/
   context-files/
     APP_FLOW.md
     DB_STRUCTURE.md
+    FLOW_NORTH_STAR.md
     FRONTEND_BACKEND_CONTRACT.md
     PROVIDER_USAGE.md
     REPO_STRCUTURE.md
@@ -121,7 +122,7 @@ Root `scripts/` owns opt-in maintenance, packaging, benchmark, and evaluation en
 
 ## Implemented V2 Flow Isolation
 
-`V2_FLOW_ARCHITECTURE.md` defines the experimental product path that is implemented separately from V1 Classic while respecting the existing package boundaries.
+`FLOW_NORTH_STAR.md` defines the durable target product intent for Classic and Flow as two views of one canonical Socrates work state. `V2_FLOW_ARCHITECTURE.md` records the released experimental implementation, migration constraints, and current technical mechanics.
 
 The implementation uses namespaced modules inside the owning packages:
 
@@ -151,7 +152,7 @@ packages/workspace
   -> shared tools and workspace operations, no V2 fork
 ```
 
-There is no second provider layer, workspace layer, duplicate low-level tool set, or duplicate semantic index. V2 calls the same Socrates agent, provider/model catalog, workspace `.socrates/`, global `~/.Socrates/`, Memory Router/Memory Agent, tools, ZIP skill import, MCP registry, workspace operations, and LanceDB retrieval foundation through adapters. Canonical Flow Q&A rows carry `runtimeKind = "v2_flow"` plus `flowId`; raw inspect/audit remains V2-owned. The separate orchestration and contract path keeps Flow execution policy out of the V1 chat runtime. The bounded shared seam is the canonical project goal ledger: Classic pre/post routing selects and finalizes goals, exact turn-goal links preserve multi-goal conversations, and each goal may receive one preferred Classic home only through an explicit view switch. Visible messages may mirror without duplicating runtime evidence. The Goal Router uses its own `goal_router` worker selection through the shared structured-agent runner, while V2 never invokes the Classic title-rewrite service or adds a capsule-writing model.
+There is no second provider layer, workspace layer, duplicate low-level tool set, or duplicate semantic index. The released V2 path calls the same Socrates agent, provider/model catalog, workspace `.socrates/`, global `~/.Socrates/`, Memory Router/Memory Agent, tools, ZIP skill import, MCP registry, workspace operations, and LanceDB retrieval foundation through namespaced adapters. Current Flow Q&A rows carry `runtimeKind = "v2_flow"` plus `flowId`, and the released bridge may mirror visible messages while keeping raw runtime evidence source-owned. This is migration reality, not the target semantic boundary. `FLOW_NORTH_STAR.md` requires convergence on canonical work identities and view projections without replacement Q&A copies; new architecture must not expand the mirror-based assumption. The Goal Router uses its own `goal_router` worker selection through the shared structured-agent runner, while V2 never invokes the Classic title-rewrite service or adds a capsule-writing model.
 
 A directly constructed source server resolves `SOCRATES_V2_FLOW_ENABLED` to false unless it is exactly `true`; only `/api/v2/capabilities` remains mounted to report availability. The ordinary NPM/runtime `scripts/runtime/launcher.mjs` passes an explicit environment value or defaults it to `true`, so the normal packaged web/backend product exposes Classic/Seamless and retains a rollback override. V1 behavior must continue to be regression-tested whenever V2 code changes.
 
@@ -218,13 +219,13 @@ Rules for chat UI files:
 
 - The chat route page must not become a god component.
 - Whole-sidebar collapse state can be local UI state in the chat workspace. A collapsed sidebar should disappear completely and leave only the reopen control.
-- The shared sidebar is a fixed-width, viewport-height, overflow-hidden shell. Its heading and controls stay outside the single bounded scroll region that owns only the active names/items list. Never place projects and queries/conversations in one long mixed scroll surface; use an explicit two-stage drill-in/back view when the navigation levels are independent.
+- The shared sidebar is a fixed-width, viewport-height, overflow-hidden shell. Its heading and controls stay outside the single bounded scroll region that owns only the active names/items list. Never place independent navigation levels in one mixed scroll surface. Classic may render its project/conversation hierarchy; target Flow drills through separate Projects, Goals, and Queries levels with explicit back navigation.
 - Sidebar project collapse state can be local UI state.
 - API calls should go through `apps/web/src/lib/api.ts` or Socrates-owned hooks.
 - Shared display helpers belong in `apps/web/src/lib/` only when reused.
 - Do not introduce frontend-only API payload types that duplicate `packages/contracts`.
 - The composer owns text entry, send/stop controls, and presentation of backend-owned model/thinking choices. It must not own provider SDK mappings or agent runtime decisions.
-- `ChatComposer`, `ChatTranscript`, `WorkspaceTopbar`, `ProjectChatSidebar`, tool/activity rows, approval/credential cards, and the Terminal dock are shared presentation components. Classic uses nested project/conversation content in the sidebar; Flow uses separate Queries-only and Projects-only stages inside the same fixed shell and overlay layout. Flow selects one exchange through `lib/v2/flowTranscriptWindow.ts` and passes it into the shared transcript; it must not fork message, tool, approval, or Terminal renderers. The shared optional microphone receives mode-owned callbacks: Classic appends conversation-scoped STT to its draft, while V2 owns its speech/Goal Router behavior.
+- `ChatComposer`, `ChatTranscript`, `WorkspaceTopbar`, `ProjectChatSidebar`, detailed tool/activity rows, approval/credential cards, and the Terminal dock are shared presentation components. Classic uses nested project/conversation content in the sidebar; target Flow uses separate Projects, Goals, and Queries stages inside the same fixed shell and overlay layout. During live Flow execution, a Flow-owned presentation layer renders one backend-authored changing activity sentence beneath the orb rather than the detailed rows; after completion, one disclosure opens the shared detailed trace components. Flow selects one exchange through `lib/v2/flowTranscriptWindow.ts`; it must not fork message, approval, or Terminal renderers. The shared optional microphone receives mode-owned callbacks: Classic appends conversation-scoped STT to its draft, while V2 owns its speech/Goal Router behavior.
 
 Initial frontend hooks:
 
@@ -525,9 +526,11 @@ agent prompt
 
 Do not add serious model-driven workflows as bespoke provider calls inside routes, stores, or UI handlers. A store method may enqueue work, load context, persist outputs, and apply validated effects, but it should not own a private prompt loop for a capability that behaves like an agent.
 
+Target convergence places one public `AgentRuntime` in `packages/core` below all model-driven capabilities. Its typed invocation combines prompt/messages, scoped registry/executors, multimodal content, model settings, limits, lifecycle hooks, and a discriminated completion mode; its run handle exposes one typed event stream and one final typed result. `SocratesAgent` and `StructuredToolAgentRunner` are current callers/migration sources, not permanent parallel owners of provider/tool loops. Internal context, provider, tool, approval, recovery, validation, and telemetry modules stay separate behind that public boundary.
+
 Role boundaries:
 
-- Memory Router is a real `MemoryRouterAgent` built through the same prompt -> shared runner -> scoped tool registry/executor -> strict structured validation -> usage/persistence pattern as other model-driven capabilities. Its pre-turn phase has only `memory_search`, backend automatic prefetch, a three-call cap, and exact read-only `readTargets`. Its finalization phase receives bounded task-wide evidence, may inspect only backend-created task-scoped references through `turn_evidence`, and returns bounded reconciliation plans. It never authors patches or writes docs; Socrates performs and re-reads every planned project/repo mutation before the final answer is released.
+- Memory Router is a real `MemoryRouterAgent` built through the same prompt -> shared runtime -> scoped tool registry/executor -> strict structured validation -> usage/persistence pattern as other model-driven capabilities. Its current pre-turn phase has only `memory_search`, backend automatic prefetch, a three-call cap, and exact read-only `readTargets`. Its released finalization phase receives bounded task-wide evidence and returns reconciliation plans; the Flow North Star replaces that detached finalization phase with the validated main-Socrates structured final contract after the replacement is implemented and verified.
 - Frontier is not a second conversational agent loop. It is a one-way model selection change inside `SocratesAgent.streamTurn`: after real substantive effort, the default model may request `handover_to_frontier` once; the normal typed approval pipeline always pauses for the user. Approval appends the tool result and complete prior task history, switches provider/model/runtime settings, removes the handover tool, and lets Frontier own the remainder of the task. Rejection persists the rejected call, removes the tool for the turn, and explicitly returns completion responsibility to Socrates. Driver answer deltas are buffered and discarded when an approved handover occurs so only Frontier supplies the user-visible answer.
 - Socrates writes workspace project memory, project notes, and repo docs through `project_docs` and `repo_docs`. It owns project-scoped active context in project notes and may create `memory_note` leads for the Memory Agent, preferably one and never more than two per user-turn. It does not write identity, user profile, or skills.
 - The Global Memory Agent writes global user profile through scoped edits, proposes/applies identity only through the confirmation policy, inspects full skills for freshness, and sends approved skill create/update tasks to the Skill Writer Agent. It uses `StructuredToolAgentRunner` like Memory Router: normal scoped tool calls first, then one strict Zod journal output. Each successful run persists one `memory_agent_journal` row and refreshes a bounded generated ledger/next-run briefing; `read_memory_journal` provides capped list/read access to older runs without embeddings. It should skip project-local active context for global memory and close each memory note with one of `applied`, `already_represented`, `skipped`, or `proposed_skill` plus a one-line resolution.

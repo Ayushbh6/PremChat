@@ -206,6 +206,8 @@ export interface ModelProvider {
 }
 ```
 
+Every model-driven capability should reach this provider boundary through the single provider-neutral `packages/core` `AgentRuntime`, not through separate feature-owned provider loops. Thin Socrates/router/worker modules configure prompts, scoped tools, schemas, completion mode, limits, and hooks; `AgentRuntime` owns the shared execution semantics and calls `ModelProvider`. Provider adapters remain unaware of whether the caller is the main interactive agent or a bounded structured worker.
+
 The request should be normalized:
 
 ```ts
