@@ -1,4 +1,4 @@
-import { type ProviderAuthMode, type ProviderId, type ThinkingEffort, type V2GoalRouterOutput } from "@socrates/contracts"
+import { type GoalSearchInput, type ProviderAuthMode, type ProviderId, type ThinkingEffort, type V2GoalRouterOutput } from "@socrates/contracts"
 import type { ModelProvider, ModelUsage } from "@socrates/providers"
 import { normalizeError } from "@socrates/shared"
 import { GoalRouterAgent } from "../agent/GoalRouterAgent"
@@ -9,6 +9,7 @@ import type {
   V2GoalRoutingCandidateSet,
   V2GoalRoutingDecision,
   V2GoalRoutingPlan,
+  V2GoalSearchMatch,
   V2GoalStatus,
 } from "./types"
 
@@ -32,11 +33,15 @@ export type V2GoalRouterInput = Readonly<{
   workspacePath: string
   userMessage: string
   goals: readonly V2Goal[]
+  selectedGoalId?: string
+  previousGoalId?: string
   capsules?: readonly V2GoalCapsule[]
   recentTurns?: readonly Readonly<{ goalId?: string; user: string; assistant: string }>[]
+  selectedGoalTurns?: readonly Readonly<{ goalId?: string; user: string; assistant: string }>[]
   clarificationAnswer?: string
   parkedCandidateLimit?: number
   candidateGoalIds?: readonly string[]
+  goalSearch?: (input: GoalSearchInput) => Promise<readonly V2GoalSearchMatch[]>
   provider?: ModelProvider
   model?: V2GoalRouterModelSettings
 }>
@@ -63,6 +68,8 @@ export const selectV2GoalRoutingCandidates = (input: {
   flowId: string
   userMessage: string
   goals: readonly V2Goal[]
+  selectedGoalId?: string
+  previousGoalId?: string
   capsules?: readonly V2GoalCapsule[]
   parkedCandidateLimit?: number
   candidateGoalIds?: readonly string[]
@@ -92,9 +99,14 @@ export const selectV2GoalRoutingCandidates = (input: {
     return goal ? [goal] : []
   })
   const orderedParked = [...retrieved, ...eligibleParked.filter((goal) => !retrieved.some((item) => item.id === goal.id))]
-  const foregroundGoal = foregroundGoals[0]
+  const foregroundGoal = input.selectedGoalId
+    ? goals.find((goal) => goal.id === input.selectedGoalId)
+    : foregroundGoals[0]
+  const previousGoal = input.previousGoalId && input.previousGoalId !== foregroundGoal?.id
+    ? goals.find((goal) => goal.id === input.previousGoalId)
+    : undefined
   const totalLimit = Math.min(5, parkedCandidateLimit)
-  const selectedGoals = [...(foregroundGoal ? [foregroundGoal] : []), ...orderedParked]
+  const selectedGoals = [...(foregroundGoal ? [foregroundGoal] : []), ...(previousGoal ? [previousGoal] : []), ...orderedParked]
     .filter((goal, index, all) => all.findIndex((candidate) => candidate.id === goal.id) === index)
     .slice(0, totalLimit)
   const candidates = selectedGoals.map((goal, index) => toCandidate(goal, index + 1))
@@ -110,7 +122,45 @@ export const selectV2GoalRoutingCandidates = (input: {
 }
 
 export const routeV2Goal = async (input: V2GoalRouterInput): Promise<V2GoalRouterResult> => {
-  const candidates = selectV2GoalRoutingCandidates(input)
+  const initialCandidates = selectV2GoalRoutingCandidates(input)
+  const routedCandidates: V2GoalRoutingCandidate[] = [...initialCandidates.candidates]
+  const candidateByGoalId = new Map(routedCandidates.map((candidate) => [candidate.goal.id, candidate]))
+  const goalSearch = async (searchInput: GoalSearchInput) => {
+    const matches = input.goalSearch ? await input.goalSearch(searchInput) : []
+    const results = matches.slice(0, searchInput.limit).flatMap((match) => {
+      const existing = candidateByGoalId.get(match.goal.id)
+      if (existing) return [{
+        candidate: existing.candidate,
+        title: existing.goal.title,
+        status: existing.goal.status,
+        note: existing.capsule?.summary ?? existing.goal.summary ?? "No progress note yet.",
+        ...(existing.latestTask ? { latestTask: existing.latestTask } : {}),
+      }]
+      if (routedCandidates.length >= 25) return []
+      const candidate: V2GoalRoutingCandidate = {
+        goal: match.goal,
+        ...(match.capsule ? { capsule: match.capsule } : {}),
+        ...(match.latestTask ? { latestTask: match.latestTask } : {}),
+        candidate: routedCandidates.length + 1,
+      }
+      routedCandidates.push(candidate)
+      candidateByGoalId.set(match.goal.id, candidate)
+      return [{
+        candidate: candidate.candidate,
+        title: candidate.goal.title,
+        status: candidate.goal.status,
+        note: candidate.capsule?.summary ?? candidate.goal.summary ?? "No progress note yet.",
+        ...(candidate.latestTask ? { latestTask: candidate.latestTask } : {}),
+      }]
+    })
+    return { results, summary: results.length ? `Found ${results.length} relevant older goal(s).` : "No additional relevant goals found." }
+  }
+  const currentCandidates = (): V2GoalRoutingCandidateSet => ({
+    ...initialCandidates,
+    parked: routedCandidates.filter((candidate) => candidate.goal.id !== initialCandidates.foreground?.goal.id),
+    candidates: [...routedCandidates],
+  })
+  const candidates = currentCandidates()
   const fallback = deterministicV2GoalRoutingFallback(input.userMessage, candidates)
   if (!input.provider?.generateStructured || !input.model) {
     return {
@@ -136,7 +186,9 @@ export const routeV2Goal = async (input: V2GoalRouterInput): Promise<V2GoalRoute
         userMessage: input.userMessage,
         candidates,
         ...(input.recentTurns ? { recentTurns: input.recentTurns } : {}),
+        ...(input.selectedGoalTurns ? { selectedGoalTurns: input.selectedGoalTurns } : {}),
         ...(input.clarificationAnswer ? { clarificationAnswer: input.clarificationAnswer } : {}),
+        goalSearch,
         cacheKey: `v2:${input.flowId}:goal-router:${input.turnId}`,
         abortSignal: controller.signal,
         onUsage: (usage) => observedUsages.push(usage),
@@ -147,8 +199,8 @@ export const routeV2Goal = async (input: V2GoalRouterInput): Promise<V2GoalRoute
     const usage = aggregateUsages(observedUsages)
     const completedAt = new Date().toISOString()
     return {
-      decision: toRoutingDecision(output, candidates),
-      candidates,
+      decision: toRoutingDecision(output, currentCandidates()),
+      candidates: currentCandidates(),
       source: "model",
       modelAttempt: {
         providerId: input.model.providerId,
@@ -195,7 +247,7 @@ export const deterministicV2GoalRoutingFallback = (
 ): V2GoalRoutingDecision => {
   if (candidates.foreground) {
     return {
-      action: "continue",
+      action: candidates.foreground.goal.status === "foreground" ? "continue" : "resume",
       primaryGoalId: candidates.foreground.goal.id,
     }
   }
@@ -267,7 +319,7 @@ const toRoutingDecision = (value: V2GoalRouterOutput, candidates: V2GoalRoutingC
   const selected = candidateByNumber.get(value.candidates[0] ?? -1)
   if (!selected) throw new Error("The Goal Router selected an unavailable candidate.")
   return {
-    action: selected.goal.id === candidates.foreground?.goal.id ? "continue" : "resume",
+    action: selected.goal.id === candidates.foreground?.goal.id && selected.goal.status === "foreground" ? "continue" : "resume",
     primaryGoalId: selected.goal.id,
   }
 }

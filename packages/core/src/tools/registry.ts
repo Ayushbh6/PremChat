@@ -7,6 +7,7 @@ import { editTool } from "./editTool"
 import { editFilesTool } from "./editFilesTool"
 import { frontierHandoverTool } from "./frontierHandoverTool"
 import { focusLedgerTool } from "./focusLedgerTool"
+import { goalSearchTool } from "./goalSearchTool"
 import { listProjectResourcesTool } from "./listProjectResourcesTool"
 import { memoryNoteTool } from "./memoryNoteTool"
 import { memoryNotesTool } from "./memoryNotesTool"
@@ -94,7 +95,7 @@ export const createMemoryRouterToolRegistry = (): ToolRegistry => new ToolRegist
 
 export const createMemoryFinalizationToolRegistry = (): ToolRegistry => new ToolRegistry([memorySearchTool, turnEvidenceTool])
 
-export const createGoalRouterToolRegistry = (): ToolRegistry => new ToolRegistry([])
+export const createGoalRouterToolRegistry = (): ToolRegistry => new ToolRegistry([goalSearchTool])
 
 export const createTitleGeneratorToolRegistry = (): ToolRegistry => new ToolRegistry([])
 

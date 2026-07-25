@@ -107,7 +107,7 @@ const contextItemLabel = (sourceLocator: string, sourceType: string): string => 
 const presentationFromMessages = (
   messages: V2Message[],
   streams: Record<string, { answer: string; reasoning?: string; turnId?: string }>,
-): { messages: Message[] } => {
+): { messages: Message[]; goalIdByMessageId: Record<string, string | undefined> } => {
   const visibleMessages = messages
     .filter((message): message is V2Message & { role: "user" | "assistant" | "system" } =>
       message.role === "user" || message.role === "assistant" || message.role === "system")
@@ -136,7 +136,10 @@ const presentationFromMessages = (
       });
     }
   }
-  return { messages: visibleMessages };
+  return {
+    messages: visibleMessages,
+    goalIdByMessageId: Object.fromEntries(messages.map((message) => [message.id, message.goalId])),
+  };
 };
 
 export function SeamlessProjectRoute({ projectId }: SeamlessProjectRouteProps) {
@@ -406,6 +409,7 @@ export function SeamlessProjectRoute({ projectId }: SeamlessProjectRouteProps) {
       projectName={projectData.project.name}
       sidebarProjects={projectsData.map(({ project }) => ({ project, conversations: [] }))}
       messages={presentation.messages}
+      goalIdByMessageId={presentation.goalIdByMessageId}
       activeTurnId={isSending ? snapshot.activeTurn?.id : undefined}
       goals={snapshot.goals.map((goal) => ({
         id: goal.id,

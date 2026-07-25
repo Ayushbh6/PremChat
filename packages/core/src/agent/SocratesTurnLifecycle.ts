@@ -12,14 +12,11 @@ import { MemoryRouterAgent, type ActiveGoalCard } from "./MemoryRouterAgent"
 import type { SocratesAgentTurnInput } from "./SocratesAgent"
 import { AsyncEventQueue } from "./AsyncEventQueue"
 import {
-  applyFallbackGoalRoute,
   canLoadStableCachePrelude,
   canRunMemoryLoop,
   clipText,
   emptyMemoryLoopRunResult,
-  fallbackGoalRoute,
   isStableCachePreludeRecord,
-  latestUserText,
   memoryLoopWarning,
   memoryRouterBaseInput,
   previewMemoryLoopOutput,
@@ -143,7 +140,7 @@ export class SocratesTurnLifecycle {
       : renderStableCachePrelude(records)
 
     if (!canRunMemoryLoop(this.provider, input, this.toolRegistry)) {
-      const activeGoal = await applyFallbackGoalRoute(input, messages)
+      const activeGoal = input.activeGoal
       return {
         events: [],
         records,
@@ -162,16 +159,7 @@ export class SocratesTurnLifecycle {
         records.push(record)
       }
 
-      let activeGoal: ActiveGoalCard | undefined
-      if (input.applyGoalRoute) {
-        const goalRoute = route.goalRoute ?? fallbackGoalRoute(input.goalCandidates ?? [], input.currentGoalCandidate, latestUserText(messages))
-        try {
-          activeGoal = await input.applyGoalRoute(goalRoute)
-        } catch (error) {
-          const normalized = normalizeError(error)
-          skipped.push(`goal route was not persisted: ${normalized.code}`)
-        }
-      }
+      const activeGoal: ActiveGoalCard | undefined = input.activeGoal
       const summary = summarizeMemoryLoop("pre_turn", route, records, skipped)
       const dynamicRecords = records.filter((record) => !isStableCachePreludeRecord(record))
       const memoryDeveloperMessage = renderMemoryLoopDeveloperMessage("pre_turn", route, dynamicRecords, skipped, {
@@ -188,7 +176,7 @@ export class SocratesTurnLifecycle {
     } catch (error) {
       const normalized = normalizeError(error)
       const warning = memoryLoopWarning("pre_turn", `${normalized.code}: ${normalized.message}`)
-      const activeGoal = await applyFallbackGoalRoute(input, messages)
+      const activeGoal = input.activeGoal
       return {
         ...warning,
         events: [...events, ...warning.events],

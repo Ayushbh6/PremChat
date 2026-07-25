@@ -26,6 +26,8 @@ import type {
   EditFilesToolOutput,
   FocusLedgerToolInput,
   FocusLedgerToolOutput,
+  GoalSearchInput,
+  GoalSearchOutput,
   ProjectDocsToolInput,
   ProjectDocsToolOutput,
   ProjectsToolInput,
@@ -112,6 +114,7 @@ export type ToolExecutors = {
   memory_note?: (input: MemoryNoteToolInput, context: ToolExecutorContext) => Promise<MemoryNoteToolOutput>
   memory_notes?: (input: MemoryNotesToolInput, context: ToolExecutorContext) => Promise<MemoryNotesToolOutput>
   memory_search?: (input: MemorySearchInput, context: ToolExecutorContext) => Promise<MemorySearchOutput>
+  goal_search?: (input: GoalSearchInput, context: ToolExecutorContext) => Promise<GoalSearchOutput>
   turn_evidence?: (input: TurnEvidenceToolInput, context: ToolExecutorContext) => Promise<TurnEvidenceToolOutput>
   read_memory_journal?: (input: ReadMemoryJournalToolInput, context: ToolExecutorContext) => Promise<ReadMemoryJournalToolOutput>
   skill_write?: (input: SkillWriteToolInput, context: ToolExecutorContext) => Promise<SkillWriteToolOutput>

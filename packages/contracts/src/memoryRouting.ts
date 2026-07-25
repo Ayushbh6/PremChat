@@ -1,5 +1,4 @@
 import { z } from "zod"
-import { v2GoalRouterOutputSchema } from "./v2Flow"
 
 export const memoryRetrievalSurfaceSchema = z.enum(["project_notes", "project_memory", "repo_docs", "user_profile", "identity"])
 export type MemoryRetrievalSurface = z.infer<typeof memoryRetrievalSurfaceSchema>
@@ -68,16 +67,19 @@ export const memoryRetrievalSectionSchema = z.enum([
 ])
 export type MemoryRetrievalSection = z.infer<typeof memoryRetrievalSectionSchema>
 
-const validSectionsByFile: Record<MemoryRetrievalFile, ReadonlySet<MemoryRetrievalSection>> = {
-  "PROJECT_NOTES.md": new Set(["runtime_context", "state_ledger", "active_context", "active_todos", "checked_files", "next_commands", "scratch_notes", "completed_archive"]),
-  "MEMORY.md": new Set(["current_state", "always_apply_rules", "durable_decisions", "constraints", "project_preferences", "blockers", "handoff", "evidence_anchors"]),
-  "CORE_IDEA.md": new Set(["purpose", "current_direction", "milestones", "update_triggers"]),
-  "REPO_NAVIGATION.md": new Set(["ownership_map", "entry_points", "tests", "generated_ignored", "navigation_rules"]),
-  "REPO_RULES.md": new Set(["hard_rules", "workflows", "verification", "known_pitfalls", "update_triggers"]),
-  "CONTRACTS.md": new Set(["tool_contracts", "api_contracts", "db_event_contracts", "frontend_backend", "change_log"]),
-  "user_profile.md": new Set(["profile_summary", "global_always_apply_rules", "stable_preferences", "collaboration_style", "work_and_projects", "personal_interests", "boundaries_and_dislikes", "active_context", "evidence_index"]),
-  "identity.md": new Set(["core_identity", "voice_and_presence", "relationship_to_user", "operating_principles", "safety_boundaries", "tool_and_memory_discipline"]),
+export const MEMORY_ROUTING_SECTIONS_BY_FILE: Record<MemoryRetrievalFile, readonly MemoryRetrievalSection[]> = {
+  "PROJECT_NOTES.md": ["runtime_context", "state_ledger", "active_context", "active_todos", "checked_files", "next_commands", "scratch_notes", "completed_archive"],
+  "MEMORY.md": ["current_state", "always_apply_rules", "durable_decisions", "constraints", "project_preferences", "blockers", "handoff", "evidence_anchors"],
+  "CORE_IDEA.md": ["purpose", "current_direction", "milestones", "update_triggers"],
+  "REPO_NAVIGATION.md": ["ownership_map", "entry_points", "tests", "generated_ignored", "navigation_rules"],
+  "REPO_RULES.md": ["hard_rules", "workflows", "verification", "known_pitfalls", "update_triggers"],
+  "CONTRACTS.md": ["tool_contracts", "api_contracts", "db_event_contracts", "frontend_backend", "change_log"],
+  "user_profile.md": ["profile_summary", "global_always_apply_rules", "stable_preferences", "collaboration_style", "work_and_projects", "personal_interests", "boundaries_and_dislikes", "active_context", "evidence_index"],
+  "identity.md": ["core_identity", "voice_and_presence", "relationship_to_user", "operating_principles", "safety_boundaries", "tool_and_memory_discipline"],
 }
+const validSectionsByFile: Record<MemoryRetrievalFile, ReadonlySet<MemoryRetrievalSection>> = Object.fromEntries(
+  Object.entries(MEMORY_ROUTING_SECTIONS_BY_FILE).map(([fileName, sections]) => [fileName, new Set(sections)]),
+) as unknown as Record<MemoryRetrievalFile, ReadonlySet<MemoryRetrievalSection>>
 
 const validFilesBySurface: Record<MemoryRetrievalSurface, ReadonlySet<MemoryRetrievalFile>> = {
   project_notes: new Set(["PROJECT_NOTES.md"]),
@@ -125,7 +127,6 @@ export const memoryRouterPreTurnResultSchema = z
   .object({
     readTargets: z.array(memoryReadTargetSchema).max(8),
     reason: z.string().min(1).max(500),
-    goalRoute: v2GoalRouterOutputSchema.nullable(),
   })
   .strict()
 export type MemoryRouterPreTurnResult = z.infer<typeof memoryRouterPreTurnResultSchema>

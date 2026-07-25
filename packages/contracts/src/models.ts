@@ -134,7 +134,7 @@ export const conversationContextUsageSchema = z
 
 export const aiUsageCostSourceSchema = z.enum(["provider_reported", "computed", "unknown", "mixed"])
 
-export const aiUsageSourceKindSchema = z.enum(["main_model_call", "context_compaction", "conversation_title", "memory_router"])
+export const aiUsageSourceKindSchema = z.enum(["main_model_call", "context_compaction", "conversation_title", "goal_router", "memory_router"])
 
 export const usageBreakdownItemSchema = z
   .object({

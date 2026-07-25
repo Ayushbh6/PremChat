@@ -111,7 +111,7 @@ export const v2GoalRoutingStatusSchema = z.enum(["running", "awaiting_clarificat
 export const v2GoalRouterOutputSchema = z
   .object({
     action: z.enum(["use", "create", "clarify"]),
-    candidates: z.array(z.number().int().min(1).max(5)).max(5),
+    candidates: z.array(z.number().int().min(1).max(25)).max(5),
     title: z.string().min(1).max(200).nullable(),
   })
   .strict()

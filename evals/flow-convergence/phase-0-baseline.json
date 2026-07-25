@@ -18,14 +18,14 @@
     {
       "id": "flow-goal-router-empty-tools",
       "path": "packages/core/src/tools/registry.ts",
-      "anchors": ["createGoalRouterToolRegistry", "new ToolRegistry([])"],
-      "finding": "The Flow Goal Router cannot invoke goal search during its run."
+      "anchors": ["createGoalRouterToolRegistry", "new ToolRegistry([goalSearchTool])"],
+      "finding": "The shared Goal Router has one bounded read-only goal_search tool; runtime execution caps it at three calls."
     },
     {
       "id": "flow-goal-router-context-shape",
       "path": "packages/core/src/prompts/goalRouterPrompt.ts",
-      "anchors": ["recentTurns: (input.recentTurns ?? []).slice(-3)", "currentCandidate", "candidates:"],
-      "finding": "The router receives a compact latest-message, recent-exchange, and candidate JSON object."
+      "anchors": ["immediatelyPrecedingExchanges", "selectedGoalHistory", "currentCandidate", "candidates:"],
+      "finding": "The router receives the full latest request, three immediately preceding visible Q&A pairs, five selected-goal Q&A pairs, and bounded goal cards."
     },
     {
       "id": "validated-main-answer-owns-finalization",
@@ -42,8 +42,8 @@
     {
       "id": "completion-selects-general",
       "path": "apps/server/src/services/v2/flowStore.ts",
-      "anchors": ["Returned to General Conversation after goal finalization.", "foregroundGoalId: general.id"],
-      "finding": "Completing the foreground work goal currently changes the selected goal to General Conversation."
+      "anchors": ["Lifecycle and view selection are deliberately independent", "remain selected until an explicit routing"],
+      "finding": "Validated completion changes goal lifecycle without changing the selected Flow goal."
     },
     {
       "id": "bridge-copies-visible-messages",
@@ -94,7 +94,7 @@
       ],
       "targetInvariant": "A short repair or clarification stays attached to the preceding task and receives enough uncorrupted exchange context to answer what the user meant.",
       "ownerPhase": 2,
-      "status": "pending",
+      "status": "passing",
       "futureTestSurface": "Flow goal routing and working-message assembly"
     },
     {
@@ -106,7 +106,7 @@
       ],
       "targetInvariant": "Goal lifecycle status and selectedGoal are independent; completion retains the goal on screen and historical queries show their bound goal.",
       "ownerPhase": 2,
-      "status": "pending",
+      "status": "passing",
       "futureTestSurface": "canonical focus state, Flow store, API snapshot, and Flow UI"
     },
     {
@@ -119,7 +119,7 @@
       ],
       "targetInvariant": "The completed goal is reopened and expanded with a new task instead of creating a disconnected goal.",
       "ownerPhase": 2,
-      "status": "pending",
+      "status": "passing",
       "futureTestSurface": "Classic and Flow routers against one canonical goal/task store"
     },
     {
@@ -132,7 +132,7 @@
       ],
       "targetInvariant": "A genuinely new goal receives a bounded transition bridge containing the immediately preceding exchange and verified prior-goal outcome.",
       "ownerPhase": 2,
-      "status": "pending",
+      "status": "passing",
       "futureTestSurface": "Flow context assembler"
     },
     {

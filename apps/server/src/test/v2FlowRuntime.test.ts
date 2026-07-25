@@ -146,7 +146,7 @@ const frontierProofProvider = () => {
           type: "model.answer.delta",
           text: JSON.stringify(postEvidence
             ? { actions: [], reason: "No durable update is needed.", goalFinalization: null }
-            : { readTargets: [], reason: "No routed recall is needed.", goalRoute: null }),
+            : { readTargets: [], reason: "No routed recall is needed." }),
         }
         yield { type: "model.completed", usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 } }
         return
@@ -192,7 +192,7 @@ const repairedMemoryRouterProvider = (): ModelProvider => {
       if (attempt === 1) return { output: { invalid: true } as TOutput, usage }
       const output = phase === "post_evidence"
         ? { actions: [], reason: "No reconciliation needed.", goalFinalization: null }
-        : { readTargets: [], reason: "No memory recall needed.", goalRoute: null }
+        : { readTargets: [], reason: "No memory recall needed." }
       return { output: output as TOutput, usage }
     },
   }
@@ -289,7 +289,7 @@ const setup = (provider: ModelProvider, projectId = "proj_one", routerProvider?:
         return {
           output: (request.system.includes("post-evidence")
             ? { actions: [], reason: "No reconciliation needed in this runtime test.", goalFinalization: null }
-            : { readTargets: [], reason: "No routed recall needed in this runtime test.", goalRoute: null }) as TOutput,
+            : { readTargets: [], reason: "No routed recall needed in this runtime test." }) as TOutput,
         }
       }
       if (!provider.generateStructured) throw new Error("Structured output was not configured for this test provider.")

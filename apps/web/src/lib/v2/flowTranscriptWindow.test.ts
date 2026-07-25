@@ -1,6 +1,12 @@
 import type { Message } from "@socrates/contracts";
 import { describe, expect, it } from "vitest";
-import { countFlowTurns, groupFlowExchanges, selectFlowExchange, sliceLatestFlowTurns } from "./flowTranscriptWindow";
+import {
+  countFlowTurns,
+  goalIdForFlowExchange,
+  groupFlowExchanges,
+  selectFlowExchange,
+  sliceLatestFlowTurns,
+} from "./flowTranscriptWindow";
 
 const message = (id: string, turnId: string, role: Message["role"]): Message => ({
   id,
@@ -59,5 +65,22 @@ describe("Flow transcript turn window", () => {
     expect(selectFlowExchange(messages, "turn_1", "turn_3")?.turnId).toBe("turn_1");
     expect(selectFlowExchange(messages, null, "turn_3")?.turnId).toBe("turn_3");
     expect(selectFlowExchange(messages)?.turnId).toBe("turn_3");
+  });
+
+  it("resolves the goal bound to a historical exchange instead of the currently selected goal", () => {
+    const messages = [
+      message("u1", "turn_1", "user"),
+      message("a1", "turn_1", "assistant"),
+      message("u2", "turn_2", "user"),
+      message("a2", "turn_2", "assistant"),
+    ];
+    const historical = selectFlowExchange(messages, "turn_1", "turn_2");
+
+    expect(goalIdForFlowExchange(historical, {
+      u1: "goal_review",
+      a1: "goal_review",
+      u2: "goal_update",
+      a2: "goal_update",
+    })).toBe("goal_review");
   });
 });

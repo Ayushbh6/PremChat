@@ -54,6 +54,7 @@ import type {
   V2ContextState,
   V2GoalRoutingDecision,
   V2GoalRouterResult,
+  V2GoalSearchMatch,
 } from "@socrates/core"
 import type { ModelMessage } from "@socrates/providers"
 import { createId, nowIso, SocratesError } from "@socrates/shared"
@@ -192,6 +193,7 @@ type RoutingApplication = {
 
 export type ClassicGoalRoutingContext = Readonly<{
   flowId: string
+  currentGoalId?: string
   currentGoalCandidate?: number
   candidates: readonly GoalCandidateCard[]
 }>
@@ -199,6 +201,13 @@ export type ClassicGoalRoutingContext = Readonly<{
 export type V2MessagePage = Readonly<{
   messages: V2Message[]
   messageWindow: V2MessageWindow
+}>
+
+export type GoalTransitionContext = Readonly<{
+  goalTitle: string
+  user: string
+  assistant: string
+  verifiedOutcome: string
 }>
 
 export type V2ContextCounts = Readonly<{
@@ -624,6 +633,83 @@ export class V2FlowStore {
     })
   }
 
+  listGoalRoutingTurns(flowId: string, goalId: string, limit = 5): Array<{ goalId: string; user: string; assistant: string }> {
+    const rows = this.handle.db.select().from(v2Turns)
+      .where(and(eq(v2Turns.flowId, flowId), eq(v2Turns.goalId, goalId), eq(v2Turns.status, "completed")))
+      .orderBy(desc(v2Turns.ordinal))
+      .limit(Math.max(1, Math.min(5, limit)))
+      .all()
+      .reverse()
+    return rows.flatMap((turn) => {
+      const user = turn.userMessageId ? this.handle.db.select().from(v2Messages).where(eq(v2Messages.id, turn.userMessageId)).limit(1).get() : undefined
+      const assistant = turn.assistantMessageId ? this.handle.db.select().from(v2Messages).where(eq(v2Messages.id, turn.assistantMessageId)).limit(1).get() : undefined
+      return user && assistant ? [{ goalId, user: user.content, assistant: assistant.content }] : []
+    })
+  }
+
+  previousRoutingGoalId(flowId: string, selectedGoalId?: string): string | undefined {
+    return this.handle.db.select({ goalId: v2Turns.goalId }).from(v2Turns)
+      .where(and(eq(v2Turns.flowId, flowId), eq(v2Turns.status, "completed")))
+      .orderBy(desc(v2Turns.ordinal))
+      .limit(10)
+      .all()
+      .map((row) => row.goalId)
+      .find((goalId): goalId is string => Boolean(goalId && goalId !== selectedGoalId))
+  }
+
+  getGoalTransitionContext(flowId: string, goalId: string): GoalTransitionContext | undefined {
+    const previous = this.handle.db.select().from(v2Turns)
+      .where(and(eq(v2Turns.flowId, flowId), eq(v2Turns.status, "completed")))
+      .orderBy(desc(v2Turns.ordinal)).limit(1).get()
+    if (!previous?.goalId || previous.goalId === goalId || !previous.userMessageId || !previous.assistantMessageId) return undefined
+    const previousGoal = this.handle.db.select().from(v2Goals).where(eq(v2Goals.id, previous.goalId)).limit(1).get()
+    const user = this.handle.db.select().from(v2Messages).where(eq(v2Messages.id, previous.userMessageId)).limit(1).get()
+    const assistant = this.handle.db.select().from(v2Messages).where(eq(v2Messages.id, previous.assistantMessageId)).limit(1).get()
+    if (!previousGoal || !user || !assistant) return undefined
+    return {
+      goalTitle: previousGoal.title,
+      user: user.content.slice(0, 2_000),
+      assistant: assistant.content.slice(0, 3_000),
+      verifiedOutcome: (previousGoal.summary ?? assistant.content).slice(0, 1_000),
+    }
+  }
+
+  listGoalSearchMatches(input: {
+    flowId: string
+    query: string
+    mode: "lexical" | "semantic" | "combined"
+    limit: number
+    semanticGoalIds?: readonly string[]
+    excludeGoalIds?: readonly string[]
+  }): V2GoalSearchMatch[] {
+    const excluded = new Set(input.excludeGoalIds ?? [])
+    const semanticRank = new Map((input.semanticGoalIds ?? []).map((goalId, index) => [goalId, index]))
+    const terms = goalSearchTerms(input.query)
+    const capsules = this.handle.db.select().from(v2GoalCapsules)
+      .where(and(eq(v2GoalCapsules.flowId, input.flowId), eq(v2GoalCapsules.status, "active"))).all()
+    const capsuleByGoal = new Map(capsules.map((capsule) => [capsule.goalId, mapCapsule(capsule)]))
+    const goals = this.handle.db.select().from(v2Goals).where(eq(v2Goals.flowId, input.flowId)).all()
+      .filter((goal) => !excluded.has(goal.id))
+      .map((goal) => {
+        const capsule = capsuleByGoal.get(goal.id)
+        const latestTurn = this.handle.db.select().from(v2Turns)
+          .where(and(eq(v2Turns.flowId, input.flowId), eq(v2Turns.goalId, goal.id), eq(v2Turns.status, "completed")))
+          .orderBy(desc(v2Turns.ordinal)).limit(1).get()
+        const latestUser = latestTurn?.userMessageId
+          ? this.handle.db.select().from(v2Messages).where(eq(v2Messages.id, latestTurn.userMessageId)).limit(1).get()?.content
+          : undefined
+        const searchable = [goal.title, goal.summary ?? "", capsule?.summary ?? "", latestUser ?? ""].join(" ").toLocaleLowerCase()
+        const lexicalScore = terms.reduce((score, term) => score + (searchable.includes(term) ? 1 : 0), 0)
+        const semanticScore = semanticRank.has(goal.id) ? 100 - (semanticRank.get(goal.id) ?? 0) : 0
+        const score = input.mode === "lexical" ? lexicalScore : input.mode === "semantic" ? semanticScore : semanticScore + lexicalScore * 10
+        return { goal: mapGoal(goal), ...(capsule ? { capsule } : {}), ...(latestUser ? { latestTask: latestUser } : {}), score }
+      })
+      .filter((match) => match.score > 0)
+      .sort((left, right) => right.score - left.score || Date.parse(right.goal.lastActiveAt) - Date.parse(left.goal.lastActiveAt))
+      .slice(0, Math.max(1, Math.min(3, input.limit)))
+    return goals.map(({ score: _score, ...match }) => match)
+  }
+
   prepareClassicGoalRouting(
     projectId: string,
     conversationId: string,
@@ -673,9 +759,34 @@ export class V2FlowStore {
       : undefined
     return {
       flowId: snapshot.flow.id,
+      ...(currentGoalId ? { currentGoalId } : {}),
       ...(currentGoalCandidate === undefined ? {} : { currentGoalCandidate }),
       candidates,
     }
+  }
+
+  listClassicGoalRoutingTurns(conversationId: string, goalId: string, limit = 5): Array<{ goalId: string; user: string; assistant: string }> {
+    return this.handle.db.select().from(v2ClassicTurnGoalLinks)
+      .where(and(eq(v2ClassicTurnGoalLinks.conversationId, conversationId), eq(v2ClassicTurnGoalLinks.goalId, goalId)))
+      .orderBy(desc(v2ClassicTurnGoalLinks.updatedAt))
+      .limit(Math.max(1, Math.min(5, limit)))
+      .all()
+      .reverse()
+      .flatMap((link) => {
+        const user = this.handle.db.select().from(messages).where(eq(messages.id, link.userMessageId)).limit(1).get()
+        const assistant = link.assistantMessageId
+          ? this.handle.db.select().from(messages).where(eq(messages.id, link.assistantMessageId)).limit(1).get()
+          : undefined
+        return user && assistant ? [{ goalId, user: user.content, assistant: assistant.content }] : []
+      })
+  }
+
+  previousClassicGoalId(conversationId: string, selectedGoalId?: string): string | undefined {
+    return this.handle.db.select({ goalId: v2ClassicTurnGoalLinks.goalId }).from(v2ClassicTurnGoalLinks)
+      .where(eq(v2ClassicTurnGoalLinks.conversationId, conversationId))
+      .orderBy(desc(v2ClassicTurnGoalLinks.updatedAt)).limit(10).all()
+      .map((row) => row.goalId)
+      .find((goalId) => goalId !== selectedGoalId)
   }
 
   applyClassicGoalRoute(input: {
@@ -727,7 +838,7 @@ export class V2FlowStore {
           fromStatus: null,
           toStatus: "parked",
           reason: "created",
-          note: "Created by the Classic pre-turn Memory Router.",
+          note: "Created by the shared pre-turn Goal Router.",
           createdAt: now,
         })
         this.handle.db.insert(v2GoalCapsules).values({
@@ -746,7 +857,7 @@ export class V2FlowStore {
       flowId: input.context.flowId,
       goalId,
       action: goalBefore.status === "completed" || goalBefore.status === "discarded" || goalBefore.status === "archived" ? "reopen" : "switch",
-      note: "Selected by the Classic pre-turn Memory Router.",
+      note: "Selected by the shared pre-turn Goal Router.",
     })
     const now = nowIso()
     let bridge = this.handle.db.select().from(v2ClassicConversationBridges).where(eq(v2ClassicConversationBridges.conversationId, input.conversationId)).limit(1).get()
@@ -819,15 +930,8 @@ export class V2FlowStore {
       } else {
         this.handle.db.update(v2Goals).set({ summary: finalization.note, lastActiveAt: now, updatedAt: now }).where(eq(v2Goals.id, goal.id)).run()
       }
-      const flow = this.requireFlow(projectId, flowId)
-      if (nextStatus !== "foreground" && flow.foregroundGoalId === goalId) {
-        const general = this.handle.db.select().from(v2Goals).where(and(eq(v2Goals.flowId, flowId), eq(v2Goals.kind, "general"))).limit(1).get()
-        if (general && general.id !== goalId) {
-          this.handle.db.update(v2Goals).set({ status: "foreground", lastActiveAt: now, updatedAt: now }).where(eq(v2Goals.id, general.id)).run()
-          this.insertGoalTransition({ flowId, goalId: general.id, turnId, fromStatus: general.status as V2Goal["status"], toStatus: "foreground", reason: "resumed", note: "Returned to General Conversation after goal finalization.", createdAt: now })
-          this.handle.db.update(v2Flows).set({ foregroundGoalId: general.id, revision: sql`${v2Flows.revision} + 1`, updatedAt: now }).where(eq(v2Flows.id, flowId)).run()
-        }
-      }
+      // Lifecycle and view selection are deliberately independent.
+      // A completed, blocked, or discarded goal will remain selected until an explicit routing or user focus decision selects another goal.
     })()
   }
 
@@ -897,7 +1001,7 @@ export class V2FlowStore {
       goals,
       pendingCompletion,
       message: input.request.operation === "complete_current"
-        ? "Completion is staged and will commit after the final response is saved. The focus will move to Finished, not Archived, and General Conversation will become current. Now provide the substantive user-facing answer, incorporating the outcome; do not merely confirm completion."
+        ? "Completion is staged and will commit after the final response is saved. The focus will move to Finished and remain selected. Now provide the substantive user-facing answer, incorporating the outcome; do not merely confirm completion."
         : input.request.operation === "record_blocker"
           ? "Recorded the blocker on the current task."
           : input.request.operation === "update_current"
@@ -955,22 +1059,24 @@ export class V2FlowStore {
           if (target.status === "archived" && input.action !== "reopen") {
             throw new SocratesError("v2_focus_archived", "Reopen an archived focus before switching to it.", { recoverable: true })
           }
-          if (current && current.id !== target.id) writeTransition(current, "parked", "focus_switch", `Paused while switching to ${target.title}.`)
+          if (current && current.id !== target.id && current.status === "foreground") writeTransition(current, "parked", "focus_switch", `Paused while switching to ${target.title}.`)
           writeTransition(target, "foreground", input.action === "reopen" ? "reopened" : "user_intent", input.note ?? `Made ${target.title} the current focus.`)
           this.handle.db.update(v2Flows).set({ foregroundGoalId: target.id, revision: sql`${v2Flows.revision} + 1`, updatedAt: now }).where(eq(v2Flows.id, input.flowId)).run()
         } else if (input.action === "pause" || input.action === "finish") {
           const nextStatus = input.action === "finish" ? "completed" : "parked"
           writeTransition(target, nextStatus, input.action === "finish" ? "completed" : "user_intent", input.note ?? (input.action === "finish" ? "Marked finished by the user." : "Paused by the user."))
-          if (flow.foregroundGoalId === target.id) {
-            const general = this.handle.db.select().from(v2Goals).where(and(eq(v2Goals.flowId, input.flowId), eq(v2Goals.kind, "general"))).limit(1).get()
-            if (general && general.id !== target.id) {
-              writeTransition(general, "foreground", "resumed", "Returned to General Conversation.")
-              this.handle.db.update(v2Flows).set({ foregroundGoalId: general.id, revision: sql`${v2Flows.revision} + 1`, updatedAt: now }).where(eq(v2Flows.id, input.flowId)).run()
-            }
-          }
+          // Finishing or pausing changes lifecycle only. Selection stays on the
+          // same goal so its completed context remains visible and routable.
         } else if (input.action === "archive") {
           if (target.status === "foreground") throw new SocratesError("v2_focus_current", "Pause or finish the current focus before archiving it.", { recoverable: true })
           writeTransition(target, "archived", "archived", input.note ?? "Archived by the user.")
+          if (flow.foregroundGoalId === target.id) {
+            const general = this.handle.db.select().from(v2Goals).where(and(eq(v2Goals.flowId, input.flowId), eq(v2Goals.kind, "general"))).limit(1).get()
+            if (general && general.id !== target.id) {
+              writeTransition(general, "foreground", "resumed", "Selected General Conversation after archiving the prior focus.")
+              this.handle.db.update(v2Flows).set({ foregroundGoalId: general.id, revision: sql`${v2Flows.revision} + 1`, updatedAt: now }).where(eq(v2Flows.id, input.flowId)).run()
+            }
+          }
         }
       }
       const row = this.handle.db.select().from(v2Goals).where(eq(v2Goals.id, target.id)).get()
@@ -3739,6 +3845,10 @@ const completionContentTokens = (value: string): string[] => [
       .filter((token) => !COMPLETION_CONTENT_STOP_WORDS.has(token)),
   ),
 ]
+
+const goalSearchTerms = (value: string): string[] => [
+  ...new Set(value.toLocaleLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) ?? []),
+].slice(0, 24)
 
 const COMPLETION_CONTENT_STOP_WORDS = new Set([
   "after", "before", "completed", "completion", "current", "focus", "from", "have", "reported", "that", "the", "this", "with",

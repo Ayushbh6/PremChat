@@ -35,6 +35,7 @@ import { appendAndEmit, makeEvent, type EventSink } from "../eventSender"
 import { currentRuntimeTime } from "../../services/store/runtimeContext"
 import { fetchUrlForTool } from "../urlFetch"
 import type { V2FlowStore } from "../../services/v2/flowStore"
+import { routeClassicGoal } from "../classicGoalRoutingCoordinator"
 
 const requireCommandScope = (command: ClientCommand): { projectId: string; conversationId: string } => {
   if (!command.projectId || !command.conversationId) {
@@ -249,14 +250,29 @@ export const handleChatMessageSend = async (
   let suspended = false
   let suspendedWait: Extract<SocratesAgentEvent, { type: "agent.suspended" }>["wait"] | undefined
   const exposedMcpServers = new Set<string>()
-  const goalQuery = created.userMessage?.content.trim() ?? ""
-  const retrievedGoalIds = flowStore && goalQuery
-    ? await store.searchGoalCards(projectId, goalQuery, 4).catch(() => [] as string[])
-    : []
-  const goalRoutingContext = flowStore?.prepareClassicGoalRouting(projectId, conversationId, retrievedGoalIds)
-  const classicFlowStore = flowStore && goalRoutingContext ? flowStore : undefined
+  let activeGoal = continuation && flowStore ? flowStore.getClassicGoalForTurn(created.turnId) : undefined
 
   try {
+    if (!continuation && flowStore && created.userMessage) {
+      activeGoal = await routeClassicGoal({
+        projectId,
+        conversationId,
+        sessionId: created.sessionId,
+        turnId: created.turnId,
+        runtimeConfigId: created.runtimeConfigId,
+        userMessageId: created.userMessage.id,
+        userMessage: created.userMessage.content,
+        workspacePath,
+        recentMessages: modelHistory,
+        flowStore,
+        sharedStore: store,
+        ...(titleProvider ? { provider: titleProvider } : {}),
+      })
+      store.indexGoalRetrieval(projectId, activeGoal.goalId)
+    }
+    if (continuation && flowStore && !activeGoal) {
+      throw new SocratesError("classic_goal_link_missing", "The continued task no longer has a goal link.", { recoverable: true })
+    }
     for await (const agentEvent of agent.streamTurn({
       projectId,
       conversationId,
@@ -274,30 +290,7 @@ export const handleChatMessageSend = async (
       stableCachePreludeSnapshot,
       finalAnswerMode: "structured",
       automaticMemorySearch: (input) => store.searchMemory(projectId, input, true),
-      ...(goalRoutingContext && classicFlowStore ? {
-        goalCandidates: goalRoutingContext.candidates,
-        ...(goalRoutingContext.currentGoalCandidate ? { currentGoalCandidate: goalRoutingContext.currentGoalCandidate } : {}),
-        applyGoalRoute: async (route) => {
-          if (continuation) {
-            const activeGoal = classicFlowStore.getClassicGoalForTurn(created.turnId)
-            if (!activeGoal) throw new SocratesError("classic_goal_link_missing", "The continued task no longer has a goal link.", { recoverable: true })
-            return activeGoal
-          }
-          if (!created.userMessage) throw new SocratesError("classic_goal_message_missing", "The Classic turn has no user message to route.")
-          const activeGoal = classicFlowStore.applyClassicGoalRoute({
-            projectId,
-            conversationId,
-            sessionId: created.sessionId,
-            turnId: created.turnId,
-            userMessageId: created.userMessage.id,
-            userMessage: created.userMessage.content,
-            context: goalRoutingContext,
-            route,
-          })
-          store.indexGoalRetrieval(projectId, activeGoal.goalId)
-          return activeGoal
-        },
-      } : {}),
+      ...(activeGoal ? { activeGoal } : {}),
       toolExecutors: createToolExecutors(store, projectId, created.turnId, activeTurns, terminals, mcpRuntime, {
         exposeMcpServer: (serverId) => exposedMcpServers.add(serverId),
       }),
@@ -907,13 +900,13 @@ export const handleChatMessageSend = async (
       turnId: created.turnId,
       content: answerText,
       reasoning: reasoningText,
-      ...(classicFlowStore ? {
+      ...(flowStore ? {
         afterPersist: (message) => {
-          classicFlowStore.finalizeClassicGoal(created.turnId, validatedFinalResult.goalFinalization, message.id)
+          flowStore.finalizeClassicGoal(created.turnId, validatedFinalResult.goalFinalization, message.id)
         },
       } : {}),
     })
-    const finalizedGoal = classicFlowStore?.getClassicGoalForTurn(created.turnId)
+    const finalizedGoal = flowStore?.getClassicGoalForTurn(created.turnId)
     if (finalizedGoal) store.indexGoalRetrieval(projectId, finalizedGoal.goalId)
     for (const modelCallId of modelCallIds) {
       store.completeModelCall({

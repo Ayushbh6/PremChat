@@ -22,7 +22,7 @@ import { TerminalDockPanel } from "@/components/chat/TerminalPanel";
 import type { PendingApproval, PendingCredentialInput } from "@/components/chat/ToolTimelineTypes";
 import { toolRunToTimelineItem } from "@/components/chat/ToolTimelineTypes";
 import { WorkspaceTopbar } from "@/components/chat/WorkspaceTopbar";
-import { groupFlowExchanges, selectFlowExchange } from "@/lib/v2/flowTranscriptWindow";
+import { goalIdForFlowExchange, groupFlowExchanges, selectFlowExchange } from "@/lib/v2/flowTranscriptWindow";
 import { LivingSphere } from "./LivingSphere";
 import { V2ViewLink } from "./V2ViewLink";
 import { V2SpeechPackManager } from "./V2SpeechPackManager";
@@ -45,6 +45,7 @@ export interface FlowWorkspaceProps {
   activeTurnId?: string;
   goals?: FlowGoalView[];
   activeGoalId?: string;
+  goalIdByMessageId?: Readonly<Record<string, string | undefined>>;
   currentTaskLabel?: string;
   presenceState?: FlowPresenceState;
   statusLabel?: string;
@@ -85,6 +86,7 @@ export function FlowWorkspace({
   activeTurnId,
   goals = [],
   activeGoalId,
+  goalIdByMessageId = {},
   currentTaskLabel = "Ready for your next thought",
   presenceState = "offline",
   statusLabel = "Seamless runtime disconnected",
@@ -145,9 +147,13 @@ export function FlowWorkspace({
   );
   const displayedMessages = useMemo(() => displayedExchange?.messages ?? [], [displayedExchange]);
   const displayedIsCurrent = Boolean(displayedExchange && displayedExchange.key === currentExchange?.key);
+  const displayedGoalId = useMemo(
+    () => displayedIsCurrent ? activeGoalId : goalIdForFlowExchange(displayedExchange, goalIdByMessageId),
+    [activeGoalId, displayedExchange, displayedIsCurrent, goalIdByMessageId],
+  );
   const activeGoal = useMemo(
-    () => goals.find((goal) => goal.id === activeGoalId) ?? goals.find((goal) => goal.status === "foreground"),
-    [activeGoalId, goals],
+    () => goals.find((goal) => goal.id === displayedGoalId) ?? goals.find((goal) => goal.id === activeGoalId),
+    [activeGoalId, displayedGoalId, goals],
   );
   const pausedGoalCount = useMemo(
     () => goals.filter((goal) => goal.status === "parked" || goal.status === "blocked").length,

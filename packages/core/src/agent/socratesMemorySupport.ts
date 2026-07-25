@@ -7,7 +7,6 @@ import type {
   RuntimeConfig,
   ToolExecutionResult,
   ToolName,
-  V2GoalRouterOutput,
 } from "@socrates/contracts"
 import type { ModelEvent, ModelMessage, ModelProvider } from "@socrates/providers"
 import { SocratesError } from "@socrates/shared"
@@ -16,7 +15,7 @@ import { buildSocratesDynamicContext, type SocratesPromptContext } from "../prom
 import type { ToolLifecycleEvent } from "../tools/types"
 import type { ToolRegistry } from "../tools/registry"
 import type { SocratesAgentTurnInput, StableCachePreludeSnapshot, MemoryLoopPhase, MemoryRouterModelSettings, FrontierModelSettings } from "./SocratesAgent"
-import type { ActiveGoalCard, GoalCandidateCard } from "./MemoryRouterAgent"
+import type { ActiveGoalCard } from "./MemoryRouterAgent"
 
 export type MemoryLoopRunResult = {
   events: ToolLifecycleEvent[]
@@ -84,30 +83,6 @@ export const memoryRouterModelSettingsFor = (input: SocratesAgentTurnInput): Mem
     thinkingEffort: "none",
   }
 
-export const fallbackGoalRoute = (
-  candidates: readonly GoalCandidateCard[],
-  currentGoalCandidate: number | undefined,
-  userMessage: string,
-): V2GoalRouterOutput => {
-  if (currentGoalCandidate && candidates.some((candidate) => candidate.candidate === currentGoalCandidate)) {
-    return { action: "use", candidates: [currentGoalCandidate], title: null }
-  }
-  const title = userMessage.replace(/\s+/g, " ").trim()
-  return { action: "create", candidates: [], title: clipText(title || "New focus", 120) }
-}
-
-export const applyFallbackGoalRoute = async (
-  input: SocratesAgentTurnInput,
-  messages: readonly ModelMessage[],
-): Promise<ActiveGoalCard | undefined> => {
-  if (!input.applyGoalRoute) return undefined
-  try {
-    return await input.applyGoalRoute(fallbackGoalRoute(input.goalCandidates ?? [], input.currentGoalCandidate, latestUserText(messages)))
-  } catch {
-    return undefined
-  }
-}
-
 export const renderActiveGoalDeveloperMessage = (goal: ActiveGoalCard): string => [
   '<socrates_active_goal source="project_goal_ledger">',
   `title: ${goal.title}`,
@@ -154,8 +129,7 @@ export const memoryRouterBaseInput = (input: SocratesAgentTurnInput, messages: M
     ...(input.promptContext?.projectDescription ? { projectDescription: input.promptContext.projectDescription } : {}),
     userMessage: latestUserText(messages),
     recentMessages: messages,
-    ...(input.goalCandidates ? { goalCandidates: input.goalCandidates } : {}),
-    ...(input.currentGoalCandidate ? { currentGoalCandidate: input.currentGoalCandidate } : {}),
+    ...(input.activeGoal ? { activeGoal: input.activeGoal } : {}),
     toolExecutors: input.toolExecutors,
     ...(input.automaticMemorySearch ? { automaticMemorySearch: input.automaticMemorySearch } : {}),
     ...(input.cacheKey ? { cacheKey: input.cacheKey } : {}),

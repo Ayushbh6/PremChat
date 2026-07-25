@@ -667,7 +667,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
     expect(completed.content).toContain("Done.")
     let snapshot = store.getSnapshot("proj_one", initial.flow.id)
     expect(snapshot.goals.find((goal) => goal.id === work.id)?.status).toBe("completed")
-    expect(snapshot.foregroundGoal).toMatchObject({ id: general.id, status: "foreground" })
+    expect(snapshot.foregroundGoal).toMatchObject({ id: work.id, status: "completed" })
     expect(() => store.updateFocus({ projectId: "proj_one", flowId: initial.flow.id, goalId: general.id, action: "finish" })).toThrow(/cannot be finished/i)
 
     store.updateFocus({ projectId: "proj_one", flowId: initial.flow.id, goalId: work.id, action: "reopen" })
@@ -731,6 +731,29 @@ describe("V2FlowStore isolation and lifecycle", () => {
     expect(resolved.answerMessage.kind).toBe("routing_clarification")
     expect(store.getSnapshot("proj_one", flow.id).pendingClarification).toBeUndefined()
     expect(workCandidate.goal.id).toBe(work.id)
+  })
+
+  it("builds a bounded transition bridge from the immediately preceding completed goal", () => {
+    const { store } = setup()
+    const flow = store.ensureFlow("proj_one").flow
+    const first = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Review the memory ledger", runtimeConfig })
+    const memoryGoal = store.applyRouting({
+      projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, messageId: first.userMessage.id,
+      messageContent: first.userMessage.content, result: forcedCreateResult(store, flow.id),
+    }).goal
+    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "The memory ledger review found one stale ownership note." })
+
+    const second = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Great, now move to trace retrieval", runtimeConfig })
+    const traceGoal = store.applyRouting({
+      projectId: "proj_one", flowId: flow.id, turnId: second.turn.id, messageId: second.userMessage.id,
+      messageContent: second.userMessage.content, result: forcedCreateResult(store, flow.id),
+    }).goal
+    const transition = store.getGoalTransitionContext(flow.id, traceGoal.id)
+    expect(transition).toMatchObject({
+      goalTitle: memoryGoal.title,
+      user: "Review the memory ledger",
+      assistant: "The memory ledger review found one stale ownership note.",
+    })
   })
 
   it("mirrors visible V2 turns one-to-one into Classic and enforces bridge write ownership", () => {

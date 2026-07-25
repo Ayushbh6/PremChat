@@ -23,6 +23,13 @@ export type V2GoalRoutingCandidate = Readonly<{
   goal: V2Goal
   capsule?: V2GoalCapsule
   candidate: number
+  latestTask?: string
+}>
+
+export type V2GoalSearchMatch = Readonly<{
+  goal: V2Goal
+  capsule?: V2GoalCapsule
+  latestTask?: string
 }>
 
 export type V2GoalRoutingCandidateSet = Readonly<{

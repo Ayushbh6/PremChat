@@ -14,7 +14,6 @@ import {
   type ToolName,
   type WaitToolOutput,
   type WorkerModelSettings,
-  type V2GoalRouterOutput,
 } from "@socrates/contracts"
 import { createId, SocratesError } from "@socrates/shared"
 import type { ModelEvent, ModelMessage, ModelMessagePart, ModelProvider, TokenCountResult } from "@socrates/providers"
@@ -32,7 +31,6 @@ import type { ApprovalDecision, ApprovalRequest, CredentialInputDecision, Creden
 import {
   MemoryRouterAgent,
   type ActiveGoalCard,
-  type GoalCandidateCard,
   type MemoryRouterRunRecord,
 } from "./MemoryRouterAgent"
 import { AgentRuntime } from "./AgentRuntime"
@@ -96,10 +94,7 @@ export type SocratesAgentTurnInput = {
   stableCachePreludeSnapshot?: StableCachePreludeSnapshot
   recordMemoryRouterRun?: (input: MemoryRouterRunRecord) => void | Promise<void>
   automaticMemorySearch?: (input: MemorySearchInput) => Promise<MemorySearchOutput>
-  goalCandidates?: readonly GoalCandidateCard[]
-  currentGoalCandidate?: number
   activeGoal?: ActiveGoalCard
-  applyGoalRoute?: (route: V2GoalRouterOutput) => Promise<ActiveGoalCard>
   finalAnswerMode?: "text" | "structured"
   contextCompression?: ContextCompressionRuntime
   maxToolCallsPerTurn?: number

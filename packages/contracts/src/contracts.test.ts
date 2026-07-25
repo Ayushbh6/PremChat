@@ -2130,14 +2130,12 @@ describe("tool contracts", () => {
       memoryRouterPreTurnResultSchema.safeParse({
         readTargets: [{ surface: "user_profile", fileName: "user_profile.md", sectionId: "collaboration_style", reason: "Slow mode is a collaboration preference." }],
         reason: "Read the precise preference and preserve the contract.",
-        goalRoute: null,
       }).success,
     ).toBe(true)
     expect(
       memoryRouterPreTurnResultSchema.safeParse({
         readTargets: [{ surface: "identity", fileName: "user_profile.md", sectionId: "collaboration_style", reason: "wrong owner" }],
         reason: "invalid",
-        goalRoute: null,
       }).success,
     ).toBe(false)
     expect(memoryRouterPreTurnResultSchema.safeParse({ readTargets: [], memoryWrites: [], reason: "writes are forbidden" }).success).toBe(false)

@@ -33,7 +33,7 @@ describe("V2 Flow goal routing", () => {
     expect(seamless).toContain("handover_to_frontier")
     expect(seamless).toContain("trace_retrieve")
     expect(classic).not.toContain("focus_ledger")
-    expect(createGoalRouterToolRegistry().list()).toEqual([])
+    expect(createGoalRouterToolRegistry().list().map((tool) => tool.name)).toEqual(["goal_search"])
   })
 
   it("bounds a 30-goal Flow to five cards and honors retrieved goal ids without deciding semantically", () => {
@@ -54,6 +54,42 @@ describe("V2 Flow goal routing", () => {
     expect(selected.totalEligibleParked).toBe(29)
     expect(selected.parked[0]?.goal.id).toBe("goal_27")
     expect(selected.foreground?.goal.id).toBe("goal_0")
+  })
+
+  it("keeps the selected completed goal first and protects the immediately previous goal from semantic displacement", () => {
+    const goals = [
+      goal("selected", "completed", "Review and improve focus ledger"),
+      goal("previous", "parked", "Review memory ledger"),
+      goal("semantic", "parked", "Unrelated semantic hit"),
+      goal("recent", "parked", "Recent work"),
+    ]
+    const selected = selectV2GoalRoutingCandidates({
+      flowId,
+      userMessage: "Okay, now add the requested information",
+      goals,
+      selectedGoalId: "selected",
+      previousGoalId: "previous",
+      candidateGoalIds: ["semantic"],
+    })
+    expect(selected.candidates.map((candidate) => candidate.goal.id).slice(0, 3)).toEqual(["selected", "previous", "semantic"])
+  })
+
+  it("routes a meaningful follow-up back to the still-selected completed goal as a reopen", async () => {
+    const provider = providerWithStructured(async () => ({
+      output: { action: "use", candidates: [1], title: null } as never,
+    }))
+    const result = await routeV2Goal({
+      projectId: "project_1",
+      flowId,
+      turnId: "turn_2",
+      workspacePath: "/workspace",
+      userMessage: "Okay, now update the focus ledger with that information",
+      goals: [goal("selected", "completed", "Review and improve focus ledger")],
+      selectedGoalId: "selected",
+      provider,
+      model: { providerId: "openrouter", modelId: "router-model", thinkingEnabled: false },
+    })
+    expect(result.decision).toEqual({ action: "resume", primaryGoalId: "selected" })
   })
 
   it("falls back conservatively to the foreground when the model router fails", async () => {
@@ -93,7 +129,7 @@ describe("V2 Flow goal routing", () => {
     expect(result.decision.action).toBe("continue")
   })
 
-  it("passes three focus-tagged Q&A pairs and accepts one bounded clarification between real candidates", async () => {
+  it("passes three visible Q&A pairs without opaque goal ids and accepts one bounded clarification", async () => {
     let routedPayload: Record<string, unknown> | undefined
     const provider = providerWithStructured(async <TOutput>(request: StructuredModelRequest<TOutput>) => {
       routedPayload = JSON.parse(String(request.messages[0]?.content)) as Record<string, unknown>
@@ -126,7 +162,50 @@ describe("V2 Flow goal routing", () => {
       clarificationGoalIds: ["api", "slides"],
       clarificationQuestion: "Should I continue “API work” or “Presentation”?",
     })
-    expect(routedPayload?.recentTurns).toHaveLength(3)
+    expect(routedPayload?.immediatelyPrecedingExchanges).toHaveLength(3)
+    expect(routedPayload?.immediatelyPrecedingExchanges).not.toContainEqual(expect.objectContaining({ goalId: expect.anything() }))
+  })
+
+  it("exposes bounded goal search and enforces three calls even when the model keeps requesting it", async () => {
+    let streamCalls = 0
+    let searchCalls = 0
+    const provider: ModelProvider = {
+      countTokens: async (request) => ({ providerId: request.providerId, modelId: request.modelId, inputTokens: 1, baseTokens: 1, method: "local_tiktoken", safetyMarginPercent: 0 }),
+      async *stream() {
+        streamCalls += 1
+        yield {
+          type: "model.tool_call.completed",
+          toolCall: {
+            toolCallId: `goal_search_${streamCalls}`,
+            toolName: "goal_search",
+            input: { query: `older goal ${streamCalls}`, mode: "combined", limit: 1 },
+          },
+        }
+        yield { type: "model.completed", finishReason: "tool-calls" }
+      },
+      async generateStructured() {
+        return { output: { action: "use", candidates: [4], title: null } as never }
+      },
+    }
+    const result = await routeV2Goal({
+      projectId: "project_1",
+      flowId,
+      turnId: "turn_1",
+      workspacePath: "/workspace",
+      userMessage: "Return to the older goal",
+      goals: [goal("active", "foreground", "Current work")],
+      goalSearch: async () => {
+        searchCalls += 1
+        return [{ goal: goal(`older_${searchCalls}`, "completed", `Older goal ${searchCalls}`), latestTask: `Task ${searchCalls}` }]
+      },
+      provider,
+      model: { providerId: "openrouter", modelId: "router-model", thinkingEnabled: false },
+    })
+
+    expect(searchCalls).toBe(3)
+    expect(streamCalls).toBe(3)
+    expect(result.candidates.candidates).toHaveLength(4)
+    expect(result.decision).toMatchObject({ action: "resume", primaryGoalId: "older_3" })
   })
 
   it("runs through the shared structured agent and repairs one invalid result", async () => {

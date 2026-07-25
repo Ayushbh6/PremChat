@@ -11,7 +11,6 @@ import {
 } from "@socrates/contracts"
 import {
   findModelOption,
-  routeV2Goal,
   type SocratesAgent,
   type SocratesAgentEvent,
 } from "@socrates/core"
@@ -24,6 +23,7 @@ import { createV2ContextCompressionRuntime } from "../services/v2/contextCompres
 import type { V2ContinuedTerminalTask, V2FlowStore, V2ReadyTerminalTask } from "../services/v2/flowStore"
 import { ActiveTurns } from "../ws/activeTurns"
 import { makeV2Event } from "./eventSender"
+import { resolveFlowGoal } from "./goalRoutingCoordinator"
 import { V2FlowSubscriptions } from "./flowSubscriptions"
 import { V2TerminalRuntime } from "./terminalRuntime"
 import { createV2ToolExecutors } from "./toolExecutors"
@@ -398,109 +398,30 @@ export class V2ExecutionRuntime {
           "main_agent",
         )
       } else {
-        const goalRouterSetting = this.deps.sharedStore.getWorkerModelSetting("goal_router")
-        const retrievedGoalIds = await this.deps.sharedStore.searchGoalCards(command.projectId, command.payload.content, 4).catch(() => [] as string[])
-        const goalRouterModel = {
-          providerId: goalRouterSetting.providerId,
-          ...(goalRouterSetting.authMode ? { authMode: goalRouterSetting.authMode } : {}),
-          modelId: goalRouterSetting.modelId,
-          thinkingEnabled: goalRouterSetting.thinkingEnabled,
-          ...(goalRouterSetting.thinkingEffort ? { thinkingEffort: goalRouterSetting.thinkingEffort } : {}),
-          timeoutMs: 8_000,
-        }
-        const routing = await routeV2Goal({
-          projectId: command.projectId,
-          flowId: command.flowId,
-          turnId: created.turn.id,
-          workspacePath,
-          userMessage: command.payload.content,
-          goals: this.deps.store.getSnapshot(command.projectId, command.flowId).goals,
-          capsules: this.deps.store.getSnapshot(command.projectId, command.flowId).latestCapsules,
-          recentTurns: this.deps.store.listRecentRoutingTurns(command.flowId, 3),
-          candidateGoalIds: retrievedGoalIds,
-          ...(clarificationAnswer ? { clarificationAnswer } : {}),
-          ...(this.deps.routerProvider ? { provider: this.deps.routerProvider, model: goalRouterModel } : {}),
-        })
-        if (routing.modelAttempt) {
-          const routerCallId = this.deps.store.createModelCall({
-            projectId: command.projectId,
-            flowId: command.flowId,
-            turnId: created.turn.id,
-            role: "goal_router",
-            providerId: routing.modelAttempt.providerId,
-            modelId: routing.modelAttempt.modelId,
-            request: { phase: "goal_routing", candidateCount: routing.candidates.candidates.length },
-          })
-          const routerError = routing.modelAttempt.status === "failed"
-            ? this.deps.store.recordError({
-                projectId: command.projectId,
-                flowId: command.flowId,
-                turnId: created.turn.id,
-                source: "goal_router",
-                code: `v2_goal_router_${routing.modelAttempt.errorCode ?? "failed"}`,
-                message: routing.modelAttempt.errorCode === "timeout"
-                  ? "The Flow goal router timed out."
-                  : routing.modelAttempt.errorCode === "invalid_output"
-                    ? "The Flow goal router returned invalid structured output after one repair attempt."
-                    : "The Flow goal router provider failed.",
-                details: { fallbackReason: routing.fallbackReason, errorMessage: routing.modelAttempt.errorMessage },
-                recoverable: true,
-              })
-            : undefined
-          this.deps.store.completeModelCall({
-            modelCallId: routerCallId,
-            response: {
-              source: routing.source,
-              fallbackReason: routing.fallbackReason,
-              decision: routing.decision.action,
-              startedAt: routing.modelAttempt.startedAt,
-              completedAt: routing.modelAttempt.completedAt,
-              durationMs: routing.modelAttempt.durationMs,
-            },
-            ...(routerError ? { errorId: routerError.id } : {}),
-          })
-          if (routing.modelAttempt.usage) this.recordUsage(routerCallId, routing.modelAttempt.usage)
-        }
-        if (routing.decision.action === "clarify" && !clarificationAnswer) {
-          const clarification = this.deps.store.requestRoutingClarification({
-            projectId: command.projectId,
-            flowId: command.flowId,
-            turnId: created.turn.id,
-            messageId: created.userMessage.id,
-            result: routing,
-            ...(this.deps.routerProvider ? { providerId: goalRouterModel.providerId, modelId: goalRouterModel.modelId } : {}),
-          })
-          this.emit("v2.routing.clarification.requested", {
-            routingRun: clarification.routingRun,
-            message: clarification.message,
-          }, { projectId: command.projectId, flowId: command.flowId, turnId: created.turn.id }, "goal_router")
-          this.emit("v2.message.completed", { message: clarification.message }, { projectId: command.projectId, flowId: command.flowId, turnId: created.turn.id }, "goal_router")
-          this.emit("v2.turn.updated", { turn: clarification.turn }, { projectId: command.projectId, flowId: command.flowId, turnId: created.turn.id }, "goal_router")
-          return
-        }
-        const effectiveRouting = routing.decision.action === "clarify"
-          ? await routeV2Goal({
-              projectId: command.projectId,
-              flowId: command.flowId,
-              turnId: created.turn.id,
-              workspacePath,
-              userMessage: `${command.payload.content}\n\nClarification answer: ${clarificationAnswer ?? ""}`,
-              goals: this.deps.store.getSnapshot(command.projectId, command.flowId).goals,
-              capsules: this.deps.store.getSnapshot(command.projectId, command.flowId).latestCapsules,
-              recentTurns: this.deps.store.listRecentRoutingTurns(command.flowId, 3),
-              candidateGoalIds: retrievedGoalIds,
-            })
-          : routing
-        const applied = this.deps.store.applyRouting({
+        const resolution = await resolveFlowGoal({
           projectId: command.projectId,
           flowId: command.flowId,
           turnId: created.turn.id,
           messageId: created.userMessage.id,
           messageContent: command.payload.content,
-          result: effectiveRouting,
-          ...(this.deps.routerProvider ? { providerId: goalRouterModel.providerId, modelId: goalRouterModel.modelId } : {}),
+          workspacePath,
+          store: this.deps.store,
+          sharedStore: this.deps.sharedStore,
+          recordUsage: (modelCallId, usage) => this.recordUsage(modelCallId, usage),
+          ...(clarificationAnswer ? { clarificationAnswer } : {}),
+          ...(this.deps.routerProvider ? { routerProvider: this.deps.routerProvider } : {}),
         })
-        activeGoalId = applied.goal.id
+        if (resolution.status === "clarification") {
+          this.emit("v2.routing.clarification.requested", {
+            routingRun: resolution.routingRun,
+            message: resolution.message,
+          }, { projectId: command.projectId, flowId: command.flowId, turnId: created.turn.id }, "goal_router")
+          this.emit("v2.message.completed", { message: resolution.message }, { projectId: command.projectId, flowId: command.flowId, turnId: created.turn.id }, "goal_router")
+          this.emit("v2.turn.updated", { turn: resolution.turn }, { projectId: command.projectId, flowId: command.flowId, turnId: created.turn.id }, "goal_router")
+          return
+        }
+        const applied = resolution.applied
+        activeGoalId = resolution.goalId
         this.deps.sharedStore.indexGoalRetrieval(command.projectId, activeGoalId)
         this.deps.store.assertV2FocusOwnership(command.projectId, command.flowId, activeGoalId)
         this.emit(
@@ -906,9 +827,13 @@ export class V2ExecutionRuntime {
     const retained = history
     const snapshot = this.deps.store.getSnapshot(input.projectId, input.flowId)
     const capsule = snapshot.latestCapsules.find((item) => item.goalId === input.goalId)
+    const transition = this.deps.store.getGoalTransitionContext(input.flowId, input.goalId)
     const sections = [
       `<active_goal id="${input.goalId}">${snapshot.foregroundGoal?.title ?? "Current Flow goal"}</active_goal>`,
       capsule ? `<goal_capsule version="${capsule.version}">${capsule.summary}</goal_capsule>` : "",
+      transition
+        ? `<goal_transition_context>Previous goal: ${transition.goalTitle}\nPrevious user request: ${transition.user}\nValidated answer: ${transition.assistant}\nVerified outcome: ${transition.verifiedOutcome}</goal_transition_context>`
+        : "",
       input.lateDeveloperContext ? `<terminal_wake_context>${input.lateDeveloperContext}</terminal_wake_context>` : "",
     ].filter(Boolean)
     if (sections.length <= 1) return retained

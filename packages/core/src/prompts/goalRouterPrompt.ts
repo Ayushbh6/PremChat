@@ -10,6 +10,7 @@ export const GOAL_ROUTER_SYSTEM_PROMPT = [
   "Reuse a completed focus only when the user actually returns to that outcome; never decide from keyword or phrase matching.",
   "Use clarify only when at least two listed focuses are genuinely plausible, recent turns do not resolve it, and choosing wrong would materially matter.",
   "Candidates are numbered human-facing cards. Return their numbers, never internal ids.",
+  "The five supplied candidates are the fast default. If and only if they are insufficient, use goal_search to find an older goal. You may call goal_search at most three times; searched results have additional candidate numbers that may be returned in the final object.",
   "For use return exactly one candidate and title null. For create return no candidates and a short human-facing title. For clarify return two to five candidates and title null.",
   "Prefer the current focus when uncertainty is harmless.",
   "Return only the strict structured result. Do not return analysis, hidden reasoning, or chain of thought.",
@@ -19,6 +20,7 @@ export type GoalRouterPromptInput = Readonly<{
   userMessage: string
   clarificationAnswer?: string
   recentTurns?: readonly Readonly<{ goalId?: string; user: string; assistant: string }>[]
+  selectedGoalTurns?: readonly Readonly<{ goalId?: string; user: string; assistant: string }>[]
   candidates: V2GoalRoutingCandidateSet
 }>
 
@@ -26,10 +28,13 @@ export const buildGoalRouterUserContent = (input: GoalRouterPromptInput): string
   JSON.stringify({
     userMessage: truncate(input.userMessage, 6_000),
     ...(input.clarificationAnswer ? { clarificationAnswer: truncate(input.clarificationAnswer, 2_000) } : {}),
-    recentTurns: (input.recentTurns ?? []).slice(-3).map((turn) => ({
-      ...(turn.goalId ? { goalId: turn.goalId } : {}),
+    immediatelyPrecedingExchanges: (input.recentTurns ?? []).slice(-3).map((turn) => ({
       user: truncate(turn.user, 600),
       assistant: truncate(turn.assistant, 800),
+    })),
+    selectedGoalHistory: (input.selectedGoalTurns ?? []).slice(-5).map((turn) => ({
+      user: truncate(turn.user, 1_200),
+      assistant: truncate(turn.assistant, 2_000),
     })),
     currentCandidate: input.candidates.foreground?.candidate ?? null,
     candidates: input.candidates.candidates.map((candidate) => ({
@@ -37,6 +42,7 @@ export const buildGoalRouterUserContent = (input: GoalRouterPromptInput): string
       status: candidate.goal.status,
       title: truncate(candidate.goal.title, 180),
       note: truncate(candidate.capsule?.summary ?? candidate.goal.summary ?? "", 600),
+      ...(candidate.latestTask ? { latestTask: truncate(candidate.latestTask, 600) } : {}),
     })),
   })
 

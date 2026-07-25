@@ -244,14 +244,12 @@ export function v2FlowRuntimeReducer(
         snapshot: {
           ...state.snapshot,
           goals,
-          ...(isForeground ? { foregroundGoal: goal } : wasForeground ? { foregroundGoal: undefined } : {}),
+          ...(isForeground || wasForeground ? { foregroundGoal: goal } : {}),
           flow: {
             ...state.snapshot.flow,
             ...(isForeground
               ? { foregroundGoalId: goal.id }
-              : wasForeground
-                ? { foregroundGoalId: undefined }
-                : {}),
+              : {}),
           },
         },
       };

@@ -962,6 +962,10 @@ export class SocratesStore {
     this.modelTelemetry.recordMemoryRouterUsage(input)
   }
 
+  recordGoalRouterUsage(input: Parameters<ModelTelemetryStore["recordGoalRouterUsage"]>[0]): void {
+    this.modelTelemetry.recordGoalRouterUsage(input)
+  }
+
   getLatestContextCompactionSnapshot(conversationId: string): ContextCompactionSummary | undefined {
     return this.contextCompactions.getLatestActive(conversationId)
   }

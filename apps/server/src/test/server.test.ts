@@ -430,7 +430,7 @@ const createStructuredFinalAwareTestAgent = (provider: ModelProvider): SocratesA
         return {
           output: (request.system.includes("post-evidence")
             ? { actions: [], reason: "No reconciliation needed in this server test.", goalFinalization: null }
-            : { readTargets: [], reason: "No routed recall needed in this server test.", goalRoute: null }) as TOutput,
+            : { readTargets: [], reason: "No routed recall needed in this server test." }) as TOutput,
         }
       }
       if (request.system.includes("Soul Confirmation Agent") && !provider.generateStructured) {
@@ -472,7 +472,7 @@ const createTestAgent = (): SocratesAgent => {
         return {
           output: (request.system.includes("post-evidence")
             ? { actions: [], reason: "No reconciliation needed.", goalFinalization: null }
-            : { readTargets: [], reason: "No routed recall needed.", goalRoute: null }) as TOutput,
+            : { readTargets: [], reason: "No routed recall needed." }) as TOutput,
         }
       }
       const sessionKey = request.sessionId ?? "default"
@@ -3763,7 +3763,7 @@ describe("WebSocket API", () => {
         if (request.system.includes("Memory Router Agent")) {
           return { output: (request.system.includes("post-evidence")
             ? { actions: [], reason: "No durable update is needed.", goalFinalization: null }
-            : { readTargets: [], reason: "No routed recall is needed.", goalRoute: null }) as TOutput }
+            : { readTargets: [], reason: "No routed recall is needed." }) as TOutput }
         }
         return { output: {
           finalAnswer: "Frontier-only persisted answer.",
@@ -3780,7 +3780,7 @@ describe("WebSocket API", () => {
             text: JSON.stringify(
               isPostEvidence
                 ? { actions: [], reason: "No durable update is needed.", goalFinalization: null }
-                : { readTargets: [], reason: "No routed recall is needed.", goalRoute: null },
+                : { readTargets: [], reason: "No routed recall is needed." },
             ),
           }
           yield { type: "model.completed", usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 } }
@@ -3906,7 +3906,7 @@ describe("WebSocket API", () => {
         if (request.system.includes("Memory Router Agent")) {
           return { output: (request.system.includes("post-evidence")
             ? { actions: [], reason: "No durable update is needed.", goalFinalization: null }
-            : { readTargets: [], reason: "No routed recall is needed.", goalRoute: null }) as TOutput }
+            : { readTargets: [], reason: "No routed recall is needed." }) as TOutput }
         }
         return { output: {
           finalAnswer: "Socrates finished after the declined Frontier request.",
@@ -4021,7 +4021,7 @@ describe("WebSocket API", () => {
           }
         }
         return {
-          output: { readTargets: [], reason: "", goalRoute: null } as TOutput,
+          output: { readTargets: [], reason: "" } as TOutput,
           usage: { inputTokens: 6, outputTokens: 2, totalTokens: 8 },
         }
       },

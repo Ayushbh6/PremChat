@@ -291,7 +291,7 @@ export class RetrievalStore {
       query,
       mode: "combined",
       filters: { corpusKind: "goal_card", scope: "project" },
-      limit: Math.max(1, Math.min(4, limit)),
+      limit: Math.max(1, Math.min(25, limit)),
       automaticFallback: true,
     })
     return ranked.map((result) => result.parentId)

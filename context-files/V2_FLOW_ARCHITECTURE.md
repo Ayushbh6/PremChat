@@ -91,7 +91,7 @@ V2 passes Flow/turn ids into shared runner primitives only as scoped runtime han
 
 The Global Memory Agent is one application-level learner across both experiences. Its manifest includes unprocessed completed V2 turns with project/Flow/goal labels, it resolves their Q&A and raw evidence through the shared retrieval facade, and a completed shared Memory Agent job records the processed V2 turn ids in its evidence receipt. V2 does not fork profile, identity, memory-agent journal, or skill-learning state merely to preserve conversation isolation.
 
-V2 uses the same Memory Router behavior around Socrates turns, but its routing attempts, errors, and usage are persisted in V2 telemetry. The V2 Goal Router is an additional, separate bounded router above the turn. Classic and Flow are two views of the same Socrates runtime: both use the same Context Compactor worker and the exact shared 170k trigger, 120k acceptance ceiling, and 180k hard pre-provider limit. Selected-model context-window metadata must not create a V2-only compaction policy.
+Classic and Flow use the same bounded Goal Router before the same Memory Router. Goal routing completes first, binds or reopens the canonical goal, and only then does the read-only Memory Router select curated memory for that resolved goal. Each view persists telemetry through its existing adapter, but neither owns a second goal-routing policy. Both views also use the same Context Compactor worker and the exact shared 170k trigger, 120k acceptance ceiling, and 180k hard pre-provider limit. Selected-model context-window metadata must not create a V2-only compaction policy.
 
 V2 does not invoke the Classic conversation-title rewriter and does not make a separate capsule-writing model call. New goal titles and rich capsule snapshots are derived deterministically from authoritative V2 state, and capsule versions provide the resumable semantic label/state. The Goal Router uses its own configurable `goal_router` worker selection and calls its strict V2 routing schema through the shared structured-agent runner rather than the Classic title-rewrite service.
 
@@ -256,17 +256,19 @@ create one new goal with a short human title
 ask one bounded clarification between real numbered candidates
 ```
 
-The Goal Router Agent receives the foreground goal plus at most five goals narrowed by the shared goal-card retrieval index, a short recent-turn window, and any explicit clarification answer. Its dedicated `goal_router` worker setting controls model and thinking, it has an eight-second bounded timeout, validates the strict Zod contract with one bounded repair attempt, and uses only a structural fallback when the provider fails, times out, or remains invalid: continue the current goal when one exists, otherwise create. There is no keyword, regex, or phrase-matching topic router. Its production prompt lives under `packages/core/src/prompts`, it runs through the shared structured-agent runner with an explicitly empty tool registry/executor mapping, and its model attempt, usage, errors, and routing effects persist through typed telemetry. Goal merging is not performed.
+The shared Goal Router Agent receives the selected goal even when completed, the immediately preceding goal, at most five initially prefetched goal cards, three immediately preceding visible Q&A pairs, up to five Q&A pairs already linked to the selected goal, and any explicit clarification answer. Its dedicated `goal_router` worker setting controls model and thinking, it has an eight-second bounded timeout, validates the strict Zod contract with one bounded repair attempt, and uses only a structural fallback when the provider fails, times out, or remains invalid: continue or resume the selected goal when one exists, otherwise create. There is no keyword, regex, or phrase-matching topic router. Its production prompt lives under `packages/core/src/prompts`, and it runs through the shared structured-agent runner with one read-only `goal_search` tool. That tool returns at most three human-readable goal cards per call and the runner hard-caps it at three calls; the normal prefetched path uses zero calls. Model attempts, tool usage, errors, and routing effects persist through typed telemetry. Goal merging is not performed.
 
 ### Router Inputs
 
 The router should receive only bounded metadata:
 
 - The new user message or final voice transcript.
-- The current foreground goal header and latest capsule.
-- A short recent-turn window.
-- A small retrieved set of likely parked-goal headers or capsules.
+- The selected goal header and latest capsule, regardless of lifecycle state.
+- Three immediately preceding visible Q&A pairs and up to five selected-goal Q&A pairs.
+- The immediately preceding goal plus a small prefetched set of likely goal headers or capsules.
 - Project identity and stable routing rules.
+
+If those bounded inputs are insufficient, the router may use `goal_search` for at most three read-only lexical, semantic, or combined searches. Each call returns at most three cards; opaque goal ids remain backend-owned.
 
 It must not receive every full goal history. Retrieval should narrow candidates before full capsule loading.
 

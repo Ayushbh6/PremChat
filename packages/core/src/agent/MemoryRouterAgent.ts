@@ -42,8 +42,7 @@ type MemoryRouterAgentBaseInput = {
   projectDescription?: string
   userMessage: string
   recentMessages: ModelMessage[]
-  goalCandidates?: readonly GoalCandidateCard[]
-  currentGoalCandidate?: number
+  activeGoal?: ActiveGoalCard
   toolExecutors: ToolExecutors
   automaticMemorySearch?: (input: MemorySearchInput) => Promise<MemorySearchOutput>
   cacheKey?: string
@@ -105,8 +104,7 @@ export class MemoryRouterAgent {
         userMessage: input.userMessage,
         recentMessages: input.recentMessages,
         automaticCandidates: prefetch.results,
-        ...(input.goalCandidates ? { goalCandidates: input.goalCandidates } : {}),
-        ...(input.currentGoalCandidate ? { currentGoalCandidate: input.currentGoalCandidate } : {}),
+        ...(input.activeGoal ? { activeGoal: input.activeGoal } : {}),
         ...(prefetch.warning ? { automaticCoverageWarning: prefetch.warning } : {}),
       }),
       completion: { mode: "structured", schema: memoryRouterPreTurnResultSchema },

@@ -90,3 +90,15 @@ export const selectFlowExchange = (
   }
   return exchanges.at(-1);
 };
+
+export const goalIdForFlowExchange = (
+  exchange: FlowExchange | undefined,
+  goalIdByMessageId: Readonly<Record<string, string | undefined>>,
+): string | undefined => {
+  if (!exchange) return undefined;
+  for (const message of exchange.messages) {
+    const goalId = goalIdByMessageId[message.id];
+    if (goalId) return goalId;
+  }
+  return undefined;
+};
