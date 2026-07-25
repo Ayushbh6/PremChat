@@ -1,17 +1,17 @@
 import {
-  conversationTitleAgentOutputSchema,
-  type ConversationTitleAgentOutput,
+  soulConfirmationAgentOutputSchema,
   type ProviderAuthMode,
   type ProviderId,
   type RuntimeConfig,
+  type SoulConfirmationAgentOutput,
   type ThinkingEffort,
 } from "@socrates/contracts"
-import type { ModelMessageContent, ModelProvider, ModelUsage } from "@socrates/providers"
-import { TITLE_GENERATOR_SYSTEM_PROMPT } from "../prompts/titleGeneratorPrompt"
-import { createTitleGeneratorToolRegistry } from "../tools/registry"
+import type { ModelProvider, ModelUsage } from "@socrates/providers"
+import { buildSoulConfirmationUserContent, SOUL_CONFIRMATION_AGENT_SYSTEM_PROMPT } from "../prompts/soulConfirmationPrompt"
+import { createSoulConfirmationToolRegistry } from "../tools/registry"
 import { AgentRuntime } from "./AgentRuntime"
 
-export type TitleGeneratorAgentModelSettings = {
+export type SoulConfirmationAgentModelSettings = {
   providerId: ProviderId
   authMode?: ProviderAuthMode
   modelId: string
@@ -19,10 +19,13 @@ export type TitleGeneratorAgentModelSettings = {
   thinkingEffort?: ThinkingEffort
 }
 
-export type TitleGeneratorAgentInput = {
+export type SoulConfirmationAgentInput = {
   provider: ModelProvider
-  modelSettings: TitleGeneratorAgentModelSettings
-  userContent: ModelMessageContent
+  modelSettings: SoulConfirmationAgentModelSettings
+  targetPath: string
+  rationale?: string
+  oldText?: string
+  newText?: string
   projectId: string
   conversationId: string
   sessionId: string
@@ -31,22 +34,24 @@ export type TitleGeneratorAgentInput = {
   abortSignal?: AbortSignal
 }
 
-export type TitleGeneratorAgentResult = {
-  output: ConversationTitleAgentOutput
+export type SoulConfirmationAgentResult = {
+  output: SoulConfirmationAgentOutput
   usages: ModelUsage[]
 }
 
-export class TitleGeneratorAgent {
-  async run(input: TitleGeneratorAgentInput): Promise<TitleGeneratorAgentResult> {
-    const result = await new AgentRuntime().run({
+export class SoulConfirmationAgent {
+  private readonly runtime = new AgentRuntime()
+
+  async run(input: SoulConfirmationAgentInput): Promise<SoulConfirmationAgentResult> {
+    const result = await this.runtime.run({
       provider: input.provider,
       providerId: input.modelSettings.providerId,
       modelId: input.modelSettings.modelId,
-      runtimeConfig: titleGeneratorRuntimeConfig(input.modelSettings),
-      system: TITLE_GENERATOR_SYSTEM_PROMPT,
-      userContent: input.userContent,
-      completion: { mode: "structured", schema: conversationTitleAgentOutputSchema },
-      toolRegistry: createTitleGeneratorToolRegistry(),
+      runtimeConfig: runtimeConfigFor(input.modelSettings),
+      system: SOUL_CONFIRMATION_AGENT_SYSTEM_PROMPT,
+      userContent: buildSoulConfirmationUserContent(input),
+      completion: { mode: "structured", schema: soulConfirmationAgentOutputSchema },
+      toolRegistry: createSoulConfirmationToolRegistry(),
       toolExecutors: {},
       maxToolCalls: 0,
       projectId: input.projectId,
@@ -54,7 +59,7 @@ export class TitleGeneratorAgent {
       sessionId: input.sessionId,
       turnId: input.turnId,
       workspacePath: input.workspacePath,
-      cacheKey: `project:${input.projectId}:conversation:${input.conversationId}:title`,
+      cacheKey: `memory:soul-confirmation:${input.turnId}`,
       providerRouting: { omitReasoning: true },
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
     })
@@ -62,7 +67,7 @@ export class TitleGeneratorAgent {
   }
 }
 
-const titleGeneratorRuntimeConfig = (settings: TitleGeneratorAgentModelSettings): RuntimeConfig => ({
+const runtimeConfigFor = (settings: SoulConfirmationAgentModelSettings): RuntimeConfig => ({
   providerId: settings.providerId,
   authMode: settings.authMode ?? "api_key",
   modelId: settings.modelId,

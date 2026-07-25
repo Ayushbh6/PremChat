@@ -8,7 +8,7 @@ import {
   type SocratesAgentEvent,
   type ToolExecutors,
 } from "@socrates/core"
-import type { ClientCommand, ProjectResource, RuntimeConfig, TraceRetrieveMainToolInput } from "@socrates/contracts"
+import type { ClientCommand, ProjectResource, RuntimeConfig, SocratesFinalAnswer, TraceRetrieveMainToolInput } from "@socrates/contracts"
 import type { McpRuntime } from "@socrates/mcp"
 import type { ModelProvider, ModelUsage } from "@socrates/providers"
 import { normalizeError, nowIso, SocratesError } from "@socrates/shared"
@@ -242,6 +242,7 @@ export const handleChatMessageSend = async (
 
   let answerText = ""
   let reasoningText = ""
+  let finalResult: SocratesFinalAnswer | undefined
   let latestUsage: ModelUsage | undefined
   let lastAnswerModelCallId: string | undefined
   let sawToolActivity = false
@@ -271,6 +272,7 @@ export const handleChatMessageSend = async (
       promptContext,
       workspacePath,
       stableCachePreludeSnapshot,
+      finalAnswerMode: "structured",
       automaticMemorySearch: (input) => store.searchMemory(projectId, input, true),
       ...(goalRoutingContext && classicFlowStore ? {
         goalCandidates: goalRoutingContext.candidates,
@@ -294,11 +296,6 @@ export const handleChatMessageSend = async (
           })
           store.indexGoalRetrieval(projectId, activeGoal.goalId)
           return activeGoal
-        },
-        applyGoalFinalization: async (finalization) => {
-          classicFlowStore.finalizeClassicGoal(created.turnId, finalization)
-          const activeGoal = classicFlowStore.getClassicGoalForTurn(created.turnId)
-          if (activeGoal) store.indexGoalRetrieval(projectId, activeGoal.goalId)
         },
       } : {}),
       toolExecutors: createToolExecutors(store, projectId, created.turnId, activeTurns, terminals, mcpRuntime, {
@@ -566,7 +563,9 @@ export const handleChatMessageSend = async (
         appendAndEmit(emitEvent, store, event, "core")
       }
 
-      if (agentEvent.type === "model.answer.delta") {
+      if (agentEvent.type === "agent.final_result") {
+        finalResult = agentEvent.result
+      } else if (agentEvent.type === "model.answer.delta") {
         const modelCallId = agentEvent.modelCallId ?? latestModelCallId
         if (!modelCallId) {
           continue
@@ -898,14 +897,24 @@ export const handleChatMessageSend = async (
       })
     }
 
-    const assistantMessage = store.completeAgentTurn({
+    if (!finalResult) {
+      throw new SocratesError("agent_final_result_missing", "Socrates completed without a validated final result.", { recoverable: true })
+    }
+    const validatedFinalResult = finalResult
+    const assistantMessage = store.completeAgentTurnAtomically({
       conversationId,
       sessionId: created.sessionId,
       turnId: created.turnId,
       content: answerText,
       reasoning: reasoningText,
+      ...(classicFlowStore ? {
+        afterPersist: (message) => {
+          classicFlowStore.finalizeClassicGoal(created.turnId, validatedFinalResult.goalFinalization, message.id)
+        },
+      } : {}),
     })
-    flowStore?.attachClassicGoalAssistantMessage(created.turnId, assistantMessage.id)
+    const finalizedGoal = classicFlowStore?.getClassicGoalForTurn(created.turnId)
+    if (finalizedGoal) store.indexGoalRetrieval(projectId, finalizedGoal.goalId)
     for (const modelCallId of modelCallIds) {
       store.completeModelCall({
         modelCallId,

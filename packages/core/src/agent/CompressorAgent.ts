@@ -13,7 +13,7 @@ import type { ProviderAuthMode, ProviderId, ThinkingEffort } from "@socrates/con
 import { SocratesError } from "@socrates/shared"
 import { SOCRATES_ANCHOR_REPAIR_SYSTEM_PROMPT } from "../prompts/socratesCompressorPrompt"
 import { createCompressorToolRegistry } from "../tools/registry"
-import { StructuredToolAgentRunner } from "./StructuredToolAgentRunner"
+import { AgentRuntime } from "./AgentRuntime"
 
 export type CompressorAgentMode = "chat" | "memory"
 
@@ -180,18 +180,17 @@ export class CompressorAgent {
     },
     maxOutputRepairAttempts: number,
   ) {
-    return new StructuredToolAgentRunner().run({
+    return new AgentRuntime().run({
       provider: input.provider,
       providerId: model.providerId,
       modelId: model.modelId,
       runtimeConfig: compressorRuntimeConfig(model),
       system,
       userContent,
-      schema,
+      completion: { mode: "structured", schema, maxOutputRepairAttempts },
       toolRegistry: createCompressorToolRegistry(),
       toolExecutors: {},
       maxToolCalls: 0,
-      maxOutputRepairAttempts,
       projectId: input.projectId,
       conversationId: input.conversationId,
       sessionId: input.sessionId,

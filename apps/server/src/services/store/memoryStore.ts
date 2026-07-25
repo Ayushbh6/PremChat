@@ -52,7 +52,7 @@ import type {
   CommitSkillImportResponse,
 } from "@socrates/contracts"
 import { memoryDocRequiredSections } from "@socrates/contracts"
-import type { StableCachePreludeSnapshot } from "@socrates/core"
+import { SoulConfirmationAgent, type StableCachePreludeSnapshot } from "@socrates/core"
 import type { ModelProvider, ModelUsage, ProviderCredentialResolver } from "@socrates/providers"
 import { estimateTextTokens } from "@socrates/providers"
 import { createId, nowIso, SocratesError } from "@socrates/shared"
@@ -3688,10 +3688,30 @@ export class MemoryStore extends StoreBase {
       payload: { jobId, actionId: action.actionId, confirmationId, document, prompt: SOUL_CONFIRMATION_PROMPT },
     })
 
-    const confirmationText = await this.runSoulConfirmationModel(modelSettings, targetPath, patch)
-    const normalized = confirmationText.trim().toLowerCase()
-    const decision = normalized === "yes" ? "yes" : normalized === "no" ? "no" : "invalid"
-    this.handle.db.update(memoryAgentConfirmations).set({ responseText: confirmationText, decision, decidedAt: nowIso() }).where(eq(memoryAgentConfirmations.id, confirmationId)).run()
+    if (!this.options.provider) {
+      throw new SocratesError("memory_agent_provider_unavailable", "Soul confirmation requires the configured Memory Agent provider.", { recoverable: true })
+    }
+    const confirmation = await new SoulConfirmationAgent().run({
+      provider: this.options.provider,
+      modelSettings: {
+        providerId: modelSettings.providerId,
+        modelId: modelSettings.modelId,
+        thinkingEnabled: modelSettings.thinkingEnabled,
+        ...(modelSettings.authMode ? { authMode: modelSettings.authMode } : {}),
+        ...(modelSettings.thinkingEffort ? { thinkingEffort: modelSettings.thinkingEffort } : {}),
+      },
+      targetPath,
+      ...(patch.rationale ? { rationale: patch.rationale } : {}),
+      ...(patch.oldText ? { oldText: patch.oldText } : {}),
+      ...(patch.newText ? { newText: patch.newText } : {}),
+      projectId,
+      conversationId: latest?.conversationId ?? jobId,
+      sessionId: latest?.sessionId ?? jobId,
+      turnId: latest?.turnId ?? jobId,
+      workspacePath: this.socratesHome,
+    })
+    const decision = confirmation.output.decision
+    this.handle.db.update(memoryAgentConfirmations).set({ responseText: decision, decision, decidedAt: nowIso() }).where(eq(memoryAgentConfirmations.id, confirmationId)).run()
     this.appendEvent({
       projectId,
       ...scopedIds(latest ?? {}),
@@ -3783,41 +3803,6 @@ export class MemoryStore extends StoreBase {
 
   private rejectMemoryAction(actionId: string, error: string): void {
     this.handle.db.update(memoryAgentActions).set({ status: "rejected", error }).where(eq(memoryAgentActions.id, actionId)).run()
-  }
-
-  private async runSoulConfirmationModel(modelSettings: MemoryAgentModelSettings, targetPath: string, patch: MemoryPatchProposal): Promise<string> {
-    let text = ""
-    for await (const event of this.options.provider!.stream({
-      providerId: modelSettings.providerId,
-      modelId: modelSettings.modelId,
-      system: [
-        "You are the Socrates backend memory agent confirming a proposed edit to a core soul document.",
-        "Consider the target path, rationale, and exact patch. This is an internal self-confirmation test.",
-        "If the edit is evidence-backed, narrow, durable, and appropriate for the identity document, answer yes.",
-        "If it is speculative, unsafe, noisy, too broad, or not durable, answer no.",
-        `Target path: ${targetPath}`,
-        `Rationale: ${patch.rationale ?? ""}`,
-        `Old text:\n${patch.oldText ?? ""}`,
-        `New text:\n${patch.newText ?? ""}`,
-      ].join("\n\n"),
-      messages: [{ role: "user", content: SOUL_CONFIRMATION_PROMPT }],
-      runtimeConfig: {
-        providerId: modelSettings.providerId,
-        modelId: modelSettings.modelId,
-        thinkingEnabled: modelSettings.thinkingEnabled,
-        ...(modelSettings.thinkingEffort ? { thinkingEffort: modelSettings.thinkingEffort } : {}),
-        approvalMode: "read_only_auto",
-        sandboxMode: "read_only",
-      },
-    })) {
-      if (event.type === "model.answer.delta") {
-        text += event.text
-      }
-      if (event.type === "model.failed") {
-        throw event.error
-      }
-    }
-    return text
   }
 
 }

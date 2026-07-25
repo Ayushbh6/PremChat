@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { WebSocket } from "ws"
 import { type V2ClientCommand, type V2RuntimeConfig, type V2ServerEvent } from "@socrates/contracts"
 import { DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS, createDefaultToolRegistry, routeV2Goal, SocratesAgent } from "@socrates/core"
-import type { EmbeddingProvider, ModelProvider, StructuredModelRequest } from "@socrates/providers"
+import type { EmbeddingProvider, ModelProvider, StructuredModelRequest, StructuredModelResult } from "@socrates/providers"
 import { createId, nowIso } from "@socrates/shared"
 import { openDatabase, runMigrations, type DatabaseHandle } from "../db/client"
 import { SocratesStore } from "../services/store"
@@ -184,7 +184,7 @@ const repairedMemoryRouterProvider = (): ModelProvider => {
       yield { type: "model.answer.delta", text: "Memory-router telemetry persisted." }
       yield { type: "model.completed", usage: { inputTokens: 30, outputTokens: 5, totalTokens: 35 } }
     },
-    async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
+    async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>): Promise<StructuredModelResult<TOutput>> {
       const phase = request.system.includes("post-evidence") ? "post_evidence" : "pre_turn"
       const attempt = (attempts.get(phase) ?? 0) + 1
       attempts.set(phase, attempt)
@@ -252,7 +252,51 @@ const setup = (provider: ModelProvider, projectId = "proj_one", routerProvider?:
   const sharedStore = new SocratesStore(handle, fakeEmbeddings(), undefined, { socratesHome: path.join(root, "home") })
   vi.spyOn(sharedStore, "resolveRuntimeConfig").mockImplementation((config) => config)
   const flowStore = new V2FlowStore(handle)
-  const agent = new SocratesAgent(provider)
+  const latestMainAnswerBySession = new Map<string, string>()
+  const providerHasStructuredOutput = typeof provider.generateStructured === "function"
+  const finalAwareProvider: ModelProvider = {
+    countTokens: provider.countTokens.bind(provider),
+    async *stream(request) {
+      if (!providerHasStructuredOutput && request.system.includes("Memory Router Agent")) {
+        yield { type: "model.completed" }
+        return
+      }
+      let currentAnswer = ""
+      for await (const event of provider.stream(request)) {
+        if (event.type === "model.answer.delta") currentAnswer += event.text
+        yield event
+      }
+      if (request.system.startsWith("You are Socrates,") && currentAnswer.trim()) {
+        latestMainAnswerBySession.set(request.sessionId ?? "default", currentAnswer)
+      }
+    },
+    async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
+      const isMainFinal = request.messages.some(
+        (message) => typeof message.content === "string" && message.content.includes("<socrates_final_answer_checkpoint>"),
+      )
+      if (isMainFinal) {
+        const sessionKey = request.sessionId ?? "default"
+        const finalAnswer = latestMainAnswerBySession.get(sessionKey) ?? ""
+        latestMainAnswerBySession.delete(sessionKey)
+        return {
+          output: {
+            finalAnswer,
+            goalFinalization: { state: "active", note: "The test focus remains active." },
+          } as TOutput,
+        }
+      }
+      if (request.system.includes("Memory Router Agent") && !provider.generateStructured) {
+        return {
+          output: (request.system.includes("post-evidence")
+            ? { actions: [], reason: "No reconciliation needed in this runtime test.", goalFinalization: null }
+            : { readTargets: [], reason: "No routed recall needed in this runtime test.", goalRoute: null }) as TOutput,
+        }
+      }
+      if (!provider.generateStructured) throw new Error("Structured output was not configured for this test provider.")
+      return await provider.generateStructured<TOutput>(request) as StructuredModelResult<TOutput>
+    },
+  }
+  const agent = new SocratesAgent(finalAwareProvider)
   const runtime = new V2ExecutionRuntime({
     store: flowStore,
     sharedStore,

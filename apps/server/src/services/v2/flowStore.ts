@@ -1927,13 +1927,20 @@ export class V2FlowStore {
     })
   }
 
-  completeTurn(input: { projectId: string; flowId: string; turnId: string; content: string; reasoning?: string }): V2Message {
+  completeTurn(input: {
+    projectId: string
+    flowId: string
+    turnId: string
+    content: string
+    reasoning?: string
+    goalFinalization?: GoalFinalization
+  }): V2Message {
     const completionTask = this.handle.db.select().from(v2AgentTasks).where(eq(v2AgentTasks.currentTurnId, input.turnId)).limit(1).get()
     const pendingCompletion = completionTask ? parseJsonObject(completionTask.metadataJson).pendingFocusCompletion : undefined
     const completionOutcome = pendingCompletion && typeof pendingCompletion === "object" && typeof (pendingCompletion as Record<string, unknown>).outcome === "string"
       ? (pendingCompletion as Record<string, unknown>).outcome as string
       : undefined
-    const responseContent = completionOutcome
+    const responseContent = !input.goalFinalization && completionOutcome
       ? ensureCompletionOutcomeVisible(input.content, completionOutcome)
       : input.content
     const operation = this.handle.sqlite.transaction(() => {
@@ -1967,6 +1974,9 @@ export class V2FlowStore {
       this.handle.db.insert(v2GoalMessageLinks).values({
         id: createId("v2link"), flowId: input.flowId, goalId: turn.goalId, messageId, turnId: input.turnId, relation: "primary", createdAt: now,
       }).run()
+      if (input.goalFinalization) {
+        this.finalizeGoal(input.projectId, input.flowId, turn.goalId, input.turnId, input.goalFinalization)
+      }
       this.refreshCapsule(turn.goalId, input.flowId, input.turnId, now, "turn_completed")
       const row = this.handle.db.select().from(v2Messages).where(eq(v2Messages.id, messageId)).get()
       if (!row) throw new SocratesError("v2_turn_complete_failed", "The Flow response could not be saved.")
@@ -1974,7 +1984,7 @@ export class V2FlowStore {
     })
     const message = operation()
     const completedTurn = this.requireTurn(input.projectId, input.flowId, input.turnId)
-    if (completedTurn.goalId && pendingCompletion && typeof pendingCompletion === "object") {
+    if (!input.goalFinalization && completedTurn.goalId && pendingCompletion && typeof pendingCompletion === "object") {
       const outcome = completionOutcome ?? "Completed by Socrates."
       this.updateFocus({ projectId: input.projectId, flowId: input.flowId, goalId: completedTurn.goalId, action: "finish", note: outcome })
     }

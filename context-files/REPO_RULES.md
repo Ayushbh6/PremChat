@@ -554,7 +554,7 @@ prompt
 
 The target public execution boundary is one provider-neutral `AgentRuntime` entrypoint reused by the interactive main agent and every structured worker. It accepts a typed configuration object rather than positional arguments or boolean combinations: prompt/messages, scoped `ToolRegistry` and executors, multimodal message parts, model/runtime settings, limits, hooks, and a discriminated completion mode (`text`, `structured`, or `streaming_tools_structured_final`). It returns one typed event stream plus one final typed result.
 
-`SocratesAgent` and `StructuredToolAgentRunner` are currently separate released loop abstractions. Convergence work must move their shared context preparation, provider calls, native tool normalization, execution, approvals, error recovery, output validation/repair, telemetry, and cancellation behavior under the single runtime boundary and then remove competing loop ownership. Do not create a third runner or preserve divergent behavior behind similarly named wrappers.
+`AgentRuntime` is the single released provider-execution abstraction. `SocratesAgent` owns interactive turn policy while focused internal lifecycle modules own memory, tools, ledgers, approvals, and recovery; routers and bounded workers configure the same runtime with scoped registries and strict completion contracts. Do not reintroduce a second runner, direct provider orchestration, or divergent behavior behind similarly named wrappers.
 
 The public runtime may remain internally modular. Context assembly, provider iteration, tool execution, approvals, recovery, final validation, and telemetry should stay focused components; one entrypoint does not justify a god class.
 

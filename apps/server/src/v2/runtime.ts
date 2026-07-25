@@ -4,6 +4,7 @@ import {
   v2ServerEventSchema,
   type V2ClientCommand,
   type V2FlowSnapshot,
+  type SocratesFinalAnswer,
   type V2RuntimeConfig,
   type V2ServerEvent,
   type V2Turn,
@@ -380,6 +381,7 @@ export class V2ExecutionRuntime {
     const usageByCall = new Map<string, ModelUsage>()
     let answerText = ""
     let reasoningText = ""
+    let finalResult: SocratesFinalAnswer | undefined
     let goalId: string | undefined
     let sawToolActivity = false
     let suspended = false
@@ -577,6 +579,7 @@ export class V2ExecutionRuntime {
         promptContext,
         workspacePath,
         stableCachePreludeSnapshot,
+        finalAnswerMode: "structured",
         automaticMemorySearch: (memoryInput) => this.deps.sharedStore.searchMemory(command.projectId, memoryInput, true),
         ...(activeGoal ? {
           activeGoal: {
@@ -584,10 +587,6 @@ export class V2ExecutionRuntime {
             title: activeGoal.title,
             state: activeGoal.status,
             note: activeCapsule?.summary ?? activeGoal.summary ?? "Work is active.",
-          },
-          applyGoalFinalization: async (finalization) => {
-            this.deps.store.finalizeGoal(command.projectId, command.flowId, activeGoalId, created.turn.id, finalization)
-            this.deps.sharedStore.indexGoalRetrieval(command.projectId, activeGoalId)
           },
         } : {}),
         recordMemoryRouterRun: async (run) => {
@@ -707,7 +706,9 @@ export class V2ExecutionRuntime {
         ...(fileFreshness ? { fileFreshness } : {}),
       })) {
         if (abortController.signal.aborted) break
-        if (event.type === "model.answer.delta") {
+        if (event.type === "agent.final_result") {
+          finalResult = event.result
+        } else if (event.type === "model.answer.delta") {
           answerText += event.text
           this.emit("v2.message.delta", { messageId: streamMessageId, channel: "answer", text: event.text, ...(event.modelCallId ? { modelCallId: event.modelCallId } : {}) }, { projectId: command.projectId, flowId: command.flowId, goalId: activeGoalId, turnId: created.turn.id }, frontierHandoverActive ? "frontier_agent" : "main_agent")
         } else if (event.type === "model.reasoning.delta") {
@@ -799,11 +800,15 @@ export class V2ExecutionRuntime {
       if (!answerText.trim() && !sawToolActivity) {
         throw new SocratesError("model_empty_response", "Model provider completed without returning Socrates text.", { recoverable: true })
       }
+      if (!finalResult) {
+        throw new SocratesError("agent_final_result_missing", "Socrates completed without a validated final result.", { recoverable: true })
+      }
       const assistantMessage = this.deps.store.completeTurn({
         projectId: command.projectId,
         flowId: command.flowId,
         turnId: created.turn.id,
         content: answerText,
+        goalFinalization: finalResult.goalFinalization,
         ...(reasoningText ? { reasoning: reasoningText } : {}),
       })
       this.deps.sharedStore.indexV2TurnRetrieval(command.projectId, created.turn.id)

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 import {
   apiResponseSchema,
+  socratesFinalAnswerSchema,
+  soulConfirmationAgentOutputSchema,
   approveMemorySkillProposalResponseSchema,
   approvalDecideCommandSchema,
   approvalRequestedEventSchema,
@@ -2161,6 +2163,37 @@ describe("tool contracts", () => {
         totalMatches: 1,
       }).success,
     ).toBe(true)
+    expect(
+      socratesFinalAnswerSchema.safeParse({
+        finalAnswer: "The verified result is ready.",
+        goalFinalization: { state: "completed", note: "The requested outcome was delivered and verified." },
+      }).success,
+    ).toBe(true)
+    expect(
+      socratesFinalAnswerSchema.safeParse({
+        finalAnswer: "<DSML><tool_calls><invoke name=\"search\">...</invoke></tool_calls></DSML>",
+        goalFinalization: { state: "completed", note: "Done." },
+      }).success,
+    ).toBe(false)
+    expect(
+      socratesFinalAnswerSchema.safeParse({
+        finalAnswer: "< | | DSML | | tool_calls>< | | DSML | | invoke name=\"search\">",
+        goalFinalization: { state: "completed", note: "Done." },
+      }).success,
+    ).toBe(false)
+    expect(
+      socratesFinalAnswerSchema.safeParse({
+        finalAnswer: "<runtime_memory_review_required>internal control text</runtime_memory_review_required>",
+        goalFinalization: { state: "completed", note: "Done." },
+      }).success,
+    ).toBe(false)
+    expect(
+      soulConfirmationAgentOutputSchema.safeParse({
+        decision: "yes",
+        reason: "The identity edit is narrow, durable, and supported by the supplied evidence.",
+      }).success,
+    ).toBe(true)
+    expect(soulConfirmationAgentOutputSchema.safeParse({ decision: "maybe", reason: "Ambiguous." }).success).toBe(false)
   })
 })
 

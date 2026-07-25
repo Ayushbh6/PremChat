@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { z } from "zod"
 import type { ModelProvider, StructuredModelRequest } from "@socrates/providers"
-import { StructuredToolAgentRunner } from "../agent/StructuredToolAgentRunner"
+import { AgentRuntime } from "../agent/AgentRuntime"
 import { currentTimeTool } from "../tools/currentTimeTool"
 import { ToolRegistry } from "../tools/registry"
 import type { ToolExecutors } from "../tools/types"
@@ -38,7 +38,7 @@ const runBase = {
   workspacePath: "/tmp/socrates-structured-runner-test",
 }
 
-describe("StructuredToolAgentRunner", () => {
+describe("AgentRuntime", () => {
   it("returns schema errors to the model, permits a corrected native tool call, and then validates the final result", async () => {
     let streamCalls = 0
     const toolResults: Array<{ toolName: string; input: unknown; output: unknown }> = []
@@ -72,10 +72,10 @@ describe("StructuredToolAgentRunner", () => {
       }),
     } as unknown as ToolExecutors
 
-    const result = await new StructuredToolAgentRunner().run({
+    const result = await new AgentRuntime().run({
       ...runBase,
       provider,
-      schema: z.object({ ok: z.literal(true) }).strict(),
+      completion: { mode: "structured", schema: z.object({ ok: z.literal(true) }).strict() },
       toolRegistry: new ToolRegistry([currentTimeTool]),
       toolExecutors,
       maxToolCalls: 2,
@@ -113,14 +113,13 @@ describe("StructuredToolAgentRunner", () => {
       },
     }
 
-    const result = await new StructuredToolAgentRunner().run({
+    const result = await new AgentRuntime().run({
       ...runBase,
       provider,
-      schema: z.object({ ok: z.literal(true) }).strict(),
+      completion: { mode: "structured", schema: z.object({ ok: z.literal(true) }).strict(), maxOutputRepairAttempts: 1 },
       toolRegistry: new ToolRegistry([]),
       toolExecutors: {},
       maxToolCalls: 0,
-      maxOutputRepairAttempts: 1,
     })
 
     expect(result.output).toEqual({ ok: true })
@@ -138,13 +137,35 @@ describe("StructuredToolAgentRunner", () => {
       },
     }
 
-    await expect(new StructuredToolAgentRunner().run({
+    await expect(new AgentRuntime().run({
       ...runBase,
       provider,
-      schema: z.object({ ok: z.literal(true) }).strict(),
+      completion: { mode: "structured", schema: z.object({ ok: z.literal(true) }).strict() },
       toolRegistry: new ToolRegistry([]),
       toolExecutors: {},
       maxToolCalls: 0,
     })).rejects.toMatchObject({ code: "structured_generation_unavailable" })
+  })
+
+  it("runs no-tool text completion through the same runtime boundary", async () => {
+    const provider: ModelProvider = {
+      countTokens,
+      async *stream(request) {
+        expect(request.tools).toEqual([])
+        yield { type: "model.answer.delta", text: "yes" }
+        yield { type: "model.completed" }
+      },
+    }
+
+    const result = await new AgentRuntime().run({
+      ...runBase,
+      provider,
+      completion: { mode: "text", validate: (text) => text.toUpperCase() },
+      toolRegistry: new ToolRegistry([]),
+      toolExecutors: {},
+      maxToolCalls: 0,
+    })
+
+    expect(result).toMatchObject({ mode: "text", output: "YES", toolCalls: 0 })
   })
 })

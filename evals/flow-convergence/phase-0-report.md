@@ -28,7 +28,7 @@ pnpm eval:flow-convergence:phase0
 
 - Core: 10 files, 103 tests passed.
 - Flow runtime/store: 2 files, 27 tests passed.
-- New `StructuredToolAgentRunner` characterization: 3 tests passed.
+- New `AgentRuntime` characterization: 3 tests passed.
 - Core typecheck passed.
 - `git diff --check` passed.
 

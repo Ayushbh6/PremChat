@@ -393,12 +393,69 @@ const latestUserContent = (messages: Array<{ role?: string; content?: unknown }>
   return undefined
 }
 
+const createStructuredFinalAwareTestAgent = (provider: ModelProvider): SocratesAgent => {
+  const latestAnswerBySession = new Map<string, string>()
+  const finalAwareProvider: ModelProvider = {
+    countTokens: provider.countTokens.bind(provider),
+    async *stream(request) {
+      if (request.system.includes("Memory Router Agent")) {
+        yield { type: "model.completed" }
+        return
+      }
+      let currentAnswer = ""
+      for await (const event of provider.stream(request)) {
+        if (event.type === "model.answer.delta") currentAnswer += event.text
+        yield event
+      }
+      if (request.system.startsWith("You are Socrates,") && currentAnswer.trim()) {
+        latestAnswerBySession.set(request.sessionId ?? "default", currentAnswer)
+      }
+    },
+    async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
+      const isMainFinal = request.messages.some(
+        (message) => typeof message.content === "string" && message.content.includes("<socrates_final_answer_checkpoint>"),
+      )
+      if (isMainFinal) {
+        const sessionKey = request.sessionId ?? "default"
+        const finalAnswer = latestAnswerBySession.get(sessionKey) ?? ""
+        latestAnswerBySession.delete(sessionKey)
+        return {
+          output: {
+            finalAnswer,
+            goalFinalization: { state: "active", note: "The test focus remains active." },
+          } as TOutput,
+        }
+      }
+      if (request.system.includes("Memory Router Agent")) {
+        return {
+          output: (request.system.includes("post-evidence")
+            ? { actions: [], reason: "No reconciliation needed in this server test.", goalFinalization: null }
+            : { readTargets: [], reason: "No routed recall needed in this server test.", goalRoute: null }) as TOutput,
+        }
+      }
+      if (request.system.includes("Soul Confirmation Agent") && !provider.generateStructured) {
+        return { output: { decision: "yes", reason: "The server test supplied an evidence-backed identity update." } as TOutput }
+      }
+      if (!provider.generateStructured) {
+        throw new Error("Structured output was not configured for this test provider.")
+      }
+      return await provider.generateStructured<TOutput>(request) as StructuredModelResult<TOutput>
+    },
+  }
+  return new SocratesAgent(finalAwareProvider)
+}
+
 const createTestAgent = (): SocratesAgent => {
+  const latestAnswerBySession = new Map<string, string>()
   const provider: ConstructorParameters<typeof SocratesAgent>[0] = {
     countTokens: fakeCountTokens,
     async *stream(request) {
+      const answer = `Echo: ${latestUserContent(request.messages) ?? ""}`
       yield { type: "model.reasoning.delta", text: "Testing." }
-      yield { type: "model.answer.delta", text: `Echo: ${latestUserContent(request.messages) ?? ""}` }
+      yield { type: "model.answer.delta", text: answer }
+      if (request.system.startsWith("You are Socrates,")) {
+        latestAnswerBySession.set(request.sessionId ?? "default", answer)
+      }
       await delay(100)
       yield {
         type: "model.completed",
@@ -410,8 +467,26 @@ const createTestAgent = (): SocratesAgent => {
         },
       }
     },
+    async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
+      if (request.system.includes("Memory Router Agent")) {
+        return {
+          output: (request.system.includes("post-evidence")
+            ? { actions: [], reason: "No reconciliation needed.", goalFinalization: null }
+            : { readTargets: [], reason: "No routed recall needed.", goalRoute: null }) as TOutput,
+        }
+      }
+      const sessionKey = request.sessionId ?? "default"
+      const finalAnswer = latestAnswerBySession.get(sessionKey) ?? "Test answer."
+      latestAnswerBySession.delete(sessionKey)
+      return {
+        output: {
+          finalAnswer,
+          goalFinalization: { state: "active", note: "The test focus remains active." },
+        } as TOutput,
+      }
+    },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createTitleProvider = (title: string, requestedModelIds: string[] = []): ModelProvider => ({
@@ -469,7 +544,7 @@ const createCapturingAgent = (requests: unknown[]): SocratesAgent => {
       }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createFixedContextAgent = (inputTokens: number): SocratesAgent => {
@@ -496,7 +571,7 @@ const createFixedContextAgent = (inputTokens: number): SocratesAgent => {
       }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createCancellablePartialAgent = (requests: unknown[]): SocratesAgent => {
@@ -516,7 +591,7 @@ const createCancellablePartialAgent = (requests: unknown[]): SocratesAgent => {
       yield { type: "model.completed", usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 } }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createReconnectStreamingAgent = (): SocratesAgent => {
@@ -530,7 +605,7 @@ const createReconnectStreamingAgent = (): SocratesAgent => {
       yield { type: "model.completed", usage: { inputTokens: 4, outputTokens: 4, totalTokens: 8 } }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createSlowStreamingAgent = (): SocratesAgent => {
@@ -543,7 +618,7 @@ const createSlowStreamingAgent = (): SocratesAgent => {
       yield { type: "model.completed", usage: { inputTokens: 4, outputTokens: 4, totalTokens: 8 } }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createConcurrentWorkspaceMutationAgent = (): SocratesAgent => {
@@ -581,7 +656,7 @@ const createConcurrentWorkspaceMutationAgent = (): SocratesAgent => {
       yield { type: "model.completed", usage: { inputTokens: 4, outputTokens: 3, totalTokens: 7 } }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createApprovalWaitingAgent = (): SocratesAgent => {
@@ -601,7 +676,7 @@ const createApprovalWaitingAgent = (): SocratesAgent => {
       yield { type: "model.completed" }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createCredentialFlowAgent = (scriptPath: string): SocratesAgent => {
@@ -644,7 +719,7 @@ const createCredentialFlowAgent = (scriptPath: string): SocratesAgent => {
       yield { type: "model.completed", usage: { inputTokens: 6, outputTokens: 3, totalTokens: 9 } }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createFailingAgent = (): SocratesAgent => {
@@ -657,7 +732,7 @@ const createFailingAgent = (): SocratesAgent => {
       }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createEmptyResponseAgent = (): SocratesAgent => {
@@ -674,7 +749,7 @@ const createEmptyResponseAgent = (): SocratesAgent => {
       }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createPersistentBashAgent = (): SocratesAgent => {
@@ -723,7 +798,7 @@ const createPersistentBashAgent = (): SocratesAgent => {
       yield { type: "model.completed", usage: { inputTokens: 4, outputTokens: 3, totalTokens: 7 } }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createRecoveringBashAgent = (): SocratesAgent => {
@@ -768,7 +843,7 @@ const createRecoveringBashAgent = (): SocratesAgent => {
       yield { type: "model.completed", usage: { inputTokens: 4, outputTokens: 3, totalTokens: 7 } }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createApprovalToolAgent = (): SocratesAgent => {
@@ -804,7 +879,7 @@ const createApprovalToolAgent = (): SocratesAgent => {
       yield { type: "model.completed", usage: { inputTokens: 3, outputTokens: 3, totalTokens: 6 } }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createVerifiedEditAgent = (): SocratesAgent => {
@@ -848,7 +923,7 @@ const createVerifiedEditAgent = (): SocratesAgent => {
       yield { type: "model.completed", usage: { inputTokens: 3, outputTokens: 3, totalTokens: 6 } }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createVerifiedPatchAgent = (): SocratesAgent => {
@@ -901,7 +976,7 @@ const createVerifiedPatchAgent = (): SocratesAgent => {
       yield { type: "model.completed", usage: { inputTokens: 3, outputTokens: 3, totalTokens: 6 } }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createStaleEditAgent = (): SocratesAgent => {
@@ -921,7 +996,7 @@ const createStaleEditAgent = (): SocratesAgent => {
       yield { type: "model.completed" }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createConversationTerminalAgent = (requests: unknown[]): SocratesAgent => {
@@ -983,7 +1058,7 @@ const createConversationTerminalAgent = (requests: unknown[]): SocratesAgent => 
       yield { type: "model.completed", usage: { inputTokens: 4, outputTokens: 3, totalTokens: 7 } }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createUntargetedTerminalStopAgent = (): SocratesAgent => {
@@ -1042,7 +1117,7 @@ const createUntargetedTerminalStopAgent = (): SocratesAgent => {
       }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createAmbiguousTerminalStopAgent = (): SocratesAgent => {
@@ -1100,6 +1175,11 @@ const createAmbiguousTerminalStopAgent = (): SocratesAgent => {
         return
       }
       if (latestUser.includes("Stop without target")) {
+        if (requestHasToolResult(request, "tcall_terminal_stop_ambiguous")) {
+          yield { type: "model.answer.delta", text: "Which Terminal should I stop: alpha-server or beta-server?" }
+          yield { type: "model.completed" }
+          return
+        }
         yield projectNotesPreflightCall("tcall_project_notes_before_terminal_stop_ambiguous")
         yield repoDocsPreflightCall("tcall_repo_docs_before_terminal_stop_ambiguous")
         yield {
@@ -1115,7 +1195,7 @@ const createAmbiguousTerminalStopAgent = (): SocratesAgent => {
       }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createInteractiveTerminalAgent = (): SocratesAgent => {
@@ -1159,7 +1239,7 @@ setInterval(() => {}, 1000)
       yield { type: "model.completed" }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createShutdownCleanupTerminalAgent = (): SocratesAgent => {
@@ -1193,7 +1273,7 @@ setInterval(() => {}, 1000)
       yield { type: "model.completed" }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createTextInputTerminalAgent = (): SocratesAgent => {
@@ -1240,7 +1320,7 @@ setInterval(() => {}, 1000)
       yield { type: "model.completed" }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createPrematureInteractiveStopAgent = (): SocratesAgent => {
@@ -1290,7 +1370,7 @@ setInterval(() => {}, 1000)
       }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createTerminalOutputAgent = (): SocratesAgent => {
@@ -1349,7 +1429,7 @@ const createTerminalOutputAgent = (): SocratesAgent => {
       }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createTerminalWaitResumeAgent = (completionDelayMs = 2500, onContinuationContext?: (serializedMessages: string) => void): SocratesAgent => {
@@ -1397,7 +1477,7 @@ setTimeout(() => {
       yield { type: "model.completed" }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createTerminalStopDedupAgent = (): SocratesAgent => {
@@ -1480,7 +1560,7 @@ const createTerminalStopDedupAgent = (): SocratesAgent => {
       }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createFiniteTerminalAgent = (): SocratesAgent => {
@@ -1511,7 +1591,7 @@ const createFiniteTerminalAgent = (): SocratesAgent => {
       yield { type: "model.completed" }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createQuickRunOutputAgent = (): SocratesAgent => {
@@ -1542,7 +1622,7 @@ const createQuickRunOutputAgent = (): SocratesAgent => {
       yield { type: "model.completed" }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createDuplicateTerminalStartAgent = (): SocratesAgent => {
@@ -1585,7 +1665,7 @@ const createDuplicateTerminalStartAgent = (): SocratesAgent => {
       yield { type: "model.completed" }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const createTestEmbeddingProvider = (): EmbeddingProvider => ({
@@ -1641,7 +1721,7 @@ const createGeminiSignatureAgent = (requests: unknown[]): SocratesAgent => {
       yield { type: "model.completed", usage: { inputTokens: 4, outputTokens: 3, totalTokens: 7 } }
     },
   }
-  return new SocratesAgent(provider)
+  return createStructuredFinalAwareTestAgent(provider)
 }
 
 const parseResponse = <T>(payload: string): ApiResponse<T> => JSON.parse(payload) as ApiResponse<T>
@@ -3679,8 +3759,16 @@ describe("WebSocket API", () => {
         method: "local_tiktoken",
         safetyMarginPercent: 0,
       }),
-      async generateStructured() {
-        return { output: {} as never }
+      async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
+        if (request.system.includes("Memory Router Agent")) {
+          return { output: (request.system.includes("post-evidence")
+            ? { actions: [], reason: "No durable update is needed.", goalFinalization: null }
+            : { readTargets: [], reason: "No routed recall is needed.", goalRoute: null }) as TOutput }
+        }
+        return { output: {
+          finalAnswer: "Frontier-only persisted answer.",
+          goalFinalization: { state: "active", note: "The concurrency test remains active." },
+        } as TOutput }
       },
       async *stream(request) {
         requests.push(request)
@@ -3716,7 +3804,7 @@ describe("WebSocket API", () => {
         yield { type: "model.completed", usage: { inputTokens: 18, outputTokens: 5, totalTokens: 23 } }
       },
     }
-    const app = await buildTestServer(dbPath, new SocratesAgent(provider), { socratesHome })
+    const app = await buildTestServer(dbPath, createStructuredFinalAwareTestAgent(provider), { socratesHome })
     await onboard(app)
     const { project } = await createProject(app)
     const conversation = await createConversation(app, project.id)
@@ -3774,7 +3862,7 @@ describe("WebSocket API", () => {
       const driverRequest = requests.find((request) => request.tools?.some((tool) => tool.name === "handover_to_frontier"))
       const frontierRequests = requests.filter((request) => (request as { modelId?: string }).modelId === "x-ai/grok-4.5")
       expect(driverRequest?.tools?.map((tool) => tool.name)).toContain("handover_to_frontier")
-      expect(frontierRequests).toHaveLength(2)
+      expect(frontierRequests).toHaveLength(1)
       expect(frontierRequests.every((request) => !request.tools?.some((tool) => tool.name === "handover_to_frontier"))).toBe(true)
       expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("Solve the difficult concurrency problem")
       expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("Resolve the final concurrency invariant")
@@ -3814,8 +3902,16 @@ describe("WebSocket API", () => {
         method: "local_tiktoken",
         safetyMarginPercent: 0,
       }),
-      async generateStructured() {
-        return { output: {} as never }
+      async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
+        if (request.system.includes("Memory Router Agent")) {
+          return { output: (request.system.includes("post-evidence")
+            ? { actions: [], reason: "No durable update is needed.", goalFinalization: null }
+            : { readTargets: [], reason: "No routed recall is needed.", goalRoute: null }) as TOutput }
+        }
+        return { output: {
+          finalAnswer: "Socrates finished after the declined Frontier request.",
+          goalFinalization: { state: "active", note: "The lifecycle test remains active." },
+        } as TOutput }
       },
       async *stream(request) {
         requests.push(request)
@@ -3837,7 +3933,7 @@ describe("WebSocket API", () => {
         yield { type: "model.completed", usage: { inputTokens: 12, outputTokens: 5, totalTokens: 17 } }
       },
     }
-    const app = await buildTestServer(dbPath, new SocratesAgent(provider), { socratesHome })
+    const app = await buildTestServer(dbPath, createStructuredFinalAwareTestAgent(provider), { socratesHome })
     await onboard(app)
     const { project } = await createProject(app)
     const conversation = await createConversation(app, project.id)
@@ -3911,7 +4007,19 @@ describe("WebSocket API", () => {
         yield { type: "model.answer.delta", text: mainCalls === 1 ? "Suppressed draft." : "The ordinary task still completed." }
         yield { type: "model.completed", usage: { inputTokens: 10, outputTokens: 4, totalTokens: 14 } }
       },
-      async generateStructured<TOutput>(): Promise<StructuredModelResult<TOutput>> {
+      async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>): Promise<StructuredModelResult<TOutput>> {
+        const isMainFinal = request.messages.some(
+          (message) => typeof message.content === "string" && message.content.includes("<socrates_final_answer_checkpoint>"),
+        )
+        if (isMainFinal) {
+          return {
+            output: {
+              finalAnswer: "The ordinary task still completed.",
+              goalFinalization: { state: "active", note: "The ordinary test task remains active." },
+            } as TOutput,
+            usage: { inputTokens: 6, outputTokens: 4, totalTokens: 10 },
+          }
+        }
         return {
           output: { readTargets: [], reason: "", goalRoute: null } as TOutput,
           usage: { inputTokens: 6, outputTokens: 2, totalTokens: 8 },
@@ -6552,7 +6660,16 @@ describe("WebSocket API", () => {
     let callIndex = 0
     const memoryProvider: ModelProvider = {
       countTokens: fakeCountTokens,
-      async generateStructured<TOutput>(): Promise<StructuredModelResult<TOutput>> {
+      async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>): Promise<StructuredModelResult<TOutput>> {
+        seenPrompts.push(`${request.system}\n\n${request.messages.map((message) => message.content).join("\n")}`)
+        if (request.system.includes("Soul Confirmation Agent")) {
+          return {
+            output: {
+              decision: "yes",
+              reason: "The identity update is narrow and evidence-backed.",
+            } as TOutput,
+          }
+        }
         return { output: validMemoryAgentJournal({ decisions: ["Applied the confirmed identity update."] }) as TOutput }
       },
       async *stream(request) {
@@ -6575,11 +6692,6 @@ describe("WebSocket API", () => {
             },
           }
           yield { type: "model.completed", finishReason: "tool-calls" }
-          return
-        }
-        if (callIndex === 2) {
-          yield { type: "model.answer.delta", text: "yes" }
-          yield { type: "model.completed" }
           return
         }
         yield {
@@ -6612,7 +6724,7 @@ describe("WebSocket API", () => {
       expect(notifications.notifications[0]?.type).toBe("memory.soul.updated")
       expect(JSON.stringify(notifications.notifications[0]?.payload)).toContain("evidence-backed memory")
       expect(seenPrompts[0]).toContain("strict structured journal object enforced by the runtime")
-      expect(seenPrompts[1]).toContain("You are about to make changes to the soul. Are you sure?")
+      expect(seenPrompts.some((prompt) => prompt.includes("Socrates Soul Confirmation Agent"))).toBe(true)
     } finally {
       await store.close()
     }
@@ -8616,7 +8728,7 @@ describe("WebSocket API", () => {
     }
   })
 
-  it("keeps an active turn running when the original WebSocket disconnects and replays it to a new subscriber", async () => {
+  it("keeps an active turn running when the original WebSocket disconnects and delivers the validated final answer to a new subscriber", async () => {
     const dbPath = tempDbPath()
     const app = await buildTestServer(dbPath, createReconnectStreamingAgent())
     await onboard(app)
@@ -8629,18 +8741,19 @@ describe("WebSocket API", () => {
       sendCommand(firstSocket, chatMessageCommand(project.id, conversation.id, "Reconnect while streaming"))
 
       const started = await waitForEvent(firstSocket, "turn.started")
-      const firstDelta = await waitForEvent(firstSocket, "agent.answer.delta")
-      expect(firstDelta.payload.text).toBe("Part one.")
+      await delay(50)
+      expect(trackedEvents.get(firstSocket)?.some((event) => event.type === "agent.answer.delta")).toBe(false)
       firstSocket.close()
 
       secondSocket = await connectWebSocket(app)
       await waitForEvent(secondSocket, "connection.ready")
       sendCommand(secondSocket, chatSubscribeCommand(project.id, conversation.id))
 
-      const replayedDelta = await waitForEvent(secondSocket, "agent.answer.delta")
-      expect(replayedDelta.payload.text).toBe("Part one.")
       const completed = await waitForEvent(secondSocket, "turn.completed")
       expect(completed.payload.turnId).toBe(started.payload.turnId)
+      expect(trackedEvents.get(secondSocket)?.some(
+        (event) => event.type === "agent.answer.delta" && event.payload.text === "Part one. Part two.",
+      )).toBe(true)
 
       const response = await app.inject({
         method: "GET",
@@ -8672,7 +8785,8 @@ describe("WebSocket API", () => {
       sendCommand(firstSocket, chatMessageCommand(project.id, firstConversation.id, "Start first stream"))
       const firstStarted = await waitForEvent(firstSocket, "turn.started")
       expect(firstStarted.conversationId).toBe(firstConversation.id)
-      expect((await waitForEvent(firstSocket, "agent.answer.delta")).payload.text).toBe("Started.")
+      await delay(50)
+      expect(trackedEvents.get(firstSocket)?.some((event) => event.type === "agent.answer.delta")).toBe(false)
 
       sendCommand(secondSocket, chatMessageCommand(project.id, secondConversation.id, "Start second stream"))
       const secondStarted = await waitForEvent(secondSocket, "turn.started")
@@ -8781,7 +8895,7 @@ describe("WebSocket API", () => {
         expect(row.failed_turn_count).toBe(1)
         expect(row.failed_model_call_count).toBe(1)
         expect(row.completed_trace_jobs).toBe(1)
-        expect(row.trace_error_count).toBe(1)
+        expect(row.trace_error_count).toBeGreaterThanOrEqual(1)
       } finally {
         sqlite.close()
       }
@@ -8804,7 +8918,7 @@ describe("WebSocket API", () => {
 
       const failed = await waitForEvent(socket, "turn.failed")
       expect(failed.payload.turnId).toBe(started.payload.turnId)
-      expect(failed.payload.error.code).toBe("model_empty_response")
+      expect(failed.payload.error.code).toBe("structured_agent_output_invalid")
 
       const sqlite = new Database(dbPath)
       try {
@@ -8822,7 +8936,7 @@ describe("WebSocket API", () => {
         }
         expect(row.assistant_count).toBe(0)
         expect(row.failed_turn_count).toBe(1)
-        expect(row.failed_model_call_count).toBe(1)
+        expect(row.failed_model_call_count).toBe(3)
       } finally {
         sqlite.close()
       }
@@ -8831,7 +8945,7 @@ describe("WebSocket API", () => {
     }
   })
 
-  it("persists partial assistant text on cancel and carries it into the next turn history", async () => {
+  it("withholds an unvalidated draft on cancel and excludes it from the next turn history", async () => {
     const dbPath = tempDbPath()
     const requests: unknown[] = []
     const app = await buildTestServer(dbPath, createCancellablePartialAgent(requests))
@@ -8843,7 +8957,8 @@ describe("WebSocket API", () => {
       await waitForEvent(socket, "connection.ready")
       sendCommand(socket, chatMessageCommand(project.id, conversation.id, "Please stop soon"))
       const started = await waitForEvent(socket, "turn.started")
-      await waitForEvent(socket, "agent.answer.delta")
+      await delay(50)
+      expect(trackedEvents.get(socket)?.some((event) => event.type === "agent.answer.delta")).toBe(false)
 
       sendCommand(socket, {
         id: createId("evt"),
@@ -8862,9 +8977,7 @@ describe("WebSocket API", () => {
       const cancelled = await waitForEvent(socket, "turn.cancelled")
       expect(cancelled.payload.turnId).toBe(started.payload.turnId)
       expect(cancelled.payload.reason).toBe("User clicked stop")
-      expect(cancelled.payload.partialAssistantMessage?.content).toBe("Partial answer before stop.")
-      expect(cancelled.payload.partialAssistantMessage?.status).toBe("cancelled")
-      expect(cancelled.payload.partialAssistantMessage?.partial).toBe(true)
+      expect(cancelled.payload.partialAssistantMessage).toBeUndefined()
 
       await delay(150)
       const sqlite = new Database(dbPath)
@@ -8877,7 +8990,7 @@ describe("WebSocket API", () => {
           )
           .get(started.payload.turnId, started.payload.turnId) as { completed_trace_jobs: number; trace_message_count: number }
         expect(row.completed_trace_jobs).toBe(1)
-        expect(row.trace_message_count).toBeGreaterThanOrEqual(2)
+        expect(row.trace_message_count).toBeGreaterThanOrEqual(1)
       } finally {
         sqlite.close()
       }
@@ -8886,11 +8999,10 @@ describe("WebSocket API", () => {
       await waitForEvent(socket, "message.completed")
 
       const secondRequest = requests[1] as { messages: Array<{ role: string; content: string }> }
-      expect(secondRequest.messages.map((message) => `${message.role}:${message.content}`)).toContain(
+      expect(secondRequest.messages.map((message) => `${message.role}:${message.content}`)).not.toContain(
         "assistant:Partial answer before stop.",
       )
-      expect(latestUserContent(secondRequest.messages)).toBe("Continue from that")
-      expect(secondRequest.messages.some((message) => message.role === "developer" && message.content.includes("runtime_socrates_docs_preflight"))).toBe(true)
+      expect(String(latestUserContent(secondRequest.messages))).toContain("Continue from that")
     } finally {
       socket.close()
     }

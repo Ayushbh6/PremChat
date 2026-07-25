@@ -1,5 +1,7 @@
 # Flow Convergence Phase 0 Baseline
 
+This is the historical pre-refactor snapshot. `FLOW_CONVERGENCE_PHASE_1.md` records the implemented execution/finalization convergence and supersedes the runtime inventory below; the failure characterization remains the migration baseline.
+
 Phase 0 freezes the current execution and persistence topology before the convergence refactor begins. It does not change production routing, finalization, persistence, or UI behavior. Its purpose is to turn the July 25 failure into reproducible evidence and to make the later migration measurable.
 
 The product destination remains `FLOW_NORTH_STAR.md`. This file describes the starting line, not an alternate design.
@@ -67,7 +69,7 @@ The Flow Goal Router currently receives the latest user message, at most three t
 | Skill Writer | `prompts/skillWriterPrompt.ts` | `SocratesAgent` | Scoped skill-writer registry |
 | Soul confirmation classifier | inline prompt in `memoryStore.ts` | direct provider stream | None |
 
-This is not yet homogeneous. `SocratesAgent` and `StructuredToolAgentRunner` each own a provider/tool loop, while soul confirmation bypasses both. Phase 1 must converge these paths under the one public `AgentRuntime` contract without weakening their distinct permissions or output modes.
+At Phase 0 capture this was not homogeneous: `SocratesAgent` and `StructuredToolAgentRunner` each owned a provider/tool loop, while soul confirmation bypassed both. Phase 1 converged these paths under the one public `AgentRuntime` contract without weakening their distinct permissions or output modes.
 
 ## Current Completion Authorities
 
@@ -99,7 +101,7 @@ So the system both saw prior context and failed to preserve its meaning: it rece
 - `evals/flow-convergence/phase-0-baseline.schema.json` defines the fixture contract.
 - `evals/flow-convergence/phase-0-report.md` records the completed verification evidence.
 - `scripts/check-flow-convergence-phase0.mjs` validates fixture completeness and confirms that the documented current-state anchors still exist.
-- `packages/core/src/test/StructuredToolAgentRunner.test.ts` characterizes the shared structured worker's bounded recovery behavior independently of any one router prompt.
+- The original structured-runner characterization was promoted to `packages/core/src/test/AgentRuntime.test.ts` during Phase 1.
 
 Run the deterministic Phase 0 gate with:
 

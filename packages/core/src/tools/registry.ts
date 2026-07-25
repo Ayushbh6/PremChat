@@ -98,6 +98,10 @@ export const createGoalRouterToolRegistry = (): ToolRegistry => new ToolRegistry
 
 export const createTitleGeneratorToolRegistry = (): ToolRegistry => new ToolRegistry([])
 
+export const createSoulConfirmationToolRegistry = (): ToolRegistry => new ToolRegistry([])
+
+export const createFinalAnswerToolRegistry = (): ToolRegistry => new ToolRegistry([])
+
 export const createCompressorToolRegistry = (): ToolRegistry => new ToolRegistry([])
 
 const skillWriterTools = [currentTimeTool, globalTraceRetrieveTool, skillsReadOnlyTool, userProfileTool, soulTool, projectDocsTool, repoDocsTool, skillWriteTool] as const

@@ -6,7 +6,7 @@ import {
   type ThinkingEffort,
   type WorkerModelSettings,
 } from "@socrates/contracts"
-import { buildMemoryAgentSystemPrompt, createMemoryToolRegistry, StructuredToolAgentRunner } from "@socrates/core"
+import { AgentRuntime, buildMemoryAgentSystemPrompt, createMemoryToolRegistry } from "@socrates/core"
 import type { ModelEvent, ModelProvider, ModelUsage } from "@socrates/providers"
 import { createMemoryAgentToolExecutors, type MemoryAgentToolCallbacks } from "./memoryAgentToolExecutors"
 
@@ -52,14 +52,14 @@ export type MemoryAgentRunResult = {
 
 export const runMemoryAgentTurn = async (input: MemoryAgentRunInput): Promise<MemoryAgentRunResult> => {
   const runtimeConfig = MEMORY_AGENT_RUNTIME_CONFIG(input.modelSettings)
-  return new StructuredToolAgentRunner().run({
+  return new AgentRuntime().run({
     provider: input.provider,
     providerId: input.modelSettings.providerId,
     modelId: input.modelSettings.modelId,
     runtimeConfig,
     system: buildMemoryAgentSystemPrompt({ socratesHome: input.socratesHome }),
     userContent: input.evidence,
-    schema: memoryAgentJournalOutputSchema,
+    completion: { mode: "structured", schema: memoryAgentJournalOutputSchema },
     toolRegistry: createMemoryToolRegistry(),
     toolExecutors: createMemoryAgentToolExecutors(input.tools),
     maxToolCalls: 60,

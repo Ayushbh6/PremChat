@@ -6,14 +6,14 @@
     {
       "id": "main-agent-provider-loop",
       "path": "packages/core/src/agent/SocratesAgent.ts",
-      "anchors": ["export class SocratesAgent", "for await (const modelEvent of this.provider.stream", "runPostEvidenceMemoryLoop"],
-      "finding": "Classic, Flow, and Skill Writer use the full streaming Socrates loop."
+      "anchors": ["export class SocratesAgent", "this.runtime.run", "this.turnLifecycle.runPostEvidenceMemoryLoop"],
+      "finding": "Classic, Flow, and Skill Writer retain one Socrates lifecycle while all provider execution enters through AgentRuntime."
     },
     {
       "id": "structured-worker-provider-loop",
-      "path": "packages/core/src/agent/StructuredToolAgentRunner.ts",
-      "anchors": ["export class StructuredToolAgentRunner", "for await (const event of input.provider.stream", "input.provider.generateStructured"],
-      "finding": "Routers and bounded structured workers use a second provider/tool loop."
+      "path": "packages/core/src/agent/AgentRuntime.ts",
+      "anchors": ["export class AgentRuntime", "input.provider.stream", "input.provider.generateStructured"],
+      "finding": "Main model steps, text workers, and structured workers share the one public provider-neutral AgentRuntime boundary."
     },
     {
       "id": "flow-goal-router-empty-tools",
@@ -28,10 +28,10 @@
       "finding": "The router receives a compact latest-message, recent-exchange, and candidate JSON object."
     },
     {
-      "id": "post-router-completion-before-final",
+      "id": "validated-main-answer-owns-finalization",
       "path": "packages/core/src/agent/SocratesAgent.ts",
-      "anchors": ["route.goalFinalization", "await input.applyGoalFinalization", "After verification, give the user the final answer."],
-      "finding": "The post-turn Memory Router may mutate goal state before the final answer is generated."
+      "anchors": ["socratesFinalAnswerSchema", "type: \"agent.final_result\"", "finalAnswerMode === \"structured\""],
+      "finding": "The main Socrates turn emits one validated answer and goal-finalization result after reconciliation; the detached post router is no longer a completion authority."
     },
     {
       "id": "focus-ledger-second-completion-authority",
@@ -53,9 +53,9 @@
     },
     {
       "id": "direct-soul-provider-call",
-      "path": "apps/server/src/services/store/memoryStore.ts",
-      "anchors": ["runSoulConfirmationModel", "this.options.provider!.stream"],
-      "finding": "Soul confirmation bypasses both shared agent execution classes."
+      "path": "packages/core/src/agent/SoulConfirmationAgent.ts",
+      "anchors": ["export class SoulConfirmationAgent", "new AgentRuntime()", "soulConfirmationAgentOutputSchema"],
+      "finding": "Soul confirmation is a strict no-tool agent using the same AgentRuntime boundary."
     }
   ],
   "scenarios": [
@@ -68,7 +68,7 @@
       ],
       "targetInvariant": "A malformed native tool call is visible as a failed call, gives bounded corrective feedback, and does not corrupt the final answer.",
       "ownerPhase": 1,
-      "status": "pending",
+      "status": "passing",
       "futureTestSurface": "shared AgentRuntime tool normalization and Flow runtime persistence"
     },
     {
@@ -79,7 +79,7 @@
       ],
       "targetInvariant": "Malformed tool envelopes, internal control text, and empty prose fail final-answer integrity validation and cannot complete a goal.",
       "ownerPhase": 1,
-      "status": "pending",
+      "status": "passing",
       "futureTestSurface": "structured main final result and answer integrity gate"
     },
     {

@@ -1211,7 +1211,7 @@ normal chat send uses WebSocket chat.message.send
 after the first user message is saved, emit conversation.updated with the placeholder title
 generate a personalized title from the first text/image message
 title model: resolved Title Generator worker model setting
-execution: no-tool TitleGeneratorAgent through StructuredToolAgentRunner with the prompt in packages/core/src/prompts/titleGeneratorPrompt.ts and strict conversationTitleAgentOutputSchema validation
+execution: no-tool TitleGeneratorAgent through AgentRuntime with the prompt in packages/core/src/prompts/titleGeneratorPrompt.ts and strict conversationTitleAgentOutputSchema validation
 OpenRouter built-in default: openrouter meta-llama/llama-4-maverick with thinking off
 ChatGPT Codex effective default, when connected and the saved setting is built-in/default unavailable: openai chatgpt_subscription gpt-5.4-mini with low reasoning
 if a generated title is returned and the title is still the placeholder, update the conversation and emit conversation.updated

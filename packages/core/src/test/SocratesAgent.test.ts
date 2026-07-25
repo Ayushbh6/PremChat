@@ -130,7 +130,6 @@ describe("SocratesAgent", () => {
         appliedRoutes.push(route)
         return { goalId: "v2goal_1", title: "Review AIDPA report status", state: "foreground", note: "Review the report." }
       },
-      applyGoalFinalization: async () => undefined,
     })) {
       // Drain the turn.
     }

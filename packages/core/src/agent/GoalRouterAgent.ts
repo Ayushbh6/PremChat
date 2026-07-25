@@ -9,7 +9,7 @@ import type { ModelProvider, ModelUsage } from "@socrates/providers"
 import { buildGoalRouterUserContent, GOAL_ROUTER_SYSTEM_PROMPT } from "../prompts/goalRouterPrompt"
 import { createGoalRouterToolRegistry } from "../tools/registry"
 import type { V2GoalRoutingCandidateSet } from "../v2/types"
-import { StructuredToolAgentRunner } from "./StructuredToolAgentRunner"
+import { AgentRuntime } from "./AgentRuntime"
 
 export type GoalRouterAgentModelSettings = Pick<
   WorkerModelSettings,
@@ -32,12 +32,12 @@ export type GoalRouterAgentInput = Readonly<{
 }>
 
 export class GoalRouterAgent {
-  private readonly runner = new StructuredToolAgentRunner()
+  private readonly runtime = new AgentRuntime()
 
   constructor(private readonly provider: ModelProvider) {}
 
   async route(input: GoalRouterAgentInput): Promise<V2GoalRouterOutput> {
-    const result = await this.runner.run({
+    const result = await this.runtime.run({
       provider: this.provider,
       providerId: input.modelSettings.providerId,
       modelId: input.modelSettings.modelId,
@@ -49,7 +49,7 @@ export class GoalRouterAgent {
         ...(input.recentTurns ? { recentTurns: input.recentTurns } : {}),
         ...(input.clarificationAnswer ? { clarificationAnswer: input.clarificationAnswer } : {}),
       }),
-      schema: createValidatedGoalRouterOutputSchema(input.candidates),
+      completion: { mode: "structured", schema: createValidatedGoalRouterOutputSchema(input.candidates) },
       toolRegistry: createGoalRouterToolRegistry(),
       toolExecutors: {},
       maxToolCalls: 0,

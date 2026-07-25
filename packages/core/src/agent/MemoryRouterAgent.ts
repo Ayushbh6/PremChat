@@ -20,7 +20,7 @@ import {
 } from "../prompts/memoryRoutingPrompt"
 import { createMemoryFinalizationToolRegistry, createMemoryRouterToolRegistry } from "../tools/registry"
 import type { ToolExecutors } from "../tools/types"
-import { StructuredToolAgentRunner, type StructuredToolAgentRunInput } from "./StructuredToolAgentRunner"
+import { AgentRuntime, type AgentRuntimeStructuredInput } from "./AgentRuntime"
 
 const MAX_ROUTER_TOOL_CALLS = 3
 const MAX_PREFETCH_SEGMENTS = 12
@@ -86,7 +86,7 @@ export type MemoryRouterPostTurnInput = MemoryRouterAgentBaseInput & {
 }
 
 export class MemoryRouterAgent {
-  private readonly runner = new StructuredToolAgentRunner()
+  private readonly runtime = new AgentRuntime()
 
   constructor(private readonly provider: ModelProvider) {}
 
@@ -109,7 +109,7 @@ export class MemoryRouterAgent {
         ...(input.currentGoalCandidate ? { currentGoalCandidate: input.currentGoalCandidate } : {}),
         ...(prefetch.warning ? { automaticCoverageWarning: prefetch.warning } : {}),
       }),
-      schema: memoryRouterPreTurnResultSchema,
+      completion: { mode: "structured", schema: memoryRouterPreTurnResultSchema },
       toolRegistry: createMemoryRouterToolRegistry(),
       toolExecutors: input.toolExecutors,
       maxToolCalls: MAX_ROUTER_TOOL_CALLS,
@@ -141,7 +141,7 @@ export class MemoryRouterAgent {
         assistantDraft: input.assistantDraft,
         ...(input.activeGoal ? { activeGoal: input.activeGoal } : {}),
       }),
-      schema: memoryRouterPostTurnResultSchema,
+      completion: { mode: "structured", schema: memoryRouterPostTurnResultSchema },
       toolRegistry: createMemoryFinalizationToolRegistry(),
       toolExecutors: input.toolExecutors,
       maxToolCalls: MAX_ROUTER_TOOL_CALLS,
@@ -159,11 +159,11 @@ export class MemoryRouterAgent {
     input: MemoryRouterAgentBaseInput,
     phase: MemoryRouterRunRecord["phase"],
     startedAt: string,
-    runInput: StructuredToolAgentRunInput<TOutput>,
+    runInput: AgentRuntimeStructuredInput<TOutput>,
   ): Promise<TOutput> {
     const observedUsages: ModelUsage[] = []
     try {
-      const result = await this.runner.run<TOutput>({
+      const result = await this.runtime.run<TOutput>({
         ...runInput,
         onUsage: (usage) => {
           observedUsages.push(usage)

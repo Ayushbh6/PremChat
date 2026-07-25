@@ -14,10 +14,12 @@ export {
   type CompressorAgentRunInput,
 } from "./agent/CompressorAgent"
 export {
-  StructuredToolAgentRunner,
-  type StructuredToolAgentRunInput,
-  type StructuredToolAgentRunResult,
-} from "./agent/StructuredToolAgentRunner"
+  AgentRuntime,
+  type AgentRuntimeStructuredInput,
+  type AgentRuntimeStructuredResult,
+  type AgentRuntimeTextInput,
+  type AgentRuntimeTextResult,
+} from "./agent/AgentRuntime"
 export {
   MemoryRouterAgent,
   type MemoryRouterAgentModelSettings,
@@ -37,6 +39,12 @@ export {
   type TitleGeneratorAgentModelSettings,
   type TitleGeneratorAgentResult,
 } from "./agent/TitleGeneratorAgent"
+export {
+  SoulConfirmationAgent,
+  type SoulConfirmationAgentInput,
+  type SoulConfirmationAgentModelSettings,
+  type SoulConfirmationAgentResult,
+} from "./agent/SoulConfirmationAgent"
 export {
   DEFAULT_COMPRESSOR_MODEL,
   DEFAULT_COMPRESSOR_FALLBACK_MODEL,
@@ -59,6 +67,7 @@ export { buildSocratesDynamicContext, buildSocratesSystemPrompt, socratesBasePro
 export { buildMemoryAgentSystemPrompt, memoryAgentBasePrompt, type MemoryAgentPromptContext } from "./prompts/memoryPrompt"
 export { buildSkillWriterSystemPrompt, skillWriterBasePrompt, type SkillWriterPromptContext } from "./prompts/skillWriterPrompt"
 export { TITLE_GENERATOR_SYSTEM_PROMPT } from "./prompts/titleGeneratorPrompt"
+export { SOUL_CONFIRMATION_AGENT_SYSTEM_PROMPT, buildSoulConfirmationUserContent } from "./prompts/soulConfirmationPrompt"
 export {
   SOCRATES_COMPRESSOR_SYSTEM_PROMPT,
   buildSocratesCompressorUserContent,
@@ -72,7 +81,7 @@ export {
   renderMemoryCompactionMarkdown,
   type MemoryAgentCompressorUserPromptInput,
 } from "./prompts/memoryAgentCompressorPrompt"
-export { createCompressorToolRegistry, createDefaultToolRegistry, createGoalRouterToolRegistry, createMemoryFinalizationToolRegistry, createMemoryRouterToolRegistry, createMemoryToolRegistry, createSkillWriterToolRegistry, createTitleGeneratorToolRegistry, createV2ToolRegistry, ToolRegistry } from "./tools/registry"
+export { createCompressorToolRegistry, createDefaultToolRegistry, createFinalAnswerToolRegistry, createGoalRouterToolRegistry, createMemoryFinalizationToolRegistry, createMemoryRouterToolRegistry, createMemoryToolRegistry, createSkillWriterToolRegistry, createSoulConfirmationToolRegistry, createTitleGeneratorToolRegistry, createV2ToolRegistry, ToolRegistry } from "./tools/registry"
 export type { ApprovalDecision, ApprovalRequest, ToolExecutorContext, ToolExecutors, ToolLifecycleEvent } from "./tools/types"
 export * from "./retrieval"
 export * from "./v2"

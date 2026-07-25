@@ -887,6 +887,22 @@ export class SocratesStore {
     return this.turns.completeAgentTurn(input)
   }
 
+  completeAgentTurnAtomically(input: {
+    conversationId: string
+    sessionId: string
+    turnId: string
+    content: string
+    reasoning?: string
+    afterPersist?: (message: Message) => void
+  }): Message {
+    const operation = this.handle.sqlite.transaction(() => {
+      const message = this.turns.completeAgentTurn(input)
+      input.afterPersist?.(message)
+      return message
+    })
+    return operation()
+  }
+
   failTurn(input: {
     conversationId: string
     sessionId: string
