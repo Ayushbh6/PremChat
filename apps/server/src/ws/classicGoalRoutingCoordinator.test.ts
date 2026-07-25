@@ -50,6 +50,7 @@ describe("Classic shared Goal Router orchestration", () => {
       latestCapsules: [],
       messages: [],
       messageWindow: { hasEarlier: false },
+      canonicalToolCalls: [],
       activeTerminals: [],
       pendingApprovals: [],
       lastEventSequence: 0,

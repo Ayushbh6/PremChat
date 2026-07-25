@@ -801,6 +801,7 @@ export const v2FlowSnapshotSchema = z
     messages: z.array(v2MessageSchema),
     messageWindow: v2MessageWindowSchema,
     activeTurn: v2TurnSchema.optional(),
+    canonicalToolCalls: z.array(v2ToolCallSchema),
     activeTerminals: z.array(v2TerminalSchema),
     pendingApprovals: z.array(v2ApprovalSchema),
     pendingClarification: v2GoalRoutingRunSchema.optional(),

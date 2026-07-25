@@ -43,10 +43,12 @@ export const buildServer = async (options: BuildServerOptions) => {
   runMigrations(handle)
 
   const socratesHome = options.socratesHome ?? (options.dbPath === ":memory:" ? undefined : path.dirname(options.dbPath))
+  const v2FlowEnabled = options.v2FlowEnabled ?? false
   const credentials = new ProviderCredentialStore(socratesHome ? { socratesHome } : {})
   const store = new SocratesStore(handle, options.embeddingProvider, credentials, {
     ...(socratesHome ? { socratesHome } : {}),
     ...(options.memoryProvider ? { memoryProvider: options.memoryProvider } : {}),
+    v2FlowEnabled,
   })
   store.cancelStaleActiveTurns()
   store.requeueInterruptedTerminalTasks()
@@ -61,7 +63,6 @@ export const buildServer = async (options: BuildServerOptions) => {
   const terminals = new ConversationTerminalManager(store, subscriptions, { supervisorScope: socratesHome ?? path.dirname(options.dbPath) })
   await terminals.reconcilePersistedTerminals()
   const app = Fastify({ logger: options.logger ?? false })
-  const v2FlowEnabled = options.v2FlowEnabled ?? false
   const flowStore = v2FlowEnabled ? new V2FlowStore(handle) : undefined
   flowStore?.recoverInterruptedTurns()
   const speechHome = socratesHome ?? path.dirname(options.dbPath)

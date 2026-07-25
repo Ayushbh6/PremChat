@@ -69,8 +69,21 @@ export const loadCanonicalTraceRows = (handle: DatabaseHandle, projectId: string
          FROM turns t
          INNER JOIN conversations c ON c.id = t.conversation_id
          WHERE c.project_id = ?
-           AND c.status IN (${conversationPlaceholders})
+           AND (
+             c.status IN (${conversationPlaceholders})
+             OR EXISTS (
+               SELECT 1 FROM work_tasks wt
+               WHERE wt.source_runtime = 'classic'
+                 AND wt.source_turn_id = t.id
+                 AND wt.goal_id IS NOT NULL
+             )
+           )
            AND t.status IN (${placeholders})
+           AND NOT EXISTS (
+             SELECT 1 FROM v2_classic_message_links legacy_link
+             WHERE legacy_link.classic_message_id = t.user_message_id
+               AND legacy_link.source_runtime = 'v2'
+           )
        )
        SELECT 'classic' AS runtimeKind,
               '' AS flowId,
@@ -108,6 +121,11 @@ export const loadCanonicalTraceRows = (handle: DatabaseHandle, projectId: string
          WHERE f.project_id = ?
            AND f.status IN ('active', 'archived')
            AND t.status IN (${placeholders})
+           AND NOT EXISTS (
+             SELECT 1 FROM v2_classic_message_links legacy_link
+             WHERE legacy_link.v2_message_id = t.user_message_id
+               AND legacy_link.source_runtime = 'classic'
+           )
        )
        SELECT 'v2_flow' AS runtimeKind,
               '' AS conversationId,

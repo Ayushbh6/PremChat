@@ -46,10 +46,10 @@
       "finding": "Validated completion changes goal lifecycle without changing the selected Flow goal."
     },
     {
-      "id": "bridge-copies-visible-messages",
-      "path": "apps/server/src/services/v2/flowStore.ts",
-      "anchors": ["mirrorV2TurnToClassic", "importClassicBridgeTurns"],
-      "finding": "The released bridge creates view-specific message rows instead of projecting canonical Q&A identities."
+      "id": "canonical-cross-view-projections",
+      "path": "apps/server/src/services/workState/canonicalWorkStore.ts",
+      "anchors": ["export class CanonicalWorkStore", "listFlowMessages", "listConversationMessages", "reconcileLegacyBridgeData"],
+      "finding": "Classic and Flow now resolve canonical task/message identities to their physical source rows; view navigation stores references and legacy copied rows remain only as non-authoritative rollback data."
     },
     {
       "id": "direct-soul-provider-call",
@@ -143,7 +143,7 @@
       ],
       "targetInvariant": "Both views project the same canonical turns, tools, evidence, task state, and continuation without replacement Q&A copies.",
       "ownerPhase": 3,
-      "status": "pending",
+      "status": "passing",
       "futureTestSurface": "canonical persistence migration and cross-view API contracts"
     },
     {

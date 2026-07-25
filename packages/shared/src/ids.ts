@@ -91,5 +91,8 @@ export type IdPrefix =
   | "v2home"
   | "v2ctgoal"
   | "v2del"
+  | "worktask"
+  | "workmsg"
+  | "workproj"
 
 export const createId = (prefix: IdPrefix): string => `${prefix}_${randomUUID().replaceAll("-", "")}`

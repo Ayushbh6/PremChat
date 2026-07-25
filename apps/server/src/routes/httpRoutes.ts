@@ -98,7 +98,11 @@ const notificationsQuerySchema = z
 type HttpRouteHooks = {
   onConversationDelete?: (conversationId: string) => void
   getConversationDeletionImpact?: (projectId: string, conversationId: string) => { linkedToFlow: boolean }
-  beforeConversationDelete?: (projectId: string, conversationId: string, scope: "classic_only" | "everywhere") => void
+  beforeConversationDelete?: (
+    projectId: string,
+    conversationId: string,
+    scope: "classic_only" | "everywhere",
+  ) => { preserveSource?: boolean } | void
   afterConversationDelete?: (projectId: string, conversationId: string, scope: "classic_only" | "everywhere") => void
   onProjectWorkspaceSwitch?: (projectId: string) => void
 }

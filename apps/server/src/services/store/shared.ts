@@ -74,7 +74,7 @@ export class StoreBase {
     })
 
     const row = this.getPrimaryWorkspaceRow(projectId)
-    if (!row) {
+    if (!row || row.status === "deleted") {
       throw new SocratesError("project_workspace_not_found", "Workspace was not found after creation")
     }
     return mapProjectWorkspace(row)

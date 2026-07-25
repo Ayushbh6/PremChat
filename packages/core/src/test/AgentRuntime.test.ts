@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { z } from "zod"
 import type { ModelProvider, StructuredModelRequest } from "@socrates/providers"
+import { SocratesError } from "@socrates/shared"
 import { AgentRuntime } from "../agent/AgentRuntime"
 import { currentTimeTool } from "../tools/currentTimeTool"
 import { ToolRegistry } from "../tools/registry"
@@ -127,6 +128,68 @@ describe("AgentRuntime", () => {
     expect(requests).toHaveLength(2)
     expect(JSON.stringify(requests[1]?.messages)).toContain("failed validation")
     expect(JSON.stringify(requests[1]?.messages)).toContain("invalid")
+  })
+
+  it("retries one provider-level malformed structured response through the same bounded repair budget", async () => {
+    const requests: StructuredModelRequest<unknown>[] = []
+    const provider: ModelProvider = {
+      countTokens,
+      async *stream() {
+        throw new Error("The no-tool completion mode must not enter the streaming loop.")
+      },
+      async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
+        requests.push(request as StructuredModelRequest<unknown>)
+        if (requests.length === 1) {
+          throw new SocratesError("deepseek_structured_output_invalid", "DeepSeek returned non-JSON structured output.", { recoverable: true })
+        }
+        return { output: { ok: true } as TOutput }
+      },
+    }
+
+    const result = await new AgentRuntime().run({
+      ...runBase,
+      provider,
+      completion: { mode: "structured", schema: z.object({ ok: z.literal(true) }).strict(), maxOutputRepairAttempts: 1 },
+      toolRegistry: new ToolRegistry([]),
+      toolExecutors: {},
+      maxToolCalls: 0,
+    })
+
+    expect(result.output).toEqual({ ok: true })
+    expect(requests).toHaveLength(2)
+    expect(JSON.stringify(requests[1]?.messages)).toContain("could not be parsed")
+  })
+
+  it("recognizes the normalized AI SDK no-object error as the same repairable failure", async () => {
+    let attempts = 0
+    const provider: ModelProvider = {
+      countTokens,
+      async *stream() {
+        throw new Error("The no-tool completion mode must not enter the streaming loop.")
+      },
+      async generateStructured<TOutput>() {
+        attempts += 1
+        if (attempts === 1) {
+          throw new SocratesError("model_provider_error", "No object generated: could not parse the response.", {
+            details: { name: "AI_NoObjectGeneratedError" },
+            recoverable: true,
+          })
+        }
+        return { output: { ok: true } as TOutput }
+      },
+    }
+
+    const result = await new AgentRuntime().run({
+      ...runBase,
+      provider,
+      completion: { mode: "structured", schema: z.object({ ok: z.literal(true) }).strict(), maxOutputRepairAttempts: 1 },
+      toolRegistry: new ToolRegistry([]),
+      toolExecutors: {},
+      maxToolCalls: 0,
+    })
+
+    expect(result.output).toEqual({ ok: true })
+    expect(attempts).toBe(2)
   })
 
   it("fails explicitly when the provider cannot generate a structured result", async () => {

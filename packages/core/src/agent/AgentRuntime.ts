@@ -313,19 +313,33 @@ const generateStructuredFinal = async <TOutput>(
       attempt: attempt + 1,
     }) ?? createId("mcall")
     input.onModelEvent?.({ type: "model.started", modelCallId })
-    const generated = await input.provider.generateStructured<TOutput>({
-      providerId: input.providerId,
-      modelId: input.modelId,
-      system: input.system,
-      messages: prepared.messages,
-      runtimeConfig: input.runtimeConfig,
-      schema: input.completion.schema,
-      modelCallId,
-      sessionId: input.sessionId,
-      ...(input.cacheKey ? { cacheKey: `${input.cacheKey}:structured-final:${attempt + 1}` } : {}),
-      ...(input.providerRouting ? { providerRouting: input.providerRouting } : {}),
-      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
-    })
+    let generated
+    try {
+      generated = await input.provider.generateStructured<TOutput>({
+        providerId: input.providerId,
+        modelId: input.modelId,
+        system: input.system,
+        messages: prepared.messages,
+        runtimeConfig: input.runtimeConfig,
+        schema: input.completion.schema,
+        modelCallId,
+        sessionId: input.sessionId,
+        ...(input.cacheKey ? { cacheKey: `${input.cacheKey}:structured-final:${attempt + 1}` } : {}),
+        ...(input.providerRouting ? { providerRouting: input.providerRouting } : {}),
+        ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+      })
+    } catch (error) {
+      input.onModelEvent?.({ type: "model.failed", error: error instanceof Error ? error : new Error(String(error)), modelCallId })
+      if (attempt < maxOutputRepairAttempts && isRepairableStructuredGenerationError(error)) {
+        lastValidation = structuredGenerationErrorSummary(error)
+        messages.push({
+          role: "developer",
+          content: "Your previous structured result could not be parsed. Retry once and return only the complete strict JSON object required by the system contract, with no prose or Markdown fences.",
+        })
+        continue
+      }
+      throw error
+    }
     if (generated.usage) {
       state.usages.push(generated.usage)
       input.onUsage?.(generated.usage)
@@ -358,6 +372,17 @@ const generateStructuredFinal = async <TOutput>(
     },
   )
 }
+
+const isRepairableStructuredGenerationError = (error: unknown): boolean => {
+  if (!(error instanceof SocratesError)) return false
+  if (["deepseek_structured_output_invalid", "ollama_structured_output_invalid"].includes(error.code)) return true
+  if (error.code !== "model_provider_error" || !error.details || typeof error.details !== "object" || Array.isArray(error.details)) return false
+  return (error.details as Record<string, unknown>).name === "AI_NoObjectGeneratedError"
+}
+
+const structuredGenerationErrorSummary = (error: unknown): unknown => error instanceof SocratesError
+  ? { code: error.code, message: error.message, details: error.details }
+  : { message: error instanceof Error ? error.message : String(error) }
 
 const executeScopedTool = async <TOutput>(
   input: AgentRuntimeTextInput | AgentRuntimeStructuredInput<TOutput>,

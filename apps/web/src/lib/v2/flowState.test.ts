@@ -37,6 +37,7 @@ const snapshot = (selectedGoal: V2Goal): V2FlowSnapshot => ({
   latestCapsules: [],
   messages: [],
   messageWindow: { hasEarlier: false },
+  canonicalToolCalls: [],
   activeTerminals: [],
   pendingApprovals: [],
   lastEventSequence: 0,

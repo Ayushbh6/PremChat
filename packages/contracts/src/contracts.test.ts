@@ -2318,6 +2318,7 @@ describe("V2 Flow standalone contracts", () => {
       latestCapsules: [],
       messages: [message],
       messageWindow: { hasEarlier: true, beforeOrdinal: 101 },
+      canonicalToolCalls: [],
       activeTerminals: [],
       pendingApprovals: [],
       lastEventSequence: 12,

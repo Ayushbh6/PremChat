@@ -373,11 +373,17 @@ export class ConversationStore extends StoreBase {
   deleteConversation(
     projectId: string,
     conversationId: string,
-    beforeDelete?: () => void,
-  ): { deletedConversationId: string } {
+    beforeDelete?: () => { preserveSource?: boolean } | void,
+  ): { deletedConversationId: string; sourcePreserved: boolean } {
     this.mustGetConversationRow(projectId, conversationId)
     const deleteRows = this.handle.sqlite.transaction(() => {
-      beforeDelete?.()
+      const disposition = beforeDelete?.()
+      if (disposition?.preserveSource) {
+        const now = nowIso()
+        this.handle.db.update(conversations).set({ status: "deleted", archivedAt: now, updatedAt: now })
+          .where(and(eq(conversations.projectId, projectId), eq(conversations.id, conversationId))).run()
+        return true
+      }
       const turnRows = this.handle.db
         .select({ id: turns.id })
         .from(turns)
@@ -460,9 +466,10 @@ export class ConversationStore extends StoreBase {
         .delete(conversations)
         .where(and(eq(conversations.projectId, projectId), eq(conversations.id, conversationId)))
         .run()
+      return false
     })
 
-    deleteRows()
+    const sourcePreserved = deleteRows()
     this.appendEvent({
       projectId,
       type: "conversation.deleted",
@@ -470,7 +477,7 @@ export class ConversationStore extends StoreBase {
       payload: { projectId, deletedConversationId: conversationId },
     })
 
-    return { deletedConversationId: conversationId }
+    return { deletedConversationId: conversationId, sourcePreserved }
   }
 
   getConversationModelMessages(

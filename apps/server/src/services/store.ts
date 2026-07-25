@@ -110,6 +110,7 @@ import {
 } from "@socrates/providers"
 import { SocratesError } from "@socrates/shared"
 import os from "node:os"
+import fs from "node:fs"
 import path from "node:path"
 import type { DatabaseHandle } from "../db/client"
 import { ApprovalStore } from "./store/approvalStore"
@@ -149,6 +150,7 @@ import type {
 } from "./store/types"
 import { UserStore } from "./store/userStore"
 import { RetrievalStore } from "./retrieval/retrievalStore"
+import { CanonicalWorkStore, toClassicProjectedMessage } from "./workState/canonicalWorkStore"
 
 export type {
   AgentContext,
@@ -162,6 +164,8 @@ export type {
   UploadedAttachmentInput,
   UploadedResourceInput,
 } from "./store/types"
+
+const messageRoleOrder = (role: string): number => role === "user" ? 0 : role === "assistant" ? 1 : 2
 
 export class SocratesStore {
   private readonly events: EventStore
@@ -187,6 +191,7 @@ export class SocratesStore {
   private readonly embeddings: EmbeddingStore
   private readonly retrieval: RetrievalStore
   private readonly contextCompactions: ContextCompactionStore
+  private readonly canonicalWork: CanonicalWorkStore | undefined
   private ollamaChatModels: ModelOption[] = []
   private ollamaChatModelsCheckedAt = 0
   private memoryAgentScheduler: ReturnType<typeof setInterval> | undefined
@@ -196,7 +201,7 @@ export class SocratesStore {
     private readonly handle: DatabaseHandle,
     embeddingProvider?: EmbeddingProvider,
     private readonly credentials?: ProviderCredentialResolver,
-    options: { socratesHome?: string; memoryProvider?: ModelProvider } = {},
+    options: { socratesHome?: string; memoryProvider?: ModelProvider; v2FlowEnabled?: boolean } = {},
   ) {
     this.events = new EventStore(handle)
     const context: StoreContext = {
@@ -213,7 +218,9 @@ export class SocratesStore {
     this.errors = new ErrorStore(context)
     this.approvals = new ApprovalStore(context)
     this.attachments = new AttachmentStore(context)
-    this.turns = new TurnStore(context, this.errors, this.attachments)
+    this.canonicalWork = options.v2FlowEnabled ? new CanonicalWorkStore(handle) : undefined
+    this.canonicalWork?.reconcileLegacyBridgeData()
+    this.turns = new TurnStore(context, this.errors, this.attachments, this.canonicalWork)
     this.feedback = new FeedbackStore(context)
     this.tools = new ToolStore(context)
     this.terminals = new TerminalStore(context)
@@ -753,7 +760,37 @@ export class SocratesStore {
     lastRuntimeConfig?: RuntimeConfig
   } {
     const conversation = this.conversations.getConversation(projectId, conversationId)
-    const toolRuns = this.tools.getConversationToolRuns(conversationId)
+    if (this.canonicalWork) {
+      const sessionId = (this.handle.sqlite.prepare(
+        "SELECT id FROM sessions WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
+      ).get(conversationId) as { id: string } | undefined)?.id
+      if (sessionId) {
+        const projected = this.canonicalWork.listConversationMessages(conversationId)
+          .map((message) => toClassicProjectedMessage(message, conversationId, sessionId))
+        const projectedIds = new Set(projected.map((message) => message.id))
+        const native = conversation.messages.filter((message) =>
+          !projectedIds.has(message.id) && !this.canonicalWork?.isLegacyShadowMessage("classic", message.id)
+        )
+        conversation.messages = [...native, ...projected]
+          .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || messageRoleOrder(left.role) - messageRoleOrder(right.role) || left.id.localeCompare(right.id))
+      }
+      const projectedPartialTurns = this.canonicalWork.listConversationPartialTurns(conversationId)
+      const projectedTurnIds = new Set(projectedPartialTurns.map((turn) => turn.turnId))
+      const nativePartialTurns = conversation.partialTurns?.filter((turn) => !projectedTurnIds.has(turn.turnId)) ?? []
+      const partialTurns = [...nativePartialTurns, ...projectedPartialTurns]
+      if (partialTurns.length > 0) conversation.partialTurns = partialTurns
+      else delete conversation.partialTurns
+    }
+    const nativeToolRuns = this.tools.getConversationToolRuns(conversationId)
+    const sessionId = (this.handle.sqlite.prepare(
+      "SELECT id FROM sessions WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
+    ).get(conversationId) as { id: string } | undefined)?.id
+    const projectedToolRuns = this.canonicalWork && sessionId
+      ? this.canonicalWork.listConversationToolRuns(conversationId, sessionId)
+      : []
+    const projectedToolIds = new Set(projectedToolRuns.map((tool) => tool.toolCallId))
+    const toolRuns = [...nativeToolRuns.filter((tool) => !projectedToolIds.has(tool.toolCallId)), ...projectedToolRuns]
+      .sort((left, right) => (left.startedAt ?? "").localeCompare(right.startedAt ?? "") || left.toolCallId.localeCompare(right.toolCallId))
     const usageReports = this.modelTelemetry.getConversationUsageReportBundle(conversationId)
     return {
       ...conversation,
@@ -777,11 +814,16 @@ export class SocratesStore {
     return this.conversations.autoTitleConversation(projectId, conversationId, title, expectedTitle)
   }
 
-  deleteConversation(projectId: string, conversationId: string, beforeDelete?: () => void): { deletedConversationId: string } {
+  deleteConversation(
+    projectId: string,
+    conversationId: string,
+    beforeDelete?: () => { preserveSource?: boolean } | void,
+  ): { deletedConversationId: string } {
     this.terminals.stopConversationTerminals(conversationId)
     const deleted = this.conversations.deleteConversation(projectId, conversationId, beforeDelete)
-    this.retrieval.deleteConversation(projectId, conversationId)
-    return deleted
+    if (deleted.sourcePreserved) this.retrieval.enqueueRebuild(projectId, "classic_source_projection_detached")
+    else this.retrieval.deleteConversation(projectId, conversationId)
+    return { deletedConversationId: deleted.deletedConversationId }
   }
 
   rebuildProjectRetrieval(projectId: string, reason: string): void {
@@ -841,9 +883,57 @@ export class SocratesStore {
     conversationId: string,
     options: { includeImageParts?: boolean } = {},
   ): ConversationModelMessage[] {
-    return this.conversations.getConversationModelMessages(projectId, conversationId, {
+    const native = this.conversations.getConversationModelMessages(projectId, conversationId, {
       ...options,
       readAttachmentDataUrl: (attachment) => this.attachments.readAttachmentDataUrl(attachment),
+    })
+    if (!this.canonicalWork) return native
+    const projectedRecords = this.canonicalWork.listConversationMessages(conversationId)
+    const projected = projectedRecords
+      .filter((message) => ["user", "assistant", "system", "developer"].includes(message.role) && message.status === "completed")
+      .map((message): ConversationModelMessage => {
+        const base = {
+          role: message.role as ConversationModelMessage["role"],
+          content: message.content,
+          id: message.sourceMessageId,
+          turnId: message.sourceTurnId,
+        }
+        if (message.role !== "user" || message.classicAttachments.length === 0) return base
+        const references = message.classicAttachments.map((attachment) =>
+          `[Attachment: ${attachment.fileName} · ${attachment.mimeType} · ${attachment.sizeBytes} bytes · ${attachment.uri}]`
+        ).join("\n")
+        const images = message.classicAttachments.filter((attachment) => attachment.kind === "image")
+        if (!options.includeImageParts || images.length === 0) {
+          return { ...base, content: message.content.trim() ? `${message.content}\n\n${references}` : references }
+        }
+        const parts: ConversationModelMessage["content"] = [{
+          type: "text",
+          text: [message.content.trim(), references].filter(Boolean).join("\n\n"),
+        }]
+        for (const image of images) {
+          try {
+            const data = fs.readFileSync(image.uri)
+            parts.push({ type: "image", mediaType: image.mimeType, data: `data:${image.mimeType};base64,${data.toString("base64")}`, fileName: image.fileName })
+          } catch {
+            // The attachment reference remains in context if the file is unavailable.
+          }
+        }
+        return { ...base, content: parts }
+      })
+    const projectedIds = new Set(projected.map((message) => message.id))
+    const createdAtByMessageId = new Map(projectedRecords.map((message) => [message.sourceMessageId, message.createdAt]))
+    const nativeTimes = this.handle.sqlite.prepare(
+      "SELECT id, created_at AS createdAt FROM messages WHERE conversation_id = ?",
+    ).all(conversationId) as Array<{ id: string; createdAt: string }>
+    for (const row of nativeTimes) if (!createdAtByMessageId.has(row.id)) createdAtByMessageId.set(row.id, row.createdAt)
+    const combined = [
+      ...native.filter((message) => !message.id || (!projectedIds.has(message.id) && !this.canonicalWork?.isLegacyShadowMessage("classic", message.id))),
+      ...projected,
+    ]
+    return combined.sort((left, right) => {
+      const leftId = left.id ?? ""
+      const rightId = right.id ?? ""
+      return (createdAtByMessageId.get(leftId) ?? "").localeCompare(createdAtByMessageId.get(rightId) ?? "") || messageRoleOrder(left.role) - messageRoleOrder(right.role) || leftId.localeCompare(rightId)
     })
   }
 

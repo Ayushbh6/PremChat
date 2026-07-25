@@ -2,6 +2,8 @@
 
 Phase 1 establishes one model-execution boundary and one answer-owned finalization contract for Classic and Flow. It does not implement Phase 2 goal routing/context changes, Phase 3 canonical cross-view persistence, or Phase 4 Flow UI work.
 
+The Phase 3 real-provider verification later hardened this same boundary: known provider-level non-JSON/no-object structured failures now consume the existing bounded repair attempt instead of bypassing it. Exhausted repair still fails closed and cannot persist a malformed answer or goal transition.
+
 ## Implemented Boundary
 
 Every production model call in `packages/core` and the server-owned Global Memory Agent path now enters through `packages/core/src/agent/AgentRuntime.ts`. The removed `StructuredToolAgentRunner` is not retained as a wrapper or fallback. The shared runtime supports three explicit invocation shapes:

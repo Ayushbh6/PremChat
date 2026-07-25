@@ -1640,6 +1640,68 @@ export const v2ClassicMessageLinks = sqliteTable(
   }),
 )
 
+// Canonical work identity is deliberately source-referential. A task and its
+// visible messages have one physical owner (Classic or Flow); view projections
+// below point at that owner instead of copying Q&A into the other runtime.
+// The legacy bridge tables remain for non-destructive migration and rollback.
+export const workTasks = sqliteTable(
+  "work_tasks",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull(),
+    goalId: text("goal_id"),
+    sourceRuntime: text("source_runtime").notNull(),
+    sourceTurnId: text("source_turn_id").notNull(),
+    startedAt: text("started_at").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    metadataJson: text("metadata_json"),
+  },
+  (table) => ({
+    sourceIdx: uniqueIndex("work_tasks_source_idx").on(table.sourceRuntime, table.sourceTurnId),
+    goalStartedIdx: index("work_tasks_goal_started_idx").on(table.goalId, table.startedAt),
+    projectStartedIdx: index("work_tasks_project_started_idx").on(table.projectId, table.startedAt),
+    sourceRuntimeCheck: check("work_tasks_source_runtime_check", sql`${table.sourceRuntime} IN ('classic', 'v2_flow')`),
+  }),
+)
+
+export const workMessages = sqliteTable(
+  "work_messages",
+  {
+    id: text("id").primaryKey(),
+    taskId: text("task_id").notNull(),
+    sourceRuntime: text("source_runtime").notNull(),
+    sourceMessageId: text("source_message_id").notNull(),
+    role: text("role").notNull(),
+    sourceCreatedAt: text("source_created_at").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => ({
+    sourceIdx: uniqueIndex("work_messages_source_idx").on(table.sourceRuntime, table.sourceMessageId),
+    taskCreatedIdx: index("work_messages_task_created_idx").on(table.taskId, table.sourceCreatedAt),
+    sourceRuntimeCheck: check("work_messages_source_runtime_check", sql`${table.sourceRuntime} IN ('classic', 'v2_flow')`),
+  }),
+)
+
+export const conversationTaskProjections = sqliteTable(
+  "conversation_task_projections",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id").notNull(),
+    taskId: text("task_id").notNull(),
+    position: integer("position").notNull(),
+    reason: text("reason").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => ({
+    conversationTaskIdx: uniqueIndex("conversation_task_projections_task_idx").on(table.conversationId, table.taskId),
+    conversationPositionIdx: uniqueIndex("conversation_task_projections_position_idx").on(table.conversationId, table.position),
+    taskIdx: index("conversation_task_projections_work_task_idx").on(table.taskId),
+    positionCheck: check("conversation_task_projections_position_check", sql`${table.position} > 0`),
+    reasonCheck: check("conversation_task_projections_reason_check", sql`${table.reason} IN ('origin', 'goal_home', 'legacy_bridge')`),
+  }),
+)
+
 export const v2Turns = sqliteTable(
   "v2_turns",
   {

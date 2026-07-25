@@ -218,6 +218,13 @@
       "when": 1784636760181,
       "tag": "0030_happy_firelord",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1785016300010,
+      "tag": "0031_shocking_alex_power",
+      "breakpoints": true
     }
   ]
 }

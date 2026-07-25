@@ -7,12 +7,14 @@ import { activeTurnStatuses, defaultConversationTitle, deriveConversationTitle, 
 import type { CreatedTurn } from "./types"
 import type { ErrorStore } from "./errorStore"
 import type { AttachmentStore } from "./attachmentStore"
+import type { CanonicalWorkStore } from "../workState/canonicalWorkStore"
 
 export class TurnStore extends StoreBase {
   constructor(
     context: ConstructorParameters<typeof StoreBase>[0],
     private readonly errors: ErrorStore,
     private readonly attachments?: AttachmentStore,
+    private readonly canonicalWork?: CanonicalWorkStore,
   ) {
     super(context)
   }
@@ -21,13 +23,14 @@ export class TurnStore extends StoreBase {
     const conversation = this.mustGetConversationRow(projectId, conversationId)
     const seamlessBridge = this.handle.db.select().from(v2ClassicConversationBridges)
       .where(eq(v2ClassicConversationBridges.conversationId, conversationId)).limit(1).get()
-    if (seamlessBridge?.activeOwner === "v2") {
+    if (!this.canonicalWork && seamlessBridge?.activeOwner === "v2") {
       throw new SocratesError(
         "classic_focus_owned_by_seamless",
         "This bridged focus is currently owned by Seamless View. Use Open in Classic from its Focus ledger before sending here.",
         { recoverable: true },
       )
     }
+    this.canonicalWork?.assertConversationHasNoActiveProjectedTask(conversationId)
     const content = payload.content.trim()
     const attachmentIds = payload.attachmentIds ?? []
     if (!content && attachmentIds.length === 0) {
