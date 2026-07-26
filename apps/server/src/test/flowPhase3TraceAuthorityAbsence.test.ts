@@ -7,10 +7,12 @@ const read = (relative: string) => fs.readFileSync(path.join(root, relative), "u
 
 describe("Flow convergence Phase 3 trace authority absence", () => {
   it("uses one shared main trace executor from both view adapters", () => {
-    const classic = read("apps/server/src/ws/commandHandlers/chatMessageSend.ts")
+    const classic = read("apps/server/src/ws/classicToolExecutors.ts")
     const flow = read("apps/server/src/v2/toolExecutors.ts")
-    expect(classic).toContain("retrieveUnifiedMainToolTraces")
-    expect(flow).toContain("retrieveUnifiedMainToolTraces")
+    const shared = read("apps/server/src/services/mainToolExecutors.ts")
+    expect(classic).toContain("createMainToolExecutors")
+    expect(flow).toContain("createMainToolExecutors")
+    expect(shared).toContain("retrieveUnifiedMainToolTraces")
   })
 
   it("removes the Flow-only trace adapter and lexical downgrade", () => {
@@ -28,6 +30,6 @@ describe("Flow convergence Phase 3 trace authority absence", () => {
     expect(mainBlock).toContain('["presented_context", "current_goal", "project"]')
     expect(mainBlock).not.toContain("current_conversation")
     expect(inspectBlock).not.toContain("turnId")
-    expect(read("apps/server/src/services/store.ts")).toContain("turnId: _turnId")
+    expect(read("apps/server/src/services/retrieval/unifiedMainTraceService.ts")).toContain("turnId: _turnId")
   })
 })

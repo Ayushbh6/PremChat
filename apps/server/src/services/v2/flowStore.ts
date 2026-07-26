@@ -69,6 +69,7 @@ import {
   toFlowProjectedMessage,
   type WorkSourceRuntime,
 } from "../workState/canonicalWorkStore"
+import { persistGoalFinalization } from "./goalFinalizationStore"
 import {
   conversations,
   messageAttachments,
@@ -999,32 +1000,7 @@ export class V2FlowStore {
   }
 
   finalizeGoal(projectId: string, flowId: string, goalId: string, turnId: string, finalization: GoalFinalization): void {
-    this.requireFlow(projectId, flowId)
-    const goal = this.handle.db.select().from(v2Goals).where(and(eq(v2Goals.id, goalId), eq(v2Goals.flowId, flowId))).limit(1).get()
-    if (!goal) return
-    const now = nowIso()
-    const requestedStatus = finalization.state === "active" ? "foreground" : finalization.state
-    const nextStatus = goal.kind === "general" ? "foreground" : requestedStatus
-    this.handle.sqlite.transaction(() => {
-      if (goal.status !== nextStatus) {
-        this.handle.db.update(v2Goals).set({
-          status: nextStatus,
-          summary: finalization.note,
-          lastActiveAt: now,
-          completedAt: nextStatus === "completed" ? now : null,
-          updatedAt: now,
-        }).where(eq(v2Goals.id, goal.id)).run()
-        this.insertGoalTransition({
-          flowId, goalId, turnId, fromStatus: goal.status as V2Goal["status"], toStatus: nextStatus,
-          reason: finalization.state === "completed" ? "completed" : finalization.state === "blocked" ? "blocked" : finalization.state === "discarded" ? "discarded" : "router_decision",
-          note: finalization.note, createdAt: now,
-        })
-      } else {
-        this.handle.db.update(v2Goals).set({ summary: finalization.note, lastActiveAt: now, updatedAt: now }).where(eq(v2Goals.id, goal.id)).run()
-      }
-      // Lifecycle and view selection are deliberately independent.
-      // A completed, blocked, or discarded goal will remain selected until an explicit routing or user focus decision selects another goal.
-    })()
+    persistGoalFinalization(this.handle, { projectId, flowId, goalId, turnId, finalization })
   }
 
   getClassicGoalForTurn(turnId: string): ActiveGoalCard | undefined {
@@ -1072,9 +1048,14 @@ export class V2FlowStore {
         if (input.action === "archive" && this.hasActiveGoalWork(input.flowId, target.id)) {
           throw new SocratesError("v2_focus_still_active", "This focus still has a running task, Terminal, or approval and cannot be archived.", { recoverable: true })
         }
-        const current = flow.foregroundGoalId
-          ? this.handle.db.select().from(v2Goals).where(eq(v2Goals.id, flow.foregroundGoalId)).limit(1).get()
-          : undefined
+        // `foregroundGoalId` is the selected presentation target and may point
+        // at a parked/completed goal. Lifecycle switching must demote the row
+        // that is actually foreground, otherwise promoting the selected parked
+        // goal collides with the one-foreground partial unique index.
+        const current = this.handle.db.select().from(v2Goals).where(and(
+          eq(v2Goals.flowId, input.flowId),
+          eq(v2Goals.status, "foreground"),
+        )).limit(1).get()
         const writeTransition = (row: typeof v2Goals.$inferSelect, toStatus: string, reason: V2GoalTransition["reason"], note: string) => {
           if (row.status === toStatus) return
           this.handle.db.update(v2Goals).set({

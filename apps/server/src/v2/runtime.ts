@@ -23,6 +23,7 @@ import { listWorkspaceEnvKeyCandidates, readWorkspaceEnvValue } from "@socrates/
 import type { SocratesStore } from "../services/store"
 import { createV2ContextCompressionRuntime } from "../services/v2/contextCompressionRuntime"
 import type { V2ContinuedTerminalTask, V2FlowStore, V2ReadyTerminalTask } from "../services/v2/flowStore"
+import { buildFlowWorkingMessages } from "../services/v2/flowWorkingContext"
 import { ActiveTurns } from "../ws/activeTurns"
 import { makeV2Event } from "./eventSender"
 import { resolveFlowGoal } from "./goalRoutingCoordinator"
@@ -466,7 +467,7 @@ export class V2ExecutionRuntime {
       const selectedModel =
         this.deps.sharedStore.findAvailableModelOption(runtimeConfig.providerId, runtimeConfig.modelId, runtimeConfig.authMode ?? "api_key") ??
         findModelOption(runtimeConfig.providerId, runtimeConfig.modelId, runtimeConfig.authMode ?? "api_key")
-      const messages = await this.buildWorkingMessages({
+      const messages = await buildFlowWorkingMessages(this.deps.store, this.deps.sharedStore, {
         projectId: command.projectId,
         flowId: command.flowId,
         goalId: activeGoalId,
@@ -798,7 +799,7 @@ export class V2ExecutionRuntime {
       }, { projectId: command.projectId, flowId: command.flowId, goalId: activeGoalId, turnId: created.turn.id }, "main_agent")
 
       this.deps.sharedStore.indexV2TurnRetrieval(command.projectId, created.turn.id)
-      const postTurnMessages = await this.buildWorkingMessages({
+      const postTurnMessages = await buildFlowWorkingMessages(this.deps.store, this.deps.sharedStore, {
         projectId: command.projectId,
         flowId: command.flowId,
         goalId: activeGoalId,
@@ -860,31 +861,6 @@ export class V2ExecutionRuntime {
       this.terminals.endTurn(created.turn.id)
       this.activeTurns.delete(created.turn.id)
     }
-  }
-
-  private async buildWorkingMessages(input: {
-    projectId: string
-    flowId: string
-    goalId: string
-    query: string
-    includeImages: boolean
-    lateDeveloperContext?: string
-  }) {
-    const history = this.deps.store.getModelMessages(input.flowId, input.goalId, input.includeImages)
-    // Flow supplies the full active-goal conversation to the same Socrates
-    // runtime as Classic. The shared 170k/180k compactor owns history
-    // reduction; this view layer must not silently truncate a separate tail.
-    const retained = await this.deps.sharedStore.prepareBoundedGoalHistory({
-      projectId: input.projectId,
-      goalId: input.goalId,
-      query: input.query,
-      messages: history,
-    })
-    if (!input.lateDeveloperContext) return retained
-    const developer = { role: "developer" as const, content: `<socrates_runtime_context>\n<terminal_wake_context>${input.lateDeveloperContext}</terminal_wake_context>\n</socrates_runtime_context>` }
-    const lastUserIndex = retained.map((message) => message.role).lastIndexOf("user")
-    if (lastUserIndex < 0) return [...retained, developer]
-    return [...retained.slice(0, lastUserIndex), developer, ...retained.slice(lastUserIndex)]
   }
 
   private handleToolEvent(event: SocratesAgentEvent, scope: { projectId: string; flowId: string; goalId: string; turnId: string }): void {

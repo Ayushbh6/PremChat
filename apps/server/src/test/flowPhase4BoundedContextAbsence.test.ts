@@ -8,7 +8,8 @@ const read = (relative: string) => fs.readFileSync(path.join(root, relative), "u
 describe("Flow convergence Phase 4 bounded-context authority", () => {
   it("routes both production views through the shared bounded goal-history selector", () => {
     expect(read("apps/server/src/ws/commandHandlers/chatMessageSend.ts")).toContain("prepareBoundedGoalHistory")
-    expect(read("apps/server/src/v2/runtime.ts")).toContain("prepareBoundedGoalHistory")
+    expect(read("apps/server/src/v2/runtime.ts")).toContain("buildFlowWorkingMessages")
+    expect(read("apps/server/src/services/v2/flowWorkingContext.ts")).toContain("prepareBoundedGoalHistory")
     expect(read("apps/server/src/services/store.ts")).toContain("selectBoundedGoalHistory")
   })
 

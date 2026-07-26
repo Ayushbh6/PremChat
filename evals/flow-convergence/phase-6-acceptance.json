@@ -1,0 +1,50 @@
+{
+  "phase": 6,
+  "date": "2026-07-26",
+  "branch": "codex/flow-convergence",
+  "isolatedState": true,
+  "provider": {
+    "providerId": "openrouter",
+    "models": [
+      "deepseek/deepseek-v4-flash",
+      "deepseek/deepseek-v4-pro"
+    ]
+  },
+  "cases": [
+    { "id": 1, "name": "Classic multi-turn goal continuation", "status": "passed", "evidence": "real_browser" },
+    { "id": 2, "name": "Classic to Flow while idle", "status": "passed", "evidence": "real_browser" },
+    { "id": 3, "name": "Classic to Flow during a running turn", "status": "passed", "evidence": "real_browser_and_regression_test" },
+    { "id": 4, "name": "Next message using Flow projection", "status": "passed", "evidence": "real_browser" },
+    { "id": 5, "name": "Flow to Classic during a running turn", "status": "passed", "evidence": "real_browser" },
+    { "id": 6, "name": "Flow-origin work opened lazily in Classic", "status": "passed", "evidence": "real_browser_and_sqlite" },
+    { "id": 7, "name": "Completed goal remains selected", "status": "passed", "evidence": "real_browser_and_unit_test" },
+    { "id": 8, "name": "What retains exact meaning", "status": "passed", "evidence": "real_browser_and_sqlite" },
+    { "id": 9, "name": "Long goal with hundreds of tasks", "status": "passed", "evidence": "500_goal_500_task_integration_fixture" },
+    { "id": 10, "name": "Real DeepSeek malformed-tool recovery", "status": "passed", "evidence": "openrouter_live_provider" },
+    { "id": 11, "name": "Real DeepSeek final-answer integrity", "status": "passed", "evidence": "openrouter_live_provider_and_real_browser" },
+    { "id": 12, "name": "Reconciliation and exact trace retrieval across both views", "status": "passed", "evidence": "real_sqlite_and_shared_trace_service" }
+  ],
+  "liveProvider": {
+    "malformedToolCalls": 2,
+    "firstErrorCode": "invalid_tool_input",
+    "finalAnswerDeltaCount": 0,
+    "finalMarkerPresent": true,
+    "finalState": "completed"
+  },
+  "livePersistence": {
+    "classicPhysicalMessages": 9,
+    "flowPhysicalMessages": 6,
+    "canonicalMessageReferences": 15,
+    "legacyMessageLinks": 0,
+    "bridgeImportTurns": 0,
+    "canonicalTasks": 8,
+    "classicTaskProjections": 8,
+    "classicHomes": 2,
+    "exactWhatPhysicalRows": 1,
+    "exactWhatCanonicalRows": 1,
+    "crossViewTraceEqual": true,
+    "traceResultCount": 4,
+    "traceLeaksTurnId": false,
+    "persistedModelCostUsd": 0.156608
+  }
+}

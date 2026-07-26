@@ -1,27 +1,14 @@
-import type {
-  ProjectResource,
-  TraceRetrieveMainToolInput,
-} from "@socrates/contracts"
 import type { McpRuntime } from "@socrates/mcp"
-import type { ToolExecutors } from "@socrates/core"
-import { SocratesError } from "@socrates/shared"
 import {
-  applyPatchWorkspace,
-  editWorkspace,
   isWorkspaceMutationLocked,
-  readWorkspacePath,
-  searchWorkspace,
   shouldSerializeBashInput,
   withWorkspaceMutationLock,
 } from "@socrates/workspace"
+import { createMainToolExecutors } from "../services/mainToolExecutors"
 import type { V2FlowStore } from "../services/v2/flowStore"
 import type { SocratesStore } from "../services/store"
 import type { ActiveTurns } from "../ws/activeTurns"
-import { fetchUrlForTool } from "../ws/urlFetch"
-import { currentRuntimeTime } from "../services/store/runtimeContext"
 import type { V2TerminalRuntime } from "./terminalRuntime"
-
-const docsMutationOperations = new Set(["edit", "patch_section"])
 
 export type V2ToolExecutorsInput = {
   flowStore: V2FlowStore
@@ -37,44 +24,15 @@ export type V2ToolExecutorsInput = {
   exposeMcpServer?: (serverId: string) => void
 }
 
-/**
- * V2 deliberately reuses the same low-level Socrates tools and the same
- * `.socrates` / `~/.Socrates` memory services as Classic. The only replaced
- * pieces are conversation-owned persistence: traces, turn evidence, tool rows,
- * and Terminal rows are read/written through V2FlowStore.
- */
-export const createV2ToolExecutors = (input: V2ToolExecutorsInput): ToolExecutors => {
-  let skillsDiscoverySeen = false
-  let skillsAvailable: boolean | undefined
-  const withFreshness = <C extends object>(context: C): C & { fileFreshness?: ReturnType<ActiveTurns["getFileFreshness"]> } => {
-    const tracker = input.activeTurns.getFileFreshness(input.turnId)
-    return tracker ? { ...context, fileFreshness: tracker } : context
-  }
-  const hasVisibleSkills = (): boolean => {
-    skillsAvailable ??= input.sharedStore.runSkillsTool(input.projectId, { operation: "list", n: 1 }).totalMatches > 0
-    return skillsAvailable
-  }
-  const requireSkillsDiscovery = (toolName: "read" | "list_project_resources", resourcePath?: string): void => {
-    if (skillsDiscoverySeen || !hasVisibleSkills()) return
-    throw new SocratesError(
-      "skills_discovery_required",
-      `Before using ${toolName} for uploaded project resources, call skills({ operation: "list" }) first.`,
-      {
-        recoverable: true,
-        details: { toolName, ...(resourcePath ? { resourcePath } : {}), requiredTool: "skills", requiredOperation: "list" },
-      },
-    )
-  }
-
-  return {
-    read: (toolInput, context) => {
-      if (isProjectResourceRead(toolInput.path)) requireSkillsDiscovery("read", toolInput.path)
-      return readWorkspacePath(toolInput, withFreshness(context))
-    },
-    search: (toolInput, context) => searchWorkspace(toolInput, context),
-    url_fetch: (toolInput, context) => fetchUrlForTool(toolInput, context.abortSignal),
-    edit: (toolInput, context) => editWorkspace(toolInput, withFreshness(context)),
-    apply_patch: (toolInput, context) => applyPatchWorkspace(toolInput, withFreshness(context)),
+/** Flow supplies only source-owned Terminal, wait, skill-archive, and memory-note adapters. */
+export const createV2ToolExecutors = (input: V2ToolExecutorsInput) => createMainToolExecutors({
+  store: input.sharedStore,
+  projectId: input.projectId,
+  turnId: input.turnId,
+  activeTurns: input.activeTurns,
+  ...(input.mcpRuntime ? { mcpRuntime: input.mcpRuntime } : {}),
+  ...(input.exposeMcpServer ? { exposeMcpServer: input.exposeMcpServer } : {}),
+  runtime: {
     bash: async (toolInput, context) => {
       const execute = () => input.terminals.execute(toolInput, {
         projectId: input.projectId,
@@ -96,16 +54,8 @@ export const createV2ToolExecutors = (input: V2ToolExecutorsInput): ToolExecutor
       goalId: input.goalId,
       turnId: input.turnId,
     }),
-    current_time: async () => currentRuntimeTime(),
-    trace_retrieve: (toolInput) => input.sharedStore.retrieveUnifiedMainToolTraces({
-      projectId: input.projectId,
-      presentedConversationId: input.flowId,
-      goalId: input.goalId,
-      request: toolInput as TraceRetrieveMainToolInput,
-    }),
-    memory_search: (toolInput) => input.sharedStore.searchMemory(input.projectId, toolInput, false),
-    tool_docs: async (toolInput) => input.sharedStore.runToolDocsTool(input.projectId, toolInput),
-    skills: async (toolInput, context) => {
+    traceScope: () => ({ presentedConversationId: input.flowId, goalId: input.goalId }),
+    runSkills: async (toolInput, context) => {
       const attachedArchive = toolInput.operation === "preview_import" && toolInput.attachmentPath
         ? input.flowStore.readCurrentTurnSkillZip({
             projectId: input.projectId,
@@ -114,30 +64,16 @@ export const createV2ToolExecutors = (input: V2ToolExecutorsInput): ToolExecutor
             attachmentPath: toolInput.attachmentPath,
           })
         : undefined
-      const output = toolInput.operation === "preview_import" || toolInput.operation === "commit_import"
-        ? await input.sharedStore.runSkillsImportTool(input.projectId, toolInput, {
+      return toolInput.operation === "preview_import" || toolInput.operation === "commit_import"
+        ? input.sharedStore.runSkillsImportTool(input.projectId, toolInput, {
             conversationId: input.flowId,
             turnId: input.turnId,
             ...(context.abortSignal ? { signal: context.abortSignal } : {}),
             ...(attachedArchive ? { attachedArchive } : {}),
           })
         : input.sharedStore.runSkillsTool(input.projectId, toolInput)
-      if (["list", "describe", "search", "read"].includes(toolInput.operation)) skillsDiscoverySeen = true
-      return output
     },
-    skill_manager: async (toolInput, context) => {
-      if (toolInput.operation === "create") {
-        const { skill } = await input.sharedStore.buildProjectSkill(
-          input.projectId,
-          { name: toolInput.name, request: toolInput.request },
-          { conversationId: context.conversationId, sessionId: context.sessionId, turnId: context.turnId },
-        )
-        return { operation: "create", name: skill.name, scope: "project", status: "created" }
-      }
-      const deleted = input.sharedStore.deleteProjectSkill(input.projectId, toolInput.name)
-      return { operation: "delete", name: deleted.deletedSkillName, scope: "project", status: "deleted" }
-    },
-    memory_note: async (toolInput) => {
+    createMemoryNote: async (toolInput) => {
       const source = input.flowStore.getTurnMemorySource(input.projectId, input.flowId, input.turnId)
       return input.sharedStore.createMemoryNote(input.projectId, toolInput, {
         conversationId: input.flowId,
@@ -148,77 +84,6 @@ export const createV2ToolExecutors = (input: V2ToolExecutorsInput): ToolExecutor
         appendClassicEvent: false,
       })
     },
-    project_docs: (toolInput) => docsMutationOperations.has(toolInput.operation)
-      ? withWorkspaceMutationLock(input.workspacePath, async () => input.sharedStore.runProjectDocsTool(input.projectId, input.workspacePath, toolInput))
-      : Promise.resolve(input.sharedStore.runProjectDocsTool(input.projectId, input.workspacePath, toolInput)),
-    repo_docs: (toolInput) => docsMutationOperations.has(toolInput.operation)
-      ? withWorkspaceMutationLock(input.workspacePath, async () => input.sharedStore.runRepoDocsTool(input.projectId, input.workspacePath, toolInput))
-      : Promise.resolve(input.sharedStore.runRepoDocsTool(input.projectId, input.workspacePath, toolInput)),
-    soul: async (toolInput) => input.sharedStore.runSoulTool(input.projectId, toolInput),
-    user_profile: async (toolInput) => input.sharedStore.runUserProfileTool(input.projectId, toolInput),
-    list_project_resources: async (toolInput) => {
-      requireSkillsDiscovery("list_project_resources")
-      return listProjectResourcesForTool(input.sharedStore, input.projectId, toolInput)
-    },
-    mcp_registry: async (toolInput, context, resolvedSecretEnv) => {
-      if (!input.mcpRuntime) throw new SocratesError("mcp_runtime_unavailable", "MCP runtime is not available.", { recoverable: true })
-      const output = await input.mcpRuntime.handleRegistryTool(toolInput, {
-        workspacePath: context.workspacePath,
-        ...(resolvedSecretEnv ? { resolvedSecretEnv } : {}),
-      })
-      if (output.tools && output.tools.length > 0) {
-        input.exposeMcpServer?.(output.server?.id ?? toolInput.id ?? toolInput.serverId ?? toolInput.name ?? toolInput.serverName ?? toolInput.preset ?? "playwright")
-      }
-      return output
-    },
-    mcp_dynamic: (toolInput, context) => {
-      if (!input.mcpRuntime) throw new SocratesError("mcp_runtime_unavailable", "MCP runtime is not available.", { recoverable: true })
-      return input.mcpRuntime.callDynamicTool(toolInput.dynamicName, toolInput.input, {
-        cwd: context.workspacePath,
-        sessionKey: input.flowId,
-        workspacePath: context.workspacePath,
-      })
-    },
-  }
-}
-
-const isProjectResourceRead = (value: string): boolean => {
-  const normalized = value.replaceAll("\\", "/")
-  return normalized.startsWith(".socrates/resources/") || normalized.includes("/.socrates/resources/")
-}
-
-const listProjectResourcesForTool = (
-  store: SocratesStore,
-  projectId: string,
-  input: Parameters<ToolExecutors["list_project_resources"]>[0],
-) => {
-  const charLimit = 20_000
-  const limit = input.limit ?? 25
-  const allResources = store.listResources(projectId).filter((resource) => input.kind ? resource.kind === input.kind : true)
-  const resources: Array<Omit<ProjectResource, "projectId">> = []
-  for (const resource of allResources) {
-    if (resources.length >= limit) break
-    const next = {
-      id: resource.id,
-      name: resource.name,
-      kind: resource.kind,
-      source: resource.source,
-      ...(resource.uri ? { uri: resource.uri } : {}),
-      ...(resource.mimeType ? { mimeType: resource.mimeType } : {}),
-      ...(resource.sizeBytes === undefined ? {} : { sizeBytes: resource.sizeBytes }),
-      status: resource.status,
-    }
-    if (JSON.stringify([...resources, next]).length > charLimit) break
-    resources.push(next)
-  }
-  const originalLength = JSON.stringify(allResources).length
-  const returnedLength = JSON.stringify(resources).length
-  const hiddenCount = allResources.length - resources.length
-  return {
-    resources,
-    summary: hiddenCount > 0 ? `Listed ${resources.length} of ${allResources.length} project resources.` : `Listed ${resources.length} project resources.`,
-    totalResources: allResources.length,
-    truncation: { truncated: hiddenCount > 0, charLimit, originalLength, returnedLength },
-    ...(hiddenCount > 0 ? { warnings: [`${hiddenCount} resources were omitted by the output cap.`] } : {}),
-  }
-}
+    mcpSessionKey: () => input.flowId,
+  },
+})

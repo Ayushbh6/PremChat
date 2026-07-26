@@ -1076,6 +1076,63 @@ describe("V2FlowStore isolation and lifecycle", () => {
     expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM conversations WHERE id = ?").get(conversationId)).toMatchObject({ count: 1 })
   })
 
+  it("promotes a selected parked goal from Classic without colliding with the actual foreground goal", () => {
+    const { handle, store } = setup()
+    const initial = store.ensureFlow("proj_one")
+    const general = initial.goals.find((goal) => goal.kind === "general")
+    if (!general) throw new Error("Expected General Conversation")
+    const created = store.createTurn({
+      projectId: "proj_one",
+      flowId: initial.flow.id,
+      clientMessageId: createId("v2msg"),
+      content: "Inspect README.md",
+      runtimeConfig,
+    })
+    const work = store.applyRouting({
+      projectId: "proj_one",
+      flowId: initial.flow.id,
+      turnId: created.turn.id,
+      messageId: created.userMessage.id,
+      messageContent: created.userMessage.content,
+      result: forcedCreateResult(store, initial.flow.id),
+    }).goal
+    store.completeTurn({
+      projectId: "proj_one",
+      flowId: initial.flow.id,
+      turnId: created.turn.id,
+      content: "README inspection is ready.",
+      goalFinalization: { state: "active", note: "Continue the README inspection." },
+    })
+    store.updateFocus({ projectId: "proj_one", flowId: initial.flow.id, goalId: general.id, action: "switch" })
+    store.updateFocus({ projectId: "proj_one", flowId: initial.flow.id, goalId: work.id, action: "select" })
+    const bridge = store.openFocusInClassic("proj_one", initial.flow.id, work.id)
+    const followUp = seedClassicTurn(handle, {
+      conversationId: bridge.conversationId,
+      sessionId: bridge.sessionId,
+      user: "Check README.md again.",
+      assistant: "Checking again.",
+      offset: 20,
+    })
+    const context = store.prepareClassicGoalRouting("proj_one", bridge.conversationId, [work.id])
+    const candidate = context.candidates.find((item) => item.goalId === work.id)
+    if (!candidate) throw new Error("Expected the selected parked work goal")
+
+    expect(() => store.applyClassicGoalRoute({
+      projectId: "proj_one",
+      conversationId: bridge.conversationId,
+      sessionId: bridge.sessionId,
+      turnId: followUp.turnId,
+      userMessageId: followUp.userMessageId,
+      userMessage: "Check README.md again.",
+      context,
+      route: { action: "use", candidates: [candidate.candidate], title: null },
+    })).not.toThrow()
+
+    const snapshot = store.getSnapshot("proj_one", initial.flow.id)
+    expect(snapshot.foregroundGoal).toMatchObject({ id: work.id, status: "foreground" })
+    expect(snapshot.goals.find((goal) => goal.id === general.id)?.status).toBe("parked")
+  })
+
   it("deletes one completed Flow exchange with its evidence and Classic projection", () => {
     const { handle, store } = setup()
     const flow = store.ensureFlow("proj_one").flow

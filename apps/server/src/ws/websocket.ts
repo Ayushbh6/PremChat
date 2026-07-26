@@ -9,7 +9,7 @@ import { ActiveTurns } from "./activeTurns"
 import type { ConversationTerminalManager } from "./conversationTerminals"
 import { ConversationSubscriptions } from "./conversationSubscriptions"
 import { handleInboundMessage } from "./commandDispatcher"
-import { resumeTerminalTask } from "./commandHandlers/chatMessageSend"
+import { resumeTerminalTask } from "./commandHandlers/chatTerminalResume"
 import { makeEvent, sendEvent } from "./eventSender"
 import type { V2FlowStore } from "../services/v2/flowStore"
 

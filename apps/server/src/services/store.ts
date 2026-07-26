@@ -85,7 +85,6 @@ import type {
   TraceRetrieveToolInput,
   TraceRetrieveToolOutput,
   TraceRetrieveMainToolInput,
-  TraceRetrieveMainToolOutput,
   UserProfileToolInput,
   UserProfileToolOutput,
   UpdateProjectWorkspaceRequest,
@@ -136,6 +135,7 @@ import { ResourceStore } from "./store/resourceStore"
 import { WorkerModelSettingsStore } from "./store/workerModelSettingsStore"
 import type { StoreContext } from "./store/shared"
 import { TraceStore } from "./store/traceStore"
+import { retrieveUnifiedMainToolTraces as retrieveUnifiedMainToolTracesFromAuthority } from "./retrieval/unifiedMainTraceService"
 import { TerminalStore } from "./store/terminalStore"
 import { ToolStore } from "./store/toolStore"
 import { TurnStore } from "./store/turnStore"
@@ -1402,19 +1402,11 @@ export class SocratesStore {
     presentedConversationId: string
     goalId: string
     request: TraceRetrieveMainToolInput
-  }): Promise<TraceRetrieveMainToolOutput> {
-    const request = traceRetrieveMainToolInputSchema.parse(input.request)
-    const globalInput = mainTraceRequestToGlobalInput(input.projectId, request)
-    const output = await this.retrieveGlobalToolTraces(globalInput, {
-      scope: request.operation === "inspect" ? "project" : request.scope ?? "project",
-      presentedConversationId: input.presentedConversationId,
-      goalId: input.goalId,
-    })
-    return {
-      results: output.results.map(({ projectTitle: _projectTitle, turnId: _turnId, ...result }) => result),
-      totalMatches: output.totalMatches,
-      ...(output.warnings ? { warnings: output.warnings } : {}),
-    }
+  }) {
+    return retrieveUnifiedMainToolTracesFromAuthority(
+      (request, authority) => this.retrieveGlobalToolTraces(request, authority),
+      input,
+    )
   }
 
   async prepareBoundedGoalHistory(input: {
@@ -1828,50 +1820,6 @@ const exactOccurrenceCount = (text: string, query: string): number => {
     offset = next + Math.max(1, query.length)
   }
   return count
-}
-
-const mainTraceRequestToGlobalInput = (
-  projectId: string,
-  request: TraceRetrieveMainToolInput,
-): TraceRetrieveGlobalToolInput => {
-  if (request.operation === "inspect") {
-    return {
-      operation: "inspect",
-      ...(request.resultNumber ? { resultNumber: request.resultNumber } : {}),
-      ...(request.conversationTitle ? { conversationTitle: request.conversationTitle } : {}),
-      ...(request.turnNo ? { turnNo: request.turnNo } : {}),
-      ...(request.charLimit ? { charLimit: request.charLimit } : {}),
-    }
-  }
-  const common = {
-    scope: "project" as const,
-    projectId,
-    ...(request.conversationTitle ? { conversationTitle: request.conversationTitle } : {}),
-    ...(request.role ? { role: request.role } : {}),
-    ...(request.createdAfter ? { createdAfter: request.createdAfter } : {}),
-    ...(request.createdBefore ? { createdBefore: request.createdBefore } : {}),
-    ...(request.limit ? { limit: request.limit } : {}),
-  }
-  if (request.mode === "audit") {
-    return {
-      ...common,
-      mode: "audit",
-      query: request.query,
-      ...(request.include ? { include: request.include } : {}),
-      ...(request.paths ? { paths: request.paths } : {}),
-      ...(request.command ? { command: request.command } : {}),
-      ...(request.toolNames ? { toolNames: request.toolNames } : {}),
-    }
-  }
-  if (request.mode === "semantic" || request.mode === "combined") {
-    return { ...common, mode: request.mode, query: request.query }
-  }
-  return {
-    ...common,
-    mode: "lexical",
-    ...(request.query ? { query: request.query } : {}),
-    ...("turnNo" in request && request.turnNo ? { turnNo: request.turnNo } : {}),
-  }
 }
 
 const toMainTraceSearchInput = (

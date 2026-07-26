@@ -38,6 +38,7 @@ export function useV2FlowRuntime({ projectId }: UseV2FlowRuntimeInput) {
   const [isLoadingEarlierGoals, setIsLoadingEarlierGoals] = useState(false);
   const [earlierGoalsError, setEarlierGoalsError] = useState<string | null>(null);
   const processedEventIdsRef = useRef(new Set<string>());
+  const activeProjectionRefreshInFlightRef = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -153,6 +154,22 @@ export function useV2FlowRuntime({ projectId }: UseV2FlowRuntimeInput) {
       if (!preserveView) setIsHydrating(false);
     }
   }, [projectId]);
+
+  useEffect(() => {
+    if (!state?.snapshot.activeTurn) return;
+    // A projected Classic turn publishes on the Classic socket while Flow is
+    // open. Re-read the canonical projection until that external source turn
+    // becomes terminal so a cross-view handoff cannot leave Flow visually
+    // stuck after the durable task has completed.
+    const timer = window.setInterval(() => {
+      if (activeProjectionRefreshInFlightRef.current) return;
+      activeProjectionRefreshInFlightRef.current = true;
+      void refresh({ preserveView: true }).finally(() => {
+        activeProjectionRefreshInFlightRef.current = false;
+      });
+    }, 1_500);
+    return () => window.clearInterval(timer);
+  }, [refresh, state?.snapshot.activeTurn?.id]);
 
   const loadEarlierMessages = useCallback(async () => {
     const snapshot = state?.snapshot;
