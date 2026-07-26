@@ -1,6 +1,6 @@
 # Socrates Flow North Star
 
-This document is the product-intent authority for how Classic and Flow must feel and behave as Socrates converges on one underlying runtime state. It defines the durable user model and invariants. `V2_FLOW_ARCHITECTURE.md` records the current implementation, migration constraints, and technical mechanics; `FLOW_CONVERGENCE_PHASE_4.md` records the implemented presentation endpoint. When current bridge mechanics conflict with this North Star, they are migration debt rather than product precedent.
+This document is the product-intent authority for how Classic and Flow must feel and behave as Socrates converges on one underlying runtime state. It defines the durable user model and invariants. `UNIFIED_SOCRATES_LIFECYCLE.md` is the detailed technical target and required cleanup boundary. `V2_FLOW_ARCHITECTURE.md` records current implementation and migration mechanics; `FLOW_CONVERGENCE_PHASE_*.md` files are historical evidence only. When current mechanics or phase reports conflict with this North Star or the unified lifecycle, they are migration debt rather than product precedent.
 
 ## User Promise
 
@@ -146,6 +146,8 @@ Operational standard:
 
 > If an ordinary follow-up or view transition requires Socrates to search simply to determine what the user means, context assembly has failed.
 
+Goal membership defines the eligible history corpus; it never authorizes injecting every task belonging to a large goal. The runtime always attaches the current task, its continuation chain, the goal capsule, active blockers/open decisions, and a small recent tail. Older task outcomes are selected through bounded shared retrieval and exact Q&A is inspected only when needed. Prompt projections enforce item and token/character caps even when a goal contains hundreds of tasks.
+
 ## Flow Navigation Hierarchy
 
 Flow navigation is a three-level drill-in, not a flat project-wide query list and not a giant nested tree:
@@ -223,6 +225,8 @@ Motion must respect reduced-motion preferences. State changes must remain unders
 
 When the user enters Flow from a Classic conversation, preserve the same conversation association, selected goal, current task, and canonical execution state. Flow changes the projection to the selected goal/task; it does not import or copy the work.
 
+If a Classic-origin task is already running, navigation does not migrate or restart it. The task completes with the Classic context projection fixed at its start while Flow subscribes to the same canonical live events and result. If Flow remains selected, the next user-authored task uses the Flow goal projection. Flow-to-Classic is symmetrical. View navigation never rebinds a running task.
+
 Returning to Classic opens the same originating conversation.
 
 ### Flow to Classic
@@ -238,16 +242,23 @@ Goal finalization belongs to the main Socrates turn that owns the answer, not to
 The target lifecycle is:
 
 ```text
-route and assemble context
+prepareTurnContext
+  -> Goal Router binds the exact goal/task
+  -> read-only pre-turn Memory Router retrieves for that resolved scope
   -> main Socrates tool loop
-  -> hard pre-final reconciliation checkpoint
+  -> same-Socrates progress checkpoints when a long task reaches a durable milestone
+  -> mandatory same-Socrates pre-final reconciliation checkpoint
   -> strict structured final result
   -> validate answer integrity
   -> persist the answer and its goal state atomically
   -> publish the completed answer to the UI
 ```
 
-The structured result contains the visible final answer, goal state, and a short goal note. No valid persisted assistant answer means no goal-state mutation. A malformed tool envelope, internal control text, empty answer, or unsupported completion claim fails the integrity gate and must not complete the goal.
+There is no post-evidence/post-turn Memory Router. Reconciliation judgment, writes, re-reads, and verification belong to the same main Socrates that performed the work. The remaining Memory Router is pre-turn and read-only.
+
+The structured result contains the visible final answer, goal state, and a short goal note. The final call does not choose or re-guess a goal; runtime applies state/note only to the goal already bound to the current task. No valid persisted assistant answer means no task completion or goal-state mutation. A malformed tool envelope, internal control text, empty answer, or unsupported completion claim fails the integrity gate and must not complete the goal.
+
+The canonical focus ledger stores compact goal/task/transition state, not transcripts, tools, files, patches, Terminal streams, or evidence dumps. Persistence may grow, but model and UI projections are always bounded and paginated. Main Socrates receives the resolved goal/task directly and has no mutable focus-ledger completion/update authority; exact older work comes through shared trace retrieval.
 
 ## Agent And Tool Homogeneity
 
@@ -278,7 +289,10 @@ The product is moving toward this North Star only when all of the following are 
 - Flow-origin work creates a Classic conversation only when the user asks to open it there.
 - Switching views does not copy canonical Q&A, tool history, or execution state.
 - Typical adjacent follow-ups start useful work without a context-reconstruction retrieval loop.
+- Goals with hundreds of tasks still receive a bounded prompt projection and exact older history remains retrievable.
 - The final visible answer is validated before its goal completion is committed.
+- No post-turn Memory Router or mutable main-agent focus ledger can finalize/update the bound goal.
+- Classic and Flow use one semantic trace contract and executor across presented-context, current-goal, and project scope.
 - Flow navigation drills from Projects to Goals to the selected goal's Queries without mixing levels in one scroll surface.
 - A live turn shows exactly one changing activity sentence beneath the orb; it never accumulates into a status list.
 - After completion, the answer takes the foreground, the orb recedes, and detailed execution collapses behind one disclosure.

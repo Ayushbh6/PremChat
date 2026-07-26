@@ -1,5 +1,7 @@
 # Flow Convergence Phase 2
 
+> Historical implementation report only. `UNIFIED_SOCRATES_LIFECYCLE.md` supersedes any lifecycle, history-bounding, ledger-scale, or router-ownership assumption recorded here.
+
 Phase 2 establishes goal continuity and correct pre-turn context in Classic and Flow. It does not perform the Phase 3 canonical message/turn persistence migration or the Phase 4 Projects to Goals to Queries navigation and live-orb UI work.
 
 ## Authoritative Pre-Turn Order

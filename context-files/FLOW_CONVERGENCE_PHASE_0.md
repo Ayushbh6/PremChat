@@ -1,5 +1,7 @@
 # Flow Convergence Phase 0 Baseline
 
+> Historical baseline only. `UNIFIED_SOCRATES_LIFECYCLE.md` now supersedes the lifecycle target: the accepted design has no post-evidence/post-turn Memory Router and no mutable main-agent focus-ledger completion authority. The inventory below remains evidence of the starting implementation, not an accepted workflow.
+
 This is the historical pre-refactor snapshot. `FLOW_CONVERGENCE_PHASE_1.md` records the implemented execution/finalization convergence and supersedes the runtime inventory below; the failure characterization remains the migration baseline.
 
 Phase 0 freezes the current execution and persistence topology before the convergence refactor begins. It does not change production routing, finalization, persistence, or UI behavior. Its purpose is to turn the July 25 failure into reproducible evidence and to make the later migration measurable.

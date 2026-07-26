@@ -1,5 +1,7 @@
 # Flow Convergence Phase 3
 
+> Historical implementation report only. `UNIFIED_SOCRATES_LIFECYCLE.md` supersedes any lifecycle, shared-tool, trace-scope, finalization, or canonical-state assumption recorded here.
+
 Phase 3 replaces Classic/Flow Q&A mirroring with canonical work identity and reference-based view projections. It preserves the Phase 1 shared execution/finalization path and the Phase 2 goal-routing order. It does not implement the Phase 4 Projects to Goals to Queries navigation or live-orb choreography.
 
 ## Canonical Ownership Model

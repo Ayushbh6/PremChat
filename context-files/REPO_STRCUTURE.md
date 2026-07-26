@@ -1,6 +1,6 @@
 # Socrates Repo Structure
 
-This document is the source of truth for the current Socrates repo structure. Socrates is a local-first coding agent with a web frontend, a backend runtime, a reusable agent core, provider-agnostic model access, and a clean workspace capability layer.
+This document is the source of truth for the current Socrates repo structure. Socrates is a local-first coding agent with a web frontend, a backend runtime, a reusable agent core, provider-agnostic model access, and a clean workspace capability layer. `UNIFIED_SOCRATES_LIFECYCLE.md` owns the target Classic/Flow lifecycle; current post-evidence router and mutable focus-ledger modules described here are convergence debt until removed.
 
 ## Current Shape
 
@@ -104,6 +104,7 @@ Socrates/
     FLOW_CONVERGENCE_PHASE_0.md
     FLOW_CONVERGENCE_PHASE_1.md
     FLOW_NORTH_STAR.md
+    UNIFIED_SOCRATES_LIFECYCLE.md
     FRONTEND_BACKEND_CONTRACT.md
     PROVIDER_USAGE.md
     REPO_STRCUTURE.md
@@ -124,7 +125,7 @@ Root `scripts/` owns opt-in maintenance, packaging, benchmark, and evaluation en
 
 ## Implemented V2 Flow Isolation
 
-`FLOW_NORTH_STAR.md` defines the durable target product intent for Classic and Flow as two views of one canonical Socrates work state. `V2_FLOW_ARCHITECTURE.md` records the released experimental implementation, migration constraints, and current technical mechanics.
+`FLOW_NORTH_STAR.md` defines the durable target product intent for Classic and Flow as two views of one canonical Socrates work state. `UNIFIED_SOCRATES_LIFECYCLE.md` defines the detailed shared lifecycle, context bounds, trace/ledger scale rules, and pre-merge cleanup boundary. `V2_FLOW_ARCHITECTURE.md` records the released experimental implementation, migration constraints, and current technical mechanics.
 
 The implementation uses namespaced modules inside the owning packages:
 
@@ -532,7 +533,7 @@ Phase 1 places one public `AgentRuntime` in `packages/core` below all model-driv
 
 Role boundaries:
 
-- Memory Router is a real `MemoryRouterAgent` built through the same prompt -> shared runtime -> scoped tool registry/executor -> strict structured validation -> usage/persistence pattern as other model-driven capabilities. Its pre-turn phase has only `memory_search`, backend automatic prefetch, a three-call cap, and exact read-only `readTargets`. Its post-evidence phase returns reconciliation plans only and always returns `goalFinalization: null`; the validated main-Socrates result is the sole model-derived goal-finalization authority.
+- Memory Router remains a real `MemoryRouterAgent` built through the same prompt -> shared runtime -> scoped tool registry/executor -> strict structured validation -> usage/persistence pattern as other model-driven capabilities. Its target responsibility is only the pre-turn `memory_search` phase after goal/task binding, with backend automatic prefetch, a three-call cap, and exact read-only `readTargets`. The currently implemented post-evidence phase is convergence debt; same-Socrates milestone/final checkpoints replace it.
 - Frontier is not a second conversational agent loop. It is a one-way model selection change inside `SocratesAgent.streamTurn`: after real substantive effort, the default model may request `handover_to_frontier` once; the normal typed approval pipeline always pauses for the user. Approval appends the tool result and complete prior task history, switches provider/model/runtime settings, removes the handover tool, and lets Frontier own the remainder of the task. Rejection persists the rejected call, removes the tool for the turn, and explicitly returns completion responsibility to Socrates. Driver answer deltas are buffered and discarded when an approved handover occurs so only Frontier supplies the user-visible answer.
 - Socrates writes workspace project memory, project notes, and repo docs through `project_docs` and `repo_docs`. It owns project-scoped active context in project notes and may create `memory_note` leads for the Memory Agent, preferably one and never more than two per user-turn. It does not write identity, user profile, or skills.
 - The Global Memory Agent writes global user profile through scoped edits, proposes/applies identity only through the confirmation policy, inspects full skills for freshness, and sends approved skill create/update tasks to the Skill Writer Agent. It uses `AgentRuntime` like Memory Router: normal scoped tool calls first, then one strict Zod journal output. Each successful run persists one `memory_agent_journal` row and refreshes a bounded generated ledger/next-run briefing; `read_memory_journal` provides capped list/read access to older runs without embeddings. It should skip project-local active context for global memory and close each memory note with one of `applied`, `already_represented`, `skipped`, or `proposed_skill` plus a one-line resolution.

@@ -1,5 +1,7 @@
 # Flow Convergence Phase 4
 
+> Historical implementation report only. `UNIFIED_SOCRATES_LIFECYCLE.md` is the current target for cross-view execution, bounded navigation/state, and remaining pre-merge cleanup.
+
 Phase 4 completes the planned Flow-convergence presentation layer on top of the canonical work identity delivered in Phase 3. It implements Projects to Goals to Queries navigation, persistent focus selection, and the live-orb to validated-answer choreography without introducing another router, runner, store, or semantic workflow.
 
 ## Delivered Product Contract

@@ -1,5 +1,7 @@
 # Flow Convergence Phase 1
 
+> Historical implementation report only. Its retained post-evidence Memory Router and compatibility finalization paths are now explicit convergence debt. `UNIFIED_SOCRATES_LIFECYCLE.md` is the target and requires their removal before merge.
+
 Phase 1 establishes one model-execution boundary and one answer-owned finalization contract for Classic and Flow. It does not implement Phase 2 goal routing/context changes, Phase 3 canonical cross-view persistence, or Phase 4 Flow UI work.
 
 The Phase 3 real-provider verification later hardened this same boundary: known provider-level non-JSON/no-object structured failures now consume the existing bounded repair attempt instead of bypassing it. Exhausted repair still fails closed and cannot persist a malformed answer or goal transition.
