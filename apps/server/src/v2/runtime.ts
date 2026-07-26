@@ -387,12 +387,11 @@ export class V2ExecutionRuntime {
     const completedModelCalls = new Set<string>()
     const responseMetadata = new Map<string, unknown>()
     const usageByCall = new Map<string, ModelUsage>()
-    let answerText = ""
     let reasoningText = ""
     let finalResult: SocratesFinalAnswer | undefined
     let goalId: string | undefined
-    let sawToolActivity = false
     let suspended = false
+    let durableTurnCommitted = false
     let frontierHandoverActive = false
     let lastActivitySignature = "routing:Finding the right focus…"
     const publishActivity = (activity: V2LiveActivity) => {
@@ -477,17 +476,6 @@ export class V2ExecutionRuntime {
       if (clarificationAnswer) {
         messages.push({ role: "user", content: `[Focus clarification answer: ${clarificationAnswer}]` })
       }
-      messages.push({
-        role: "developer",
-        content: [
-          "<v2_focus_runtime>",
-          `Current Focus id: ${activeGoalId}. Current Task id: ${created.turn.id}.`,
-          "Use focus_ledger to inspect the bounded project focus ledger when it helps, to keep the current focus summary useful after material changes, or to record a real blocker.",
-          "Call focus_ledger operation=complete_current only when this durable work focus is genuinely finished by this response. Never complete General Conversation. No completion tool call means the focus remains open.",
-          "The ledger cannot switch/archive focuses and cannot delete evidence. Those remain user/router lifecycle decisions.",
-          "</v2_focus_runtime>",
-        ].join("\n"),
-      })
       const promptContext = this.deps.sharedStore.getAgentContext(command.projectId)
       const stableCachePreludeSnapshot = this.deps.sharedStore.loadStableCachePreludeSnapshot(command.projectId, workspacePath)
       const memoryRouterModelSettings = this.deps.sharedStore.getWorkerModelSetting("memory_router")
@@ -528,7 +516,7 @@ export class V2ExecutionRuntime {
         promptContext,
         workspacePath,
         stableCachePreludeSnapshot,
-        finalAnswerMode: "structured",
+        completionMode: "main_structured",
         automaticMemorySearch: (memoryInput) => this.deps.sharedStore.searchMemory(command.projectId, memoryInput, true),
         ...(activeGoal ? {
           activeGoal: {
@@ -661,8 +649,6 @@ export class V2ExecutionRuntime {
           finalResult = event.result
         } else if (event.type === "model.answer.delta") {
           publishActivity(createV2LiveActivity(created.turn.id, "preparing_answer", "Preparing the answer…"))
-          answerText += event.text
-          this.emit("v2.message.delta", { messageId: streamMessageId, channel: "answer", text: event.text, ...(event.modelCallId ? { modelCallId: event.modelCallId } : {}) }, { projectId: command.projectId, flowId: command.flowId, goalId: activeGoalId, turnId: created.turn.id }, frontierHandoverActive ? "frontier_agent" : "main_agent")
         } else if (event.type === "model.reasoning.delta") {
           reasoningText += event.text
           this.emit("v2.message.delta", { messageId: streamMessageId, channel: "reasoning", text: event.text, ...(event.modelCallId ? { modelCallId: event.modelCallId } : {}) }, { projectId: command.projectId, flowId: command.flowId, goalId: activeGoalId, turnId: created.turn.id }, frontierHandoverActive ? "frontier_agent" : "main_agent")
@@ -729,7 +715,6 @@ export class V2ExecutionRuntime {
             publishActivity(v2ToolActivity(created.turn.id, event.toolName, event.input))
           }
           this.handleToolEvent(event, { projectId: command.projectId, flowId: command.flowId, goalId: activeGoalId, turnId: created.turn.id })
-          if (event.type.startsWith("tool.") || event.type.startsWith("approval.")) sawToolActivity = true
           if (event.type === "agent.suspended") {
             suspended = true
             publishActivity(createV2LiveActivity(created.turn.id, "awaiting_input", "Waiting for Terminal…"))
@@ -757,9 +742,6 @@ export class V2ExecutionRuntime {
         }, "main_agent")
         return
       }
-      if (!answerText.trim() && !sawToolActivity) {
-        throw new SocratesError("model_empty_response", "Model provider completed without returning Socrates text.", { recoverable: true })
-      }
       if (!finalResult) {
         throw new SocratesError("agent_final_result_missing", "Socrates completed without a validated final result.", { recoverable: true })
       }
@@ -768,34 +750,11 @@ export class V2ExecutionRuntime {
         projectId: command.projectId,
         flowId: command.flowId,
         turnId: created.turn.id,
-        content: answerText,
+        content: finalResult.finalAnswer,
         goalFinalization: finalResult.goalFinalization,
         ...(reasoningText ? { reasoning: reasoningText } : {}),
       })
-      this.deps.sharedStore.indexV2TurnRetrieval(command.projectId, created.turn.id)
-      const postTurnMessages = await this.buildWorkingMessages({
-        projectId: command.projectId,
-        flowId: command.flowId,
-        goalId: activeGoalId,
-        query: command.payload.content,
-        includeImages: selectedModel?.capabilities?.vision === true,
-      })
-      await this.deps.agent.precomputeContext({
-        providerId: runtimeConfig.providerId,
-        modelId: runtimeConfig.modelId,
-        runtimeConfig,
-        messages: postTurnMessages,
-        promptContext,
-        contextCompression: createV2ContextCompressionRuntime({
-          store: this.deps.store,
-          sharedStore: this.deps.sharedStore,
-          projectId: command.projectId,
-          flowId: command.flowId,
-          goalId: activeGoalId,
-          turnId: created.turn.id,
-          workspacePath,
-        }),
-      })
+      durableTurnCommitted = true
       const refreshedCapsule = this.deps.store.getSnapshot(command.projectId, command.flowId).latestCapsules
         .find((capsule) => capsule.goalId === activeGoalId)
       if (refreshedCapsule) {
@@ -827,8 +786,49 @@ export class V2ExecutionRuntime {
           completedAt,
         },
       }, { projectId: command.projectId, flowId: command.flowId, goalId: activeGoalId, turnId: created.turn.id }, "main_agent")
+
+      this.deps.sharedStore.indexV2TurnRetrieval(command.projectId, created.turn.id)
+      const postTurnMessages = await this.buildWorkingMessages({
+        projectId: command.projectId,
+        flowId: command.flowId,
+        goalId: activeGoalId,
+        query: command.payload.content,
+        includeImages: selectedModel?.capabilities?.vision === true,
+      })
+      await this.deps.agent.precomputeContext({
+        providerId: runtimeConfig.providerId,
+        modelId: runtimeConfig.modelId,
+        runtimeConfig,
+        messages: postTurnMessages,
+        promptContext,
+        contextCompression: createV2ContextCompressionRuntime({
+          store: this.deps.store,
+          sharedStore: this.deps.sharedStore,
+          projectId: command.projectId,
+          flowId: command.flowId,
+          goalId: activeGoalId,
+          turnId: created.turn.id,
+          workspacePath,
+        }),
+      })
     } catch (error) {
       if (abortController.signal.aborted) return
+      if (durableTurnCommitted) {
+        const normalized = normalizeError(error)
+        this.deps.store.recordError({
+          projectId: command.projectId,
+          flowId: command.flowId,
+          ...(goalId ? { goalId } : {}),
+          turnId: created.turn.id,
+          source: "post_commit",
+          code: "post_commit_processing_failed",
+          message: normalized.message,
+          ...(normalized.details === undefined ? {} : { details: normalized.details }),
+          ...(normalized.stack ? { stack: normalized.stack } : {}),
+          recoverable: true,
+        })
+        return
+      }
       const persisted = this.deps.store.failTurn({
         projectId: command.projectId,
         flowId: command.flowId,

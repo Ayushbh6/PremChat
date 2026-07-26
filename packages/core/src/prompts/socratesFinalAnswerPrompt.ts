@@ -1,5 +1,25 @@
 import type { ActiveGoalCard } from "../agent/MemoryRouterAgent"
 
+export const buildSocratesReconciliationCheckpoint = (input: {
+  activeGoal?: ActiveGoalCard
+  proposedAnswer?: string
+}): string => [
+  "<socrates_reconciliation_checkpoint>",
+  "This is the mandatory hard pre-final checkpoint for the current task. Do not answer the user in this response.",
+  "You are the same Socrates that performed the work. Review the verified work and tool results already present in this task, including automatic wait/resume continuations. Decide whether durable .socrates reconciliation is required.",
+  "When durable project state, architectural decisions, constraints, blockers, workflows, handoff facts, or documented behavior changed, read the exact project_docs or repo_docs section, apply the smallest canonical replacement, then re-read that same section and verify the stale claim is gone and the replacement is present. Never append a competing authority path.",
+  "When nothing durable changed, make no docs mutation. Ordinary workspace-only restrictions do not suppress bounded .socrates reconciliation, but a genuine semantic instruction not to remember/save/store the content is authoritative and must produce no reconciliation from that content.",
+  "Backend-owned project_notes runtime_context and state_ledger are never mutation targets. Use only the normal main Socrates tools; there is no reconciliation router or planner.",
+  "After all required reconciliation is complete and verified, return no user-facing answer yet. The runtime will request the strict no-tool final object next.",
+  ...(input.activeGoal
+    ? [`Bound goal: ${input.activeGoal.title}`, `Current goal state: ${input.activeGoal.state}`, `Current goal note: ${input.activeGoal.note}`]
+    : ["No canonical goal is attached to this compatibility task."]),
+  ...(input.proposedAnswer?.trim()
+    ? ["Provisional answer to reassess after reconciliation:", input.proposedAnswer.trim().slice(0, 20_000)]
+    : []),
+  "</socrates_reconciliation_checkpoint>",
+].join("\n")
+
 export const buildSocratesFinalAnswerCheckpoint = (input: {
   activeGoal?: ActiveGoalCard
   proposedAnswer?: string

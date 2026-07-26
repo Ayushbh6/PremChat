@@ -78,6 +78,7 @@ export const runSkillWriterTurn = async (input: SkillWriterRunInput): Promise<st
     providerId: input.modelSettings.providerId,
     modelId: input.modelSettings.modelId,
     runtimeConfig,
+    completionMode: "worker_text",
     messages: [{ role: "user", content: task }],
     systemPromptOverride: systemPrompt,
     workspacePath: input.workspacePath ?? input.socratesHome,

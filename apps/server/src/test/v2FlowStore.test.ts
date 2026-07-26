@@ -218,6 +218,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
     })
     expect(applied.goal.status).toBe("foreground")
     const assistant = store.completeTurn({
+      goalFinalization: { state: "active", note: "The task remains active." },
       projectId: "proj_one",
       flowId: first.flow.id,
       turnId: created.turn.id,
@@ -252,7 +253,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
         goals: [],
       }),
     })
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "First response" })
+    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "First response", goalFinalization: { state: "active", note: "The task remains active." } })
 
     const second = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "A completely different second goal", runtimeConfig })
     store.applyRouting({ projectId: "proj_one", flowId: flow.id, turnId: second.turn.id, messageId: second.userMessage.id, messageContent: second.userMessage.content, result: forcedCreateResult(store, flow.id) })
@@ -362,6 +363,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       result: forcedCreateResult(store, flow.id),
     }).goal
     store.completeTurn({
+      goalFinalization: { state: "active", note: "The task remains active." },
       projectId: "proj_one",
       flowId: flow.id,
       turnId: first.turn.id,
@@ -566,6 +568,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       result: forcedCreateResult(store, flow.id),
     }).goal
     store.completeTurn({
+      goalFinalization: { state: "active", note: "The task remains active." },
       projectId: "proj_one",
       flowId: flow.id,
       turnId: first.turn.id,
@@ -609,7 +612,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       messageContent: second.userMessage.content,
       result: continueResult,
     })
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: second.turn.id, content: "Done." })
+    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: second.turn.id, content: "Done.", goalFinalization: { state: "active", note: "The task remains active." } })
     expect(store.getSnapshot("proj_one", flow.id).latestCapsules.find((item) => item.goalId === createdGoal.id)?.version).toBe(2)
 
     const third = store.createTurn({
@@ -634,7 +637,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
     expect(firstCapsule?.decisions).toEqual(expect.arrayContaining(parkedCapsule?.decisions ?? []))
   })
 
-  it("keeps one General Conversation, lets Socrates complete only the bound work focus, and safely auto-archives paused work", () => {
+  it("keeps one General Conversation, applies structured finalization only to the bound work focus, and safely auto-archives paused work", () => {
     const { handle, store } = setup()
     const initial = store.ensureFlow("proj_one")
     const general = initial.goals.find((goal) => goal.kind === "general")
@@ -656,17 +659,14 @@ describe("V2FlowStore isolation and lifecycle", () => {
       messageContent: turn.userMessage.content,
       result: forcedCreateResult(store, initial.flow.id),
     }).goal
-    const ledger = store.useFocusLedger({
+    const completed = store.completeTurn({
       projectId: "proj_one",
       flowId: initial.flow.id,
-      goalId: work.id,
       turnId: turn.turn.id,
-      request: { operation: "complete_current", outcome: "The ledger is implemented and verified." },
+      content: "The ledger is implemented and verified.",
+      goalFinalization: { state: "completed", note: "The ledger is implemented and verified." },
     })
-    expect(ledger.pendingCompletion).toBe(true)
-    const completed = store.completeTurn({ projectId: "proj_one", flowId: initial.flow.id, turnId: turn.turn.id, content: "Done." })
-    expect(completed.content).toContain("The ledger is implemented and verified.")
-    expect(completed.content).toContain("Done.")
+    expect(completed.content).toBe("The ledger is implemented and verified.")
     let snapshot = store.getSnapshot("proj_one", initial.flow.id)
     expect(snapshot.goals.find((goal) => goal.id === work.id)?.status).toBe("completed")
     expect(snapshot.foregroundGoal).toMatchObject({ id: work.id, status: "completed" })
@@ -695,7 +695,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
     const flow = store.ensureFlow("proj_one").flow
     const first = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Implement authentication tests", runtimeConfig })
     const work = store.applyRouting({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, messageId: first.userMessage.id, messageContent: first.userMessage.content, result: forcedCreateResult(store, flow.id) }).goal
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "Initial authentication work is ready." })
+    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "Initial authentication work is ready.", goalFinalization: { state: "active", note: "The task remains active." } })
 
     const ambiguous = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "What about the second one?", runtimeConfig })
     const goals = store.listGoalsForRouter(flow.id)
@@ -752,7 +752,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, messageId: first.userMessage.id,
       messageContent: first.userMessage.content, result: forcedCreateResult(store, flow.id),
     }).goal
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "The memory ledger review found one stale ownership note." })
+    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "The memory ledger review found one stale ownership note.", goalFinalization: { state: "active", note: "The task remains active." } })
 
     const second = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Great, now move to trace retrieval", runtimeConfig })
     const traceGoal = store.applyRouting({
@@ -777,7 +777,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       turnId: turn.turn.id, toolName: "search", arguments: { query: "bridge" }, requiresApproval: false,
     })
     store.completeToolCall(tool.id, { matches: 1 })
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: turn.turn.id, content: "Bridge built." })
+    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: turn.turn.id, content: "Bridge built.", goalFinalization: { state: "active", note: "The task remains active." } })
     expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM v2_classic_message_links").get()).toMatchObject({ count: 0 })
     expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM conversations WHERE project_id = ?").get("proj_one")).toMatchObject({ count: 0 })
     const bridge = store.openFocusInClassic("proj_one", flow.id, work.id)
@@ -843,7 +843,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, messageId: created.userMessage.id,
       messageContent: created.userMessage.content, result: forcedCreateResult(store, flow.id),
     }).goal
-    const assistant = store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, content: "Original Flow answer" })
+    const assistant = store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, content: "Original Flow answer", goalFinalization: { state: "active", note: "The task remains active." } })
     const bridge = store.openFocusInClassic("proj_one", flow.id, goal.id)
     const shadow = seedClassicTurn(handle, {
       conversationId: bridge.conversationId,
@@ -891,7 +891,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
     const flow = store.ensureFlow("proj_one").flow
     const created = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Flow-only source", runtimeConfig })
     const goal = store.applyRouting({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, messageId: created.userMessage.id, messageContent: created.userMessage.content, result: forcedCreateResult(store, flow.id) }).goal
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, content: "Flow-only answer" })
+    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, content: "Flow-only answer", goalFinalization: { state: "active", note: "The task remains active." } })
     const bridge = store.openFocusInClassic("proj_one", flow.id, goal.id)
     const classicOnly = new SocratesStore(handle, undefined, undefined, { socratesHome: path.join(root, "home") })
     expect(classicOnly.getConversation("proj_one", bridge.conversationId).messages).toEqual([])
@@ -1007,7 +1007,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
     const created = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Review the DBMS notes", runtimeConfig })
     const work = store.applyRouting({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, messageId: created.userMessage.id, messageContent: created.userMessage.content, result: forcedCreateResult(store, flow.id) }).goal
     const evidence = store.recordEvidence({ projectId: "proj_one", flowId: flow.id, goalId: work.id, turnId: created.turn.id, sourceKind: "tool_output", title: "DBMS notes", content: "Exact tool output" })
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, content: "The notes are organized." })
+    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, content: "The notes are organized.", goalFinalization: { state: "active", note: "The task remains active." } })
     const bridge = store.openFocusInClassic("proj_one", flow.id, work.id)
 
     expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM messages WHERE conversation_id = ?").get(bridge.conversationId)).toMatchObject({ count: 0 })
@@ -1024,13 +1024,13 @@ describe("V2FlowStore isolation and lifecycle", () => {
     const flow = store.ensureFlow("proj_one").flow
     const first = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Review DBMS", runtimeConfig })
     const dbms = store.applyRouting({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, messageId: first.userMessage.id, messageContent: first.userMessage.content, result: forcedCreateResult(store, flow.id) }).goal
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "DBMS reviewed." })
+    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "DBMS reviewed.", goalFinalization: { state: "active", note: "The task remains active." } })
     const dbmsBridge = store.openFocusInClassic("proj_one", flow.id, dbms.id)
     store.continueClassicConversationInSeamless("proj_one", dbmsBridge.conversationId)
 
     const second = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Prepare the release", runtimeConfig })
     const release = store.applyRouting({ projectId: "proj_one", flowId: flow.id, turnId: second.turn.id, messageId: second.userMessage.id, messageContent: second.userMessage.content, result: forcedCreateResult(store, flow.id) }).goal
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: second.turn.id, content: "Release prepared." })
+    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: second.turn.id, content: "Release prepared.", goalFinalization: { state: "active", note: "The task remains active." } })
 
     const result = store.deleteGoal("proj_one", flow.id, dbms.id)
     const snapshot = store.getSnapshot("proj_one", flow.id)

@@ -27,12 +27,10 @@ export const baseToolNameSchema = z.enum([
   "memory_notes",
   "memory_search",
   "goal_search",
-  "turn_evidence",
   "read_memory_journal",
   "skill_write",
   "skill_manager",
   "context_disposition",
-  "focus_ledger",
 ])
 export const dynamicMcpToolNameSchema = z.string().regex(/^mcp__[a-z0-9_-]+__[a-zA-Z0-9_-]+$/)
 export const toolNameSchema = z.union([baseToolNameSchema, dynamicMcpToolNameSchema])
@@ -144,56 +142,6 @@ export const contextDispositionToolOutputSchema = z
   .strict()
 export type ContextDispositionToolOutput = z.infer<typeof contextDispositionToolOutputSchema>
 
-export const focusLedgerOperationSchema = z.enum(["list", "inspect", "update_current", "record_blocker", "complete_current"])
-
-export const focusLedgerToolInputSchema = z
-  .object({
-    operation: focusLedgerOperationSchema,
-    goalId: z.string().min(1).optional().describe("Required only for inspect. The active focus is implicit for mutations."),
-    summary: z.string().trim().min(1).max(4_000).optional(),
-    blocker: z.string().trim().min(1).max(2_000).optional(),
-    outcome: z.string().trim().min(1).max(4_000).optional(),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.operation === "inspect" && !value.goalId) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["goalId"], message: "inspect requires goalId." })
-    }
-    if (value.operation === "update_current" && !value.summary) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["summary"], message: "update_current requires summary." })
-    }
-    if (value.operation === "record_blocker" && !value.blocker) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["blocker"], message: "record_blocker requires blocker." })
-    }
-    if (value.operation === "complete_current" && !value.outcome) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["outcome"], message: "complete_current requires outcome." })
-    }
-  })
-export type FocusLedgerToolInput = z.infer<typeof focusLedgerToolInputSchema>
-
-export const focusLedgerGoalSchema = z
-  .object({
-    id: z.string().min(1),
-    title: z.string().min(1),
-    kind: z.enum(["general", "work"]),
-    status: z.enum(["foreground", "parked", "blocked", "completed", "discarded", "archived"]),
-    summary: z.string().optional(),
-    pinned: z.boolean(),
-    lastActiveAt: z.string().min(1),
-  })
-  .strict()
-
-export const focusLedgerToolOutputSchema = z
-  .object({
-    operation: focusLedgerOperationSchema,
-    currentGoalId: z.string().min(1),
-    goals: z.array(focusLedgerGoalSchema).max(100),
-    pendingCompletion: z.boolean(),
-    message: z.string().min(1),
-  })
-  .strict()
-export type FocusLedgerToolOutput = z.infer<typeof focusLedgerToolOutputSchema>
-
 export const providerMetadataSchema = z.record(z.string(), z.record(z.string(), z.unknown()))
 export type ProviderMetadata = z.infer<typeof providerMetadataSchema>
 
@@ -213,24 +161,6 @@ export type CurrentTimeToolInput = z.infer<typeof currentTimeToolInputSchema>
 export const currentTimeToolOutputSchema = runtimeTimeMetadataSchema
 export type CurrentTimeToolOutput = z.infer<typeof currentTimeToolOutputSchema>
 
-export const turnEvidenceToolInputSchema = z
-  .object({
-    operation: z.enum(["overview", "inspect"]).default("overview"),
-    reference: z.string().regex(/^evd_[A-Za-z0-9_-]+$/).optional(),
-    limit: z.number().int().positive().max(20).default(10),
-    charLimit: z.number().int().min(500).max(12_000).default(8_000),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.operation === "inspect" && !value.reference) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["reference"], message: "reference is required for inspect." })
-    }
-    if (value.operation === "overview" && value.reference) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["reference"], message: "reference is only valid for inspect." })
-    }
-  })
-export type TurnEvidenceToolInput = z.infer<typeof turnEvidenceToolInputSchema>
-
 export const toolPermissionSchema = z.enum(["read", "mutate", "execute"])
 export type ToolPermission = z.infer<typeof toolPermissionSchema>
 
@@ -247,21 +177,6 @@ export const truncationMetadataSchema = z
   })
   .strict()
 export type TruncationMetadata = z.infer<typeof truncationMetadataSchema>
-
-export const turnEvidenceReferenceSchema = z.object({ id: z.string(), kind: z.string(), label: z.string().max(160) }).strict()
-export const turnEvidenceToolOutputSchema = z
-  .object({
-    operation: z.enum(["overview", "inspect"]),
-    taskId: z.string(),
-    rootTurnId: z.string(),
-    status: z.string(),
-    resumedCount: z.number().int().nonnegative(),
-    content: z.string(),
-    references: z.array(turnEvidenceReferenceSchema).max(20),
-    truncation: truncationMetadataSchema,
-  })
-  .strict()
-export type TurnEvidenceToolOutput = z.infer<typeof turnEvidenceToolOutputSchema>
 
 export const readToolInputSchema = z
   .object({

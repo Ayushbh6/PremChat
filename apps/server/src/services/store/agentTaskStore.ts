@@ -1,10 +1,28 @@
-import type { RuntimeConfig, TerminalWaitWakeOn, TurnEvidenceToolInput, TurnEvidenceToolOutput, WaitToolInput } from "@socrates/contracts"
+import type { RuntimeConfig, TerminalWaitWakeOn, WaitToolInput } from "@socrates/contracts"
 import { createId, nowIso, SocratesError } from "@socrates/shared"
 import { and, eq, inArray } from "drizzle-orm"
 import { agentTaskTurns, agentTaskWaits, agentTasks, sessions, taskEvidenceReferences, terminalSessions, turns } from "../../db/schema"
 import { StoreBase } from "./shared"
 
 type TerminalWakeEvent = TerminalWaitWakeOn
+
+export type TaskEvidenceQuery = {
+  operation: "overview" | "inspect"
+  reference?: string
+  limit: number
+  charLimit: number
+}
+
+export type TaskEvidenceOutput = {
+  operation: "overview" | "inspect"
+  taskId: string
+  rootTurnId: string
+  status: string
+  resumedCount: number
+  content: string
+  references: Array<{ id: string; kind: string; label: string }>
+  truncation: { truncated: boolean; charLimit: number; originalLength?: number; returnedLength: number }
+}
 
 type WaitTerminal = {
   id: string
@@ -65,14 +83,14 @@ export class AgentTaskStore extends StoreBase {
     return taskId
   }
 
-  evidenceForTurn(turnId: string, input: TurnEvidenceToolInput): TurnEvidenceToolOutput {
+  evidenceForTurn(turnId: string, input: TaskEvidenceQuery): TaskEvidenceOutput {
     const task = this.taskForTurn(turnId)
     if (!task) throw new SocratesError("task_evidence_unavailable", "No task lifecycle is registered for this turn.", { recoverable: true })
     const turnRows = this.handle.db.select({ turnId: agentTaskTurns.turnId }).from(agentTaskTurns).where(eq(agentTaskTurns.taskId, task.id)).all()
     const turnIds = turnRows.map((row) => row.turnId)
     const placeholders = turnIds.map(() => "?").join(",")
     const query = <T>(sql: string, ...params: unknown[]): T[] => this.handle.sqlite.prepare(sql).all(...params) as T[]
-    const references: TurnEvidenceToolOutput["references"] = []
+    const references: TaskEvidenceOutput["references"] = []
     const makeReference = (kind: string, label: string, selector: Record<string, unknown>): string => {
       const selectorJson = JSON.stringify(selector)
       const existing = this.handle.db.select({ id: taskEvidenceReferences.id }).from(taskEvidenceReferences)

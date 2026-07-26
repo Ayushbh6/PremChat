@@ -24,18 +24,6 @@ When a prompt contains both a personal preference and repo workflow guidance, re
 ${Object.entries(MEMORY_ROUTING_SECTIONS_BY_FILE).map(([fileName, sections]) => `- ${fileName}: ${sections.join(", ")}`).join("\n")}
 This phase is strictly read-only: never propose, perform, or return a write.`
 
-export const POST_TURN_MEMORY_ROUTER_SYSTEM_PROMPT = `You are Socrates' post-evidence Memory Router Agent.
-
-You do not answer the user and you never edit memory. The complete task evidence covers the original request plus every automatic wait/resume continuation. Use memory_search or turn_evidence inspect only when needed, with at most three total drill-down calls. Return a strict object with actions (maximum five), one concise reason, and goalFinalization set to null.
-
-Goal finalization belongs to the validated structured result of the main Socrates turn. You judge only memory reconciliation here, so goalFinalization must always be null even when an Active Goal is supplied.
-
-Actions are plans for Socrates, never edits by you. Use upsert, replace, remove, archive, or condense against an exact project_notes, project_memory, or repo_docs section. Never plan a write to project_notes/runtime_context or project_notes/state_ledger; those are backend-owned and refreshed by code. Prefer an empty array for ordinary answers, speculation, duplicates, or transient details. When verified current evidence supersedes stale text, explicitly replace or remove the stale claim instead of appending a contradiction. When recording a verified runtime capability, include capabilityId, verifiedRuntime, verifiedAt, and supporting code-generated evd_ references. Never invent an evidence reference.
-
-A genuine user instruction not to remember, save, store, retain, learn, or add content to memory blocks reconciliation for the content it scopes to. Interpret intent from the full semantic meaning rather than matching quoted or hypothetical phrases. If scope is broad or ambiguous, return no action derived from the entire latest user message. Never preserve opted-out content indirectly from the assistant draft, tool evidence, summaries, or paraphrases.
-
-Keep workspace-artifact restrictions distinct from memory opt-outs. An ordinary instruction such as "do not edit files", "make no workspace changes", or "review only" still allows bounded \`.socrates\` reconciliation when it has durable value. Return no action only when the user semantically includes Socrates memory, project notes, internal state, \`.socrates\`, or all changes whatsoever in the restriction.`
-
 export type MemoryRoutingPromptInput = {
   projectName?: string
   projectDescription?: string
@@ -43,9 +31,6 @@ export type MemoryRoutingPromptInput = {
   recentMessages: ModelMessage[]
   automaticCandidates?: MemorySearchResult[]
   automaticCoverageWarning?: string
-  preflightSummary?: string
-  toolSummary?: string
-  assistantDraft?: string
   activeGoal?: Readonly<{ title: string; state: string; note: string }>
 }
 
@@ -66,33 +51,6 @@ export const buildPreTurnMemoryRouterUserContent = (input: MemoryRoutingPromptIn
     "# Automatic Memory Candidates",
     renderCandidates(input.automaticCandidates ?? []),
     ...(input.automaticCoverageWarning ? ["", `Coverage warning: ${input.automaticCoverageWarning}`] : []),
-    "",
-    "# Recent Visible Messages",
-    renderRecentMessages(input.recentMessages),
-  ].join("\n")
-
-export const buildPostTurnMemoryRouterUserContent = (input: MemoryRoutingPromptInput): string =>
-  [
-    "# Active Project",
-    `name: ${input.projectName?.trim() || "Unknown"}`,
-    `description: ${input.projectDescription?.trim() || "Not provided."}`,
-    "",
-    "# Latest User Message",
-    input.userMessage.trim() || "(empty)",
-    "",
-    "# Pre-Turn Memory Work",
-    input.preflightSummary?.trim() || "None recorded.",
-    "",
-    "# Complete Task Evidence",
-    input.toolSummary?.trim() || "None recorded.",
-    "",
-    "# Assistant Draft",
-    input.assistantDraft?.trim() || "No draft yet.",
-    "",
-    "# Active Goal",
-    input.activeGoal
-      ? [`title: ${input.activeGoal.title}`, `state: ${input.activeGoal.state}`, `note: ${input.activeGoal.note}`].join("\n")
-      : "(none)",
     "",
     "# Recent Visible Messages",
     renderRecentMessages(input.recentMessages),

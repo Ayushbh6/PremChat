@@ -1,5 +1,12 @@
 import { z } from "zod"
-import { goalFinalizationSchema } from "./memoryRouting"
+
+export const goalFinalizationSchema = z
+  .object({
+    state: z.enum(["active", "completed", "blocked", "discarded"]),
+    note: z.string().min(1).max(600),
+  })
+  .strict()
+export type GoalFinalization = z.infer<typeof goalFinalizationSchema>
 
 export const socratesFinalAnswerSchema = z
   .object({

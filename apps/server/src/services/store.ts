@@ -846,7 +846,7 @@ export class SocratesStore {
     return this.agentTasks.startTask(input)
   }
 
-  getTaskEvidence(turnId: string, input: import("@socrates/contracts").TurnEvidenceToolInput) {
+  getTaskEvidence(turnId: string, input: Parameters<AgentTaskStore["evidenceForTurn"]>[1]) {
     return this.agentTasks.evidenceForTurn(turnId, input)
   }
 

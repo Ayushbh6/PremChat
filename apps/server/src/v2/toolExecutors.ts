@@ -2,7 +2,6 @@ import type {
   ProjectResource,
   TraceRetrieveMainToolInput,
   TraceRetrieveMainToolOutput,
-  TurnEvidenceToolOutput,
 } from "@socrates/contracts"
 import type { McpRuntime } from "@socrates/mcp"
 import type { ToolExecutors } from "@socrates/core"
@@ -111,41 +110,6 @@ export const createV2ToolExecutors = (input: V2ToolExecutorsInput): ToolExecutor
       return output
     },
     memory_search: (toolInput) => input.sharedStore.searchMemory(input.projectId, toolInput, false),
-    turn_evidence: async (toolInput): Promise<TurnEvidenceToolOutput> => {
-      const lineage = input.flowStore.getTaskLineageForTurn(input.projectId, input.flowId, input.turnId)
-      const state = input.flowStore.getCoreContextState(input.flowId, lineage.turnIds)
-      const references = state.evidence.slice(-toolInput.limit).map((record) => ({
-        id: `evd_${record.ref.evidenceId}`,
-        kind: record.ref.sourceType,
-        label: record.ref.sourceLocator.slice(0, 160),
-      }))
-      const selected = toolInput.operation === "inspect" && toolInput.reference
-        ? state.evidence.find((record) => `evd_${record.ref.evidenceId}` === toolInput.reference)
-        : undefined
-      if (toolInput.operation === "inspect" && !selected) {
-        throw new SocratesError("v2_evidence_not_found", "That exact Flow evidence reference is not available.", { recoverable: true })
-      }
-      const raw = selected
-        ? selected.exactContent
-        : state.evidence.slice(-toolInput.limit).map((record) => `${record.ref.sourceType} ${record.ref.sourceLocator}\n${record.exactContent}`).join("\n\n") ||
-          "No tool or Terminal evidence has been recorded for this Flow turn yet."
-      const content = raw.slice(0, toolInput.charLimit)
-      return {
-        operation: toolInput.operation,
-        taskId: lineage.taskId,
-        rootTurnId: lineage.rootTurnId,
-        status: lineage.status,
-        resumedCount: lineage.resumedCount,
-        content,
-        references,
-        truncation: {
-          truncated: content.length < raw.length,
-          charLimit: toolInput.charLimit,
-          originalLength: raw.length,
-          returnedLength: content.length,
-        },
-      }
-    },
     tool_docs: async (toolInput) => input.sharedStore.runToolDocsTool(input.projectId, toolInput),
     skills: async (toolInput, context) => {
       const attachedArchive = toolInput.operation === "preview_import" && toolInput.attachmentPath
@@ -202,13 +166,6 @@ export const createV2ToolExecutors = (input: V2ToolExecutorsInput): ToolExecutor
       requireSkillsDiscovery("list_project_resources")
       return listProjectResourcesForTool(input.sharedStore, input.projectId, toolInput)
     },
-    focus_ledger: async (toolInput) => input.flowStore.useFocusLedger({
-      projectId: input.projectId,
-      flowId: input.flowId,
-      goalId: input.goalId,
-      turnId: input.turnId,
-      request: toolInput,
-    }),
     mcp_registry: async (toolInput, context, resolvedSecretEnv) => {
       if (!input.mcpRuntime) throw new SocratesError("mcp_runtime_unavailable", "MCP runtime is not available.", { recoverable: true })
       const output = await input.mcpRuntime.handleRegistryTool(toolInput, {

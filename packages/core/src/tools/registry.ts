@@ -6,13 +6,11 @@ import { contextDispositionTool } from "./contextDispositionTool"
 import { editTool } from "./editTool"
 import { editFilesTool } from "./editFilesTool"
 import { frontierHandoverTool } from "./frontierHandoverTool"
-import { focusLedgerTool } from "./focusLedgerTool"
 import { goalSearchTool } from "./goalSearchTool"
 import { listProjectResourcesTool } from "./listProjectResourcesTool"
 import { memoryNoteTool } from "./memoryNoteTool"
 import { memoryNotesTool } from "./memoryNotesTool"
 import { memorySearchTool } from "./memorySearchTool"
-import { turnEvidenceTool } from "./turnEvidenceTool"
 import { mcpRegistryTool } from "./mcpRegistryTool"
 import { projectDocsTool } from "./projectDocsTool"
 import { projectsTool } from "./projectsTool"
@@ -85,15 +83,11 @@ export class ToolRegistry {
 
 export const createDefaultToolRegistry = (): ToolRegistry => new ToolRegistry()
 
-export const createV2ToolRegistry = (): ToolRegistry => new ToolRegistry([...tools, focusLedgerTool])
-
 const memoryTools = [currentTimeTool, globalTraceRetrieveTool, projectsTool, toolDocsTool, skillsReadOnlyTool, memoryNotesTool, readMemoryJournalTool, soulTool, userProfileTool, editFilesTool] as const
 
 export const createMemoryToolRegistry = (): ToolRegistry => new ToolRegistry(memoryTools)
 
 export const createMemoryRouterToolRegistry = (): ToolRegistry => new ToolRegistry([memorySearchTool])
-
-export const createMemoryFinalizationToolRegistry = (): ToolRegistry => new ToolRegistry([memorySearchTool, turnEvidenceTool])
 
 export const createGoalRouterToolRegistry = (): ToolRegistry => new ToolRegistry([goalSearchTool])
 

@@ -35,8 +35,6 @@ export const v2ToolActivity = (turnId: string, toolName: string, input: unknown)
         return "Applying the workspace changes…"
       case "bash":
         return "Running a Terminal command…"
-      case "focus_ledger":
-        return "Updating the current focus…"
       case "project_docs":
       case "repo_docs":
         return "Reviewing the working context…"

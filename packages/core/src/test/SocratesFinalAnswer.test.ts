@@ -13,7 +13,7 @@ const runtimeConfig = {
 }
 
 describe("Socrates structured final answer", () => {
-  it("withholds a plaintext tool envelope and publishes only a validated repaired result", async () => {
+  it("withholds plaintext until persistence can publish the validated repaired result", async () => {
     const validFinalAnswer = "The Flow and Classic connection shares the main runtime, but finalization was committing before answer integrity was established."
     const structuredRequests: StructuredModelRequest<unknown>[] = []
     const outputs: unknown[] = [
@@ -57,7 +57,7 @@ describe("Socrates structured final answer", () => {
         state: "foreground",
         note: "Inspect the shared runtime and finalization path.",
       },
-      finalAnswerMode: "structured",
+      completionMode: "main_structured",
     })) {
       events.push(event)
     }
@@ -72,10 +72,10 @@ describe("Socrates structured final answer", () => {
 
     expect(structuredRequests).toHaveLength(2)
     expect(JSON.stringify(structuredRequests[1]?.messages)).toContain("failed validation")
-    expect(visibleAnswer).toBe(validFinalAnswer)
+    expect(visibleAnswer).toBe("")
     expect(visibleAnswer).not.toContain("DSML")
     expect(finalResult?.result).toEqual({
-      finalAnswer: visibleAnswer,
+      finalAnswer: validFinalAnswer,
       goalFinalization: { state: "active", note: "Review found a finalization ordering defect to correct." },
     })
   })

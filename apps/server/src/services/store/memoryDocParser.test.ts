@@ -219,7 +219,6 @@ describe("memory doc parser", () => {
       "context_disposition.md",
       "current_time.md",
       "edit_apply_patch.md",
-      "focus_ledger.md",
       "handover_to_frontier.md",
       "list_project_resources.md",
       "mcp_registry.md",

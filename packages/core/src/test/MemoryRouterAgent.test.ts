@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { MemorySearchOutput } from "@socrates/contracts"
 import type { ModelProvider } from "@socrates/providers"
 import { MemoryRouterAgent } from "../agent/MemoryRouterAgent"
-import { POST_TURN_MEMORY_ROUTER_SYSTEM_PROMPT, PRE_TURN_MEMORY_ROUTER_SYSTEM_PROMPT } from "../prompts/memoryRoutingPrompt"
+import { PRE_TURN_MEMORY_ROUTER_SYSTEM_PROMPT } from "../prompts/memoryRoutingPrompt"
 import type { ToolExecutors } from "../tools/types"
 
 const context = {
@@ -35,14 +35,11 @@ const slowModeResult = (): MemorySearchOutput => ({
 })
 
 describe("MemoryRouterAgent", () => {
-  it("keeps genuine memory opt-outs out of recall routing and final reconciliation", () => {
+  it("keeps genuine memory opt-outs out of pre-turn recall routing", () => {
     expect(PRE_TURN_MEMORY_ROUTER_SYSTEM_PROMPT).toContain("Interpret it from the full semantic meaning")
     expect(PRE_TURN_MEMORY_ROUTER_SYSTEM_PROMPT).toContain("treat the entire latest user message as opted out")
     expect(PRE_TURN_MEMORY_ROUTER_SYSTEM_PROMPT).toContain("Keep workspace-artifact restrictions distinct from memory opt-outs")
     expect(PRE_TURN_MEMORY_ROUTER_SYSTEM_PROMPT).toContain("does not by itself opt content out")
-    expect(POST_TURN_MEMORY_ROUTER_SYSTEM_PROMPT).toContain("blocks reconciliation")
-    expect(POST_TURN_MEMORY_ROUTER_SYSTEM_PROMPT).toContain("Never preserve opted-out content indirectly")
-    expect(POST_TURN_MEMORY_ROUTER_SYSTEM_PROMPT).toContain("still allows bounded `.socrates` reconciliation")
   })
 
   it("prefetches the full prompt, caps explicit search at three calls, and returns exact routes", async () => {

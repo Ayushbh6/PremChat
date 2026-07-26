@@ -24,8 +24,6 @@ import type {
   ModelToolDefinition,
   EditFilesToolInput,
   EditFilesToolOutput,
-  FocusLedgerToolInput,
-  FocusLedgerToolOutput,
   GoalSearchInput,
   GoalSearchOutput,
   ProjectDocsToolInput,
@@ -57,8 +55,6 @@ import type {
   TraceRetrieveMainToolOutput,
   TraceRetrieveToolInput,
   TraceRetrieveToolOutput,
-  TurnEvidenceToolInput,
-  TurnEvidenceToolOutput,
   UrlFetchToolInput,
   UrlFetchToolOutput,
   WaitToolInput,
@@ -115,7 +111,6 @@ export type ToolExecutors = {
   memory_notes?: (input: MemoryNotesToolInput, context: ToolExecutorContext) => Promise<MemoryNotesToolOutput>
   memory_search?: (input: MemorySearchInput, context: ToolExecutorContext) => Promise<MemorySearchOutput>
   goal_search?: (input: GoalSearchInput, context: ToolExecutorContext) => Promise<GoalSearchOutput>
-  turn_evidence?: (input: TurnEvidenceToolInput, context: ToolExecutorContext) => Promise<TurnEvidenceToolOutput>
   read_memory_journal?: (input: ReadMemoryJournalToolInput, context: ToolExecutorContext) => Promise<ReadMemoryJournalToolOutput>
   skill_write?: (input: SkillWriteToolInput, context: ToolExecutorContext) => Promise<SkillWriteToolOutput>
   skill_manager?: (input: SkillManagerToolInput, context: ToolExecutorContext) => Promise<SkillManagerToolOutput>
@@ -125,7 +120,6 @@ export type ToolExecutors = {
     resolvedSecretEnv?: Readonly<Record<string, string>>,
   ) => Promise<McpRegistryToolOutput>
   mcp_dynamic?: (input: { dynamicName: string; input: unknown }, context: ToolExecutorContext) => Promise<unknown>
-  focus_ledger?: (input: FocusLedgerToolInput, context: ToolExecutorContext) => Promise<FocusLedgerToolOutput>
 }
 
 export type ApprovalRequest = {

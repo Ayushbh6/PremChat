@@ -1,6 +1,6 @@
 # Socrates Repo Structure
 
-This document is the source of truth for the current Socrates repo structure. Socrates is a local-first coding agent with a web frontend, a backend runtime, a reusable agent core, provider-agnostic model access, and a clean workspace capability layer. `UNIFIED_SOCRATES_LIFECYCLE.md` owns the target Classic/Flow lifecycle; current post-evidence router and mutable focus-ledger modules described here are convergence debt until removed.
+This document is the source of truth for the current Socrates repo structure. Socrates is a local-first coding agent with a web frontend, a backend runtime, a reusable agent core, provider-agnostic model access, and a clean workspace capability layer. `UNIFIED_SOCRATES_LIFECYCLE.md` owns the Classic/Flow lifecycle; Phase 1 removed the detached post-turn router and mutable main-agent goal-ledger modules.
 
 ## Current Shape
 
@@ -25,7 +25,7 @@ Socrates/
 
     server/
       scripts/
-        run-memory-router-gate-eval.ts
+        measure-sequential-router-latency.ts
       src/
         index.ts
         app.ts
@@ -121,7 +121,7 @@ Socrates/
       report.md
 ```
 
-Root `scripts/` owns opt-in maintenance, packaging, benchmark, and evaluation entrypoints that are not application runtime modules; a package-specific runner may live under that package's `scripts/` directory when it needs package-owned dependencies. Evaluation fixtures and durable summarized findings live under a matching `evals/<name>/` directory. The Memory Router gate experiment follows this boundary: its runner lives outside server `src`, is invoked only by `pnpm eval:memory-router-gate`, uses a synthetic dataset, and records the rejected production decision in a report while raw provider result JSON is ignored. Nothing under that experiment is imported by the server, web app, CLI, or runtime archive.
+Root `scripts/` owns opt-in maintenance, packaging, benchmark, and evaluation entrypoints that are not application runtime modules; a package-specific runner may live under that package's `scripts/` directory when it needs package-owned dependencies. Evaluation fixtures and durable summarized findings live under a matching `evals/<name>/` directory. The retired Memory Router gate experiment remains only as historical fixtures/report evidence under `evals/memory-router-gate`; its callable runner and package command were removed with Phase 1. Nothing under that experiment is imported by the server, web app, CLI, or runtime archive.
 
 ## Implemented V2 Flow Isolation
 
@@ -533,7 +533,7 @@ Phase 1 places one public `AgentRuntime` in `packages/core` below all model-driv
 
 Role boundaries:
 
-- Memory Router remains a real `MemoryRouterAgent` built through the same prompt -> shared runtime -> scoped tool registry/executor -> strict structured validation -> usage/persistence pattern as other model-driven capabilities. Its target responsibility is only the pre-turn `memory_search` phase after goal/task binding, with backend automatic prefetch, a three-call cap, and exact read-only `readTargets`. The currently implemented post-evidence phase is convergence debt; same-Socrates milestone/final checkpoints replace it.
+- Memory Router remains a real `MemoryRouterAgent` built through the same prompt -> shared runtime -> scoped tool registry/executor -> strict structured validation -> usage/persistence pattern as other model-driven capabilities. Its only responsibility is the pre-turn `memory_search` phase after goal/task binding, with backend automatic prefetch, a three-call cap, and exact read-only `readTargets`. Same-Socrates milestone/final checkpoints own reconciliation.
 - Frontier is not a second conversational agent loop. It is a one-way model selection change inside `SocratesAgent.streamTurn`: after real substantive effort, the default model may request `handover_to_frontier` once; the normal typed approval pipeline always pauses for the user. Approval appends the tool result and complete prior task history, switches provider/model/runtime settings, removes the handover tool, and lets Frontier own the remainder of the task. Rejection persists the rejected call, removes the tool for the turn, and explicitly returns completion responsibility to Socrates. Driver answer deltas are buffered and discarded when an approved handover occurs so only Frontier supplies the user-visible answer.
 - Socrates writes workspace project memory, project notes, and repo docs through `project_docs` and `repo_docs`. It owns project-scoped active context in project notes and may create `memory_note` leads for the Memory Agent, preferably one and never more than two per user-turn. It does not write identity, user profile, or skills.
 - The Global Memory Agent writes global user profile through scoped edits, proposes/applies identity only through the confirmation policy, inspects full skills for freshness, and sends approved skill create/update tasks to the Skill Writer Agent. It uses `AgentRuntime` like Memory Router: normal scoped tool calls first, then one strict Zod journal output. Each successful run persists one `memory_agent_journal` row and refreshes a bounded generated ledger/next-run briefing; `read_memory_journal` provides capped list/read access to older runs without embeddings. It should skip project-local active context for global memory and close each memory note with one of `applied`, `already_represented`, `skipped`, or `proposed_skill` plus a one-line resolution.

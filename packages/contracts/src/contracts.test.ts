@@ -152,9 +152,8 @@ import {
   memoryNotesToolInputSchema,
   memoryNotesToolOutputSchema,
   memoryRouterPreTurnResultSchema,
-  memoryRouterPostTurnResultSchema,
   memorySearchOutputSchema,
-  turnEvidenceToolInputSchema,
+  baseToolNameSchema,
   mcpRegistryToolInputSchema,
   mcpRegistryToolModelInputSchema,
   mcpRegistryToolOutputSchema,
@@ -2139,22 +2138,8 @@ describe("tool contracts", () => {
       }).success,
     ).toBe(false)
     expect(memoryRouterPreTurnResultSchema.safeParse({ readTargets: [], memoryWrites: [], reason: "writes are forbidden" }).success).toBe(false)
-    expect(
-      memoryRouterPostTurnResultSchema.safeParse({
-        actions: [{ operation: "replace", surface: "repo_docs", fileName: "CONTRACTS.md", sectionId: "tool_contracts", instruction: "Replace the stale contract.", reason: "Verified runtime evidence supersedes it.", evidenceReferences: ["evd_abc123"], capabilityId: "terminal.interactive_input", verifiedRuntime: "bash start accepts user PTY input", verifiedAt: "2026-07-12T10:00:00.000Z" }],
-        reason: "One stale capability claim requires reconciliation.",
-        goalFinalization: null,
-      }).success,
-    ).toBe(true)
-    expect(
-      memoryRouterPostTurnResultSchema.safeParse({
-        actions: [{ operation: "replace", surface: "project_notes", fileName: "PROJECT_NOTES.md", sectionId: "state_ledger", instruction: "Rewrite backend state.", reason: "stale", evidenceReferences: [] }],
-        reason: "invalid backend-owned target",
-        goalFinalization: null,
-      }).success,
-    ).toBe(false)
-    expect(turnEvidenceToolInputSchema.safeParse({ operation: "inspect", limit: 21, charLimit: 8_000 }).success).toBe(false)
-    expect(turnEvidenceToolInputSchema.safeParse({ operation: "inspect", reference: "evd_abc123", limit: 10, charLimit: 8_000 }).success).toBe(true)
+    expect(baseToolNameSchema.safeParse("turn_evidence").success).toBe(false)
+    expect(baseToolNameSchema.safeParse("focus_ledger").success).toBe(false)
     expect(
       memorySearchOutputSchema.safeParse({
         results: [{ resultNumber: 1, content: "Slow Mode", surface: "user_profile", fileName: "user_profile.md", sectionId: "collaboration_style", sectionHeading: "Collaboration Style", scope: "global" }],

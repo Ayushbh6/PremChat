@@ -25,6 +25,7 @@ describe("SocratesAgent", () => {
     const agent = new SocratesAgent(provider)
     const streamed: SocratesAgentEvent[] = []
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       providerId: "openai",
       modelId: "gpt-5.4-mini",
       runtimeConfig: {
@@ -82,15 +83,6 @@ describe("SocratesAgent", () => {
       countTokens: fakeCountTokens,
       async generateStructured(request) {
         structuredRequests.push(request)
-        if (request.system.includes("post-evidence")) {
-          return {
-            output: {
-              actions: [],
-              reason: "The requested update was delivered.",
-              goalFinalization: { state: "completed", note: "The update is complete." },
-            } as never,
-          }
-        }
         return {
           output: {
             readTargets: [],
@@ -106,6 +98,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -141,21 +134,21 @@ describe("SocratesAgent", () => {
     const provider: ModelProvider = {
       countTokens: fakeCountTokens,
       async generateStructured() {
-        return { output: {} as never }
+        return {
+          output: {
+            finalAnswer: "Frontier completed the task.",
+            goalFinalization: { state: "completed", note: "Resolved the lifecycle evidence." },
+          } as never,
+        }
       },
       async *stream(request) {
         requests.push(request)
         const toolNames = request.tools?.map((tool) => tool.name) ?? []
         if (!toolNames.includes("handover_to_frontier")) {
-          const isPostEvidence = JSON.stringify(request.messages).includes("post-evidence")
-          if (toolNames.includes("memory_search") || toolNames.includes("turn_evidence")) {
+          if (toolNames.includes("memory_search")) {
             yield {
               type: "model.answer.delta",
-              text: JSON.stringify(
-                isPostEvidence
-                  ? { actions: [], reason: "No durable update is needed.", goalFinalization: null }
-                  : { readTargets: [], reason: "No routed recall is needed." },
-              ),
+              text: JSON.stringify({ readTargets: [], reason: "No routed recall is needed." }),
             }
             yield { type: "model.completed" }
             return
@@ -175,7 +168,9 @@ describe("SocratesAgent", () => {
           yield { type: "model.completed" }
           return
         }
-        yield { type: "model.answer.delta", text: "Frontier completed the task." }
+        if (!JSON.stringify(request.messages).includes("socrates_reconciliation_checkpoint")) {
+          yield { type: "model.answer.delta", text: "Frontier completed the task." }
+        }
         yield { type: "model.completed" }
       },
     }
@@ -183,6 +178,7 @@ describe("SocratesAgent", () => {
     const streamed: SocratesAgentEvent[] = []
     const agent = new SocratesAgent(provider)
     for await (const event of agent.streamTurn({
+      completionMode: "main_structured",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -222,6 +218,7 @@ describe("SocratesAgent", () => {
       { providerId: "openrouter", modelId: "deepseek/deepseek-v4-flash" },
       { providerId: "openrouter", modelId: "x-ai/grok-4.5" },
       { providerId: "openrouter", modelId: "x-ai/grok-4.5" },
+      { providerId: "openrouter", modelId: "x-ai/grok-4.5" },
     ])
     const driverRequest = requests.find((request) => request.tools?.some((tool) => tool.name === "handover_to_frontier"))
     const frontierRequests = requests.filter((request) => request.modelId === "x-ai/grok-4.5")
@@ -232,7 +229,14 @@ describe("SocratesAgent", () => {
     expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("handover_to_frontier")
     expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("Resolve the conflicting lifecycle evidence")
     expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("Frontier and now own this task")
-    expect(streamed.filter((event) => event.type === "model.answer.delta").map((event) => event.text)).toEqual(["Frontier completed the task."])
+    expect(streamed.filter((event) => event.type === "model.answer.delta")).toHaveLength(0)
+    expect(streamed).toContainEqual({
+      type: "agent.final_result",
+      result: {
+        finalAnswer: "Frontier completed the task.",
+        goalFinalization: { state: "completed", note: "Resolved the lifecycle evidence." },
+      },
+    })
     expect(streamed).toContainEqual({
       type: "approval.requested",
       request: expect.objectContaining({
@@ -274,7 +278,12 @@ describe("SocratesAgent", () => {
     const provider: ModelProvider = {
       countTokens: fakeCountTokens,
       async generateStructured() {
-        return { output: {} as never }
+        return {
+          output: {
+            finalAnswer: "Socrates completed the task after the declined handover.",
+            goalFinalization: { state: "completed", note: "Resolved without Frontier." },
+          } as never,
+        }
       },
       async *stream(request) {
         requests.push(request)
@@ -292,7 +301,9 @@ describe("SocratesAgent", () => {
           yield { type: "model.completed" }
           return
         }
-        yield { type: "model.answer.delta", text: "Socrates completed the task after the declined handover." }
+        if (!JSON.stringify(request.messages).includes("socrates_reconciliation_checkpoint")) {
+          yield { type: "model.answer.delta", text: "Socrates completed the task after the declined handover." }
+        }
         yield { type: "model.completed" }
       },
     }
@@ -301,6 +312,7 @@ describe("SocratesAgent", () => {
     const agent = new SocratesAgent(provider)
 
     for await (const event of agent.streamTurn({
+      completionMode: "main_structured",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -352,9 +364,14 @@ describe("SocratesAgent", () => {
     expect(postRejectionRequests.length).toBeGreaterThan(0)
     expect(postRejectionRequests.some((request) => JSON.stringify(request.messages).includes("The user declined the Frontier handover"))).toBe(true)
     expect(postRejectionRequests.every((request) => !request.tools?.some((tool) => tool.name === "handover_to_frontier"))).toBe(true)
-    expect(streamed.filter((event) => event.type === "model.answer.delta").map((event) => event.text)).toEqual([
-      "Socrates completed the task after the declined handover.",
-    ])
+    expect(streamed.filter((event) => event.type === "model.answer.delta")).toHaveLength(0)
+    expect(streamed).toContainEqual({
+      type: "agent.final_result",
+      result: {
+        finalAnswer: "Socrates completed the task after the declined handover.",
+        goalFinalization: { state: "completed", note: "Resolved without Frontier." },
+      },
+    })
   })
 
   it("preserves answer-before-completion ordering when Frontier is available but unused", async () => {
@@ -369,6 +386,7 @@ describe("SocratesAgent", () => {
     const streamed: SocratesAgentEvent[] = []
 
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -427,6 +445,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -463,9 +482,6 @@ describe("SocratesAgent", () => {
     const provider: ModelProvider = {
       countTokens: fakeCountTokens,
       async generateStructured(request) {
-        if (request.system.includes("post-evidence")) {
-          return { output: { actions: [], reason: "No durable update.", goalFinalization: null } as never }
-        }
         return {
           output: {
             readTargets: [
@@ -496,6 +512,7 @@ describe("SocratesAgent", () => {
     const events: SocratesAgentEvent[] = []
     const agent = new SocratesAgent(provider)
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -561,6 +578,7 @@ describe("SocratesAgent", () => {
       })
       const agent = new SocratesAgent(provider)
       for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
         projectId: "proj_1",
         conversationId: "conv_1",
         sessionId: "sess_1",
@@ -693,6 +711,7 @@ describe("SocratesAgent", () => {
     const agent = new SocratesAgent(provider)
     const events: SocratesAgentEvent[] = []
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -736,6 +755,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       providerId: "openrouter",
       modelId: "deepseek/deepseek-v4-pro",
       sessionId: "sess_1",
@@ -798,6 +818,7 @@ describe("SocratesAgent", () => {
     const agent = new SocratesAgent(provider)
     const iterator = agent
       .streamTurn({
+      completionMode: "worker_text",
         providerId: "openai",
         modelId: "gpt-5.4-mini",
         runtimeConfig: {
@@ -967,6 +988,7 @@ describe("SocratesAgent", () => {
     const streamed: SocratesAgentEvent[] = []
     const agent = new SocratesAgent(provider)
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -1052,6 +1074,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       providerId: "deepseek",
       modelId: "deepseek-v4-pro",
       runtimeConfig: {
@@ -1128,6 +1151,7 @@ describe("SocratesAgent", () => {
     const completedTools: string[] = []
     const agent = new SocratesAgent(provider)
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       providerId: "deepseek",
       modelId: "deepseek-v4-pro",
       runtimeConfig: {
@@ -1215,6 +1239,7 @@ describe("SocratesAgent", () => {
     const completedTools: string[] = []
     const agent = new SocratesAgent(provider)
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       providerId: "deepseek",
       modelId: "deepseek-v4-flash",
       runtimeConfig: {
@@ -1282,6 +1307,7 @@ describe("SocratesAgent", () => {
     const startedDispositionInputs: unknown[] = []
     const agent = new SocratesAgent(provider)
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       providerId: "deepseek",
       modelId: "deepseek-v4-flash",
       runtimeConfig: {
@@ -1344,6 +1370,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -1388,9 +1415,6 @@ describe("SocratesAgent", () => {
       async generateStructured(request) {
         structuredRequests.push(request)
         structuredSystems.push(request.system)
-        if (request.system.includes("post-evidence")) {
-          return { output: { actions: [], reason: "No durable reconciliation is needed.", goalFinalization: null } as never }
-        }
         return {
           output: {
             readTargets: [
@@ -1478,6 +1502,7 @@ describe("SocratesAgent", () => {
     const streamed: SocratesAgentEvent[] = []
     const agent = new SocratesAgent(provider)
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -1510,7 +1535,7 @@ describe("SocratesAgent", () => {
     }
 
     expect(structuredSystems[0]).toContain("pre-turn Memory Router Agent")
-    expect(structuredRequests).toHaveLength(2)
+    expect(structuredRequests).toHaveLength(1)
     expect(structuredRequests[0]).toMatchObject({
       providerId: "google",
       modelId: "gemini-3.3-flash-preview",
@@ -1530,13 +1555,6 @@ describe("SocratesAgent", () => {
         providerId: "google",
         modelId: "gemini-3.3-flash-preview",
         usages: [{ inputTokens: 12, outputTokens: 4, totalTokens: 16, costUsd: 0.0001 }],
-      }),
-      expect.objectContaining({
-        phase: "post_evidence",
-        status: "completed",
-        providerId: "google",
-        modelId: "gemini-3.3-flash-preview",
-        usages: [],
       }),
     ])
     expect(projectDocsInputs).toEqual([
@@ -1571,7 +1589,7 @@ describe("SocratesAgent", () => {
     expect(dynamicLoopContent).not.toContain("Existing global rule")
   })
 
-  it("runs a structured post-evidence route and syncs project memory before the final model step", async () => {
+  it("uses the same Socrates checkpoint to reconcile and verify project memory before finalization", async () => {
     const streamRequests: ModelRequestLike[] = []
     const structuredSystems: string[] = []
     const projectDocsInputs: unknown[] = []
@@ -1592,19 +1610,8 @@ describe("SocratesAgent", () => {
         }
         return {
           output: {
-            actions: [
-              {
-                operation: "replace",
-                surface: "project_memory",
-                fileName: "MEMORY.md",
-                sectionId: "durable_decisions",
-                instruction: "Replace the stale README claim with the verified Socrates memory-loop fact.",
-                reason: "A read tool produced a durable project fact.",
-                evidenceReferences: [],
-              },
-            ],
-            reason: "A read tool produced a durable project fact.",
-            goalFinalization: null,
+            finalAnswer: "Verified and saved.",
+            goalFinalization: { state: "completed", note: "Verified the memory-loop state." },
           } as never,
         }
       },
@@ -1625,12 +1632,19 @@ describe("SocratesAgent", () => {
         }
         if (streamCalls === 3) {
           yield { type: "model.tool_call.completed", toolCall: { toolCallId: "tcall_memory_read", toolName: "project_docs", input: { operation: "read_section", area: "memory", sectionId: "durable_decisions", charLimit: 20_000 } } }
+          yield { type: "model.completed", finishReason: "tool-calls" }
+          return
+        }
+        if (streamCalls === 4) {
           yield { type: "model.tool_call.completed", toolCall: { toolCallId: "tcall_memory_patch", toolName: "project_docs", input: { operation: "patch_section", area: "memory", sectionId: "durable_decisions", oldText: "- Existing durable decision.", newText: "- Verified README mentions the Socrates memory loop." } } }
+          yield { type: "model.completed", finishReason: "tool-calls" }
+          return
+        }
+        if (streamCalls === 5) {
           yield { type: "model.tool_call.completed", toolCall: { toolCallId: "tcall_memory_verify", toolName: "project_docs", input: { operation: "read_section", area: "memory", sectionId: "durable_decisions", charLimit: 20_000 } } }
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
-        yield { type: "model.answer.delta", text: "Verified and saved." }
         yield { type: "model.completed" }
       },
     }
@@ -1641,15 +1655,17 @@ describe("SocratesAgent", () => {
       content: "Socrates memory loop",
       truncation: { truncated: false, charLimit: 20_000, returnedLength: 20 },
     })
+    let durableDecision = "- Existing durable decision."
     executors.project_docs = async (input) => {
       projectDocsInputs.push(input)
       if (input.operation === "read_section") {
         const sectionId = input.sectionId ?? "always_apply_rules"
-        return projectDocsSectionOutput(input.area, sectionId, sectionId === "durable_decisions" ? "- Existing durable decision." : "- Add at most 10 short project hard rules here.")
+        return projectDocsSectionOutput(input.area, sectionId, sectionId === "durable_decisions" ? durableDecision : "- Add at most 10 short project hard rules here.")
       }
       if (input.operation === "patch_section") {
         const sectionId = input.sectionId ?? "durable_decisions"
         const newText = input.newText ?? ""
+        durableDecision = newText
         return {
           operation: "patch_section",
           area: input.area,
@@ -1665,7 +1681,7 @@ describe("SocratesAgent", () => {
         area: "memory",
         path: ".socrates/MEMORY.md",
         changed: true,
-        content: "- [post-evidence] Verified README mentions the Socrates memory loop.",
+        content: "- Verified README mentions the Socrates memory loop.",
         truncation: { truncated: false, charLimit: 20_000, returnedLength: 70 },
       }
     }
@@ -1673,6 +1689,7 @@ describe("SocratesAgent", () => {
     const streamed: SocratesAgentEvent[] = []
     const agent = new SocratesAgent(provider)
     for await (const event of agent.streamTurn({
+      completionMode: "main_structured",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -1696,7 +1713,8 @@ describe("SocratesAgent", () => {
     }
 
     expect(structuredSystems[0]).toContain("pre-turn Memory Router Agent")
-    expect(structuredSystems[1]).toContain("post-evidence Memory Router Agent")
+    expect(structuredSystems).toHaveLength(2)
+    expect(structuredSystems[1]).not.toContain("Memory Router Agent")
     expect(projectDocsInputs).toEqual([
       { operation: "read_section", area: "memory", sectionId: "always_apply_rules", charLimit: 10_000 },
       {
@@ -1721,9 +1739,17 @@ describe("SocratesAgent", () => {
     ])
     const toolNames = streamed.filter((event) => event.type === "tool.call.started").map((event) => event.toolName)
     expect(toolNames).toEqual(["project_docs", "user_profile", "soul", "soul", "soul", "read", "project_docs", "project_docs", "project_docs"])
-    expect(streamRequests).toHaveLength(4)
-    expect(JSON.stringify(streamRequests[2]?.messages)).toContain("socrates_memory_reconciliation")
-    expect(JSON.stringify(streamRequests[3]?.messages)).toContain("Verified README mentions the Socrates memory loop")
+    expect(streamRequests).toHaveLength(6)
+    expect(JSON.stringify(streamRequests[2]?.messages)).toContain("socrates_reconciliation_checkpoint")
+    expect(JSON.stringify(streamRequests[5]?.messages)).toContain("Verified README mentions the Socrates memory loop")
+    expect(streamed.filter((event) => event.type === "model.answer.delta")).toHaveLength(0)
+    expect(streamed).toContainEqual({
+      type: "agent.final_result",
+      result: {
+        finalAnswer: "Verified and saved.",
+        goalFinalization: { state: "completed", note: "Verified the memory-loop state." },
+      },
+    })
   })
 
   it("keeps pre-turn routing read-only and skips final writes when no reconciliation is needed", async () => {
@@ -1746,9 +1772,8 @@ describe("SocratesAgent", () => {
         }
         return {
           output: {
-            actions: [],
-            reason: "No durable reconciliation is needed.",
-            goalFinalization: null,
+            finalAnswer: "Done.",
+            goalFinalization: { state: "completed", note: "Inspection completed without durable changes." },
           } as never,
         }
       },
@@ -1797,6 +1822,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "main_structured",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -1822,7 +1848,7 @@ describe("SocratesAgent", () => {
     expect(projectDocsInputs.filter((input) => input.operation === "patch_section")).toHaveLength(0)
     expect(memoryNoteInputs).toHaveLength(0)
     expect(streamRequests).toHaveLength(3)
-    expect(JSON.stringify(streamRequests[2]?.messages)).toContain("no .socrates reconciliation needed")
+    expect(JSON.stringify(streamRequests[2]?.messages)).toContain("socrates_reconciliation_checkpoint")
   })
 
   it("preserves OpenAI reasoning item metadata when continuing after tool calls", async () => {
@@ -1865,6 +1891,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -1943,6 +1970,7 @@ describe("SocratesAgent", () => {
     const streamed: SocratesAgentEvent[] = []
     const agent = new SocratesAgent(provider)
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -2025,6 +2053,7 @@ describe("SocratesAgent", () => {
     const streamed: SocratesAgentEvent[] = []
     const agent = new SocratesAgent(provider)
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_live",
       sessionId: "sess_1",
@@ -2120,6 +2149,7 @@ describe("SocratesAgent", () => {
     const agent = new SocratesAgent(provider)
     const streamed: SocratesAgentEvent[] = []
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -2179,6 +2209,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -2318,6 +2349,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -2379,6 +2411,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -2439,6 +2472,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -2509,6 +2543,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -2570,6 +2605,7 @@ describe("SocratesAgent", () => {
     const agent = new SocratesAgent(provider)
     const streamed: SocratesAgentEvent[] = []
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -2744,6 +2780,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -2818,6 +2855,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -2927,6 +2965,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       projectId: "proj_1",
       conversationId: "conv_1",
       sessionId: "sess_1",
@@ -3011,6 +3050,7 @@ describe("SocratesAgent", () => {
     const agent = new SocratesAgent(provider)
     const streamed: SocratesAgentEvent[] = []
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       providerId: "openrouter",
       modelId: "x-ai/grok-build-0.1",
       runtimeConfig: {
@@ -3054,6 +3094,7 @@ describe("SocratesAgent", () => {
     const agent = new SocratesAgent(provider)
     const streamed: SocratesAgentEvent[] = []
     for await (const event of agent.streamTurn({
+      completionMode: "worker_text",
       providerId: "openrouter",
       modelId: "x-ai/grok-build-0.1",
       runtimeConfig: {
@@ -3158,6 +3199,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       providerId: "openai",
       modelId: "gpt-5.4-mini",
       runtimeConfig: {
@@ -3197,6 +3239,7 @@ describe("SocratesAgent", () => {
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
+      completionMode: "worker_text",
       providerId: "openai",
       modelId: "gpt-5.4-mini",
       runtimeConfig: {

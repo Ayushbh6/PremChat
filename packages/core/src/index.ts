@@ -1,4 +1,4 @@
-export { createDefaultSocratesAgent, createV2SocratesAgent, findModelOption, listModels } from "./agent/createDefaultSocratesAgent"
+export { createDefaultSocratesAgent, findModelOption, listModels } from "./agent/createDefaultSocratesAgent"
 export {
   SocratesAgent,
   type SocratesAgentContextPrecomputeInput,
@@ -23,7 +23,6 @@ export {
 export {
   MemoryRouterAgent,
   type MemoryRouterAgentModelSettings,
-  type MemoryRouterPostTurnInput,
   type MemoryRouterPreTurnInput,
   type ActiveGoalCard,
   type GoalCandidateCard,
@@ -81,7 +80,7 @@ export {
   renderMemoryCompactionMarkdown,
   type MemoryAgentCompressorUserPromptInput,
 } from "./prompts/memoryAgentCompressorPrompt"
-export { createCompressorToolRegistry, createDefaultToolRegistry, createFinalAnswerToolRegistry, createGoalRouterToolRegistry, createMemoryFinalizationToolRegistry, createMemoryRouterToolRegistry, createMemoryToolRegistry, createSkillWriterToolRegistry, createSoulConfirmationToolRegistry, createTitleGeneratorToolRegistry, createV2ToolRegistry, ToolRegistry } from "./tools/registry"
+export { createCompressorToolRegistry, createDefaultToolRegistry, createFinalAnswerToolRegistry, createGoalRouterToolRegistry, createMemoryRouterToolRegistry, createMemoryToolRegistry, createSkillWriterToolRegistry, createSoulConfirmationToolRegistry, createTitleGeneratorToolRegistry, ToolRegistry } from "./tools/registry"
 export type { ApprovalDecision, ApprovalRequest, ToolExecutorContext, ToolExecutors, ToolLifecycleEvent } from "./tools/types"
 export * from "./retrieval"
 export * from "./v2"

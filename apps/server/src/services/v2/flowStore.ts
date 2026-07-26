@@ -7,8 +7,6 @@ import {
   MAX_MESSAGE_ATTACHMENTS,
   MAX_SKILL_ZIP_ATTACHMENT_BYTES,
   MAX_TEXT_ATTACHMENT_BYTES,
-  type FocusLedgerToolInput,
-  type FocusLedgerToolOutput,
   type GoalFinalization,
   V2_FLOW_MESSAGE_PAGE_MAX,
   V2_FLOW_SNAPSHOT_MESSAGE_LIMIT,
@@ -980,70 +978,6 @@ export class V2FlowStore {
     this.handle.db.update(v2ClassicTurnGoalLinks).set({ assistantMessageId, updatedAt: nowIso() }).where(eq(v2ClassicTurnGoalLinks.turnId, turnId)).run()
   }
 
-  useFocusLedger(input: {
-    projectId: string
-    flowId: string
-    goalId: string
-    turnId: string
-    request: FocusLedgerToolInput
-  }): FocusLedgerToolOutput {
-    this.requireFlow(input.projectId, input.flowId)
-    const current = this.handle.db.select().from(v2Goals).where(and(eq(v2Goals.id, input.goalId), eq(v2Goals.flowId, input.flowId))).limit(1).get()
-    if (!current) throw new SocratesError("v2_goal_not_found", "The current focus was not found.")
-    let pendingCompletion = false
-    if (input.request.operation === "inspect" && input.request.goalId) {
-      const inspected = this.handle.db.select().from(v2Goals).where(and(eq(v2Goals.id, input.request.goalId), eq(v2Goals.flowId, input.flowId))).limit(1).get()
-      if (!inspected) throw new SocratesError("v2_goal_not_found", "The requested focus was not found.", { recoverable: true })
-    } else if (input.request.operation === "update_current") {
-      this.handle.db.update(v2Goals).set({ summary: input.request.summary, updatedAt: nowIso() }).where(eq(v2Goals.id, current.id)).run()
-      this.refreshCapsule(current.id, input.flowId, input.turnId, nowIso(), "ledger_update")
-    } else if (input.request.operation === "record_blocker") {
-      const task = this.handle.db.select().from(v2AgentTasks).where(eq(v2AgentTasks.currentTurnId, input.turnId)).limit(1).get()
-      if (!task) throw new SocratesError("v2_task_not_found", "The current task was not found.")
-      const metadata = parseJsonObject(task.metadataJson)
-      this.handle.db.update(v2AgentTasks).set({
-        metadataJson: JSON.stringify({ ...metadata, focusBlocker: input.request.blocker }),
-        updatedAt: nowIso(),
-      }).where(eq(v2AgentTasks.id, task.id)).run()
-    } else if (input.request.operation === "complete_current") {
-      if (current.kind === "general") {
-        throw new SocratesError("v2_general_focus_protected", "General Conversation cannot be completed.", { recoverable: true })
-      }
-      const task = this.handle.db.select().from(v2AgentTasks).where(eq(v2AgentTasks.currentTurnId, input.turnId)).limit(1).get()
-      if (!task || task.goalId !== current.id) throw new SocratesError("v2_focus_ledger_scope", "Focus completion is restricted to the focus bound to this task.")
-      const metadata = parseJsonObject(task.metadataJson)
-      this.handle.db.update(v2AgentTasks).set({
-        metadataJson: JSON.stringify({ ...metadata, pendingFocusCompletion: { outcome: input.request.outcome, requestedAt: nowIso() } }),
-        updatedAt: nowIso(),
-      }).where(eq(v2AgentTasks.id, task.id)).run()
-      pendingCompletion = true
-    }
-    const goals = this.handle.db.select().from(v2Goals).where(eq(v2Goals.flowId, input.flowId)).orderBy(asc(v2Goals.ordinal)).all()
-      .filter((goal) => input.request.operation !== "inspect" || !input.request.goalId || goal.id === input.request.goalId)
-      .map((goal) => ({
-        id: goal.id,
-        title: goal.title,
-        kind: goal.kind as "general" | "work",
-        status: goal.status as V2Goal["status"],
-        ...(goal.summary ? { summary: goal.summary } : {}),
-        pinned: goal.pinned,
-        lastActiveAt: goal.lastActiveAt,
-      }))
-    return {
-      operation: input.request.operation,
-      currentGoalId: current.id,
-      goals,
-      pendingCompletion,
-      message: input.request.operation === "complete_current"
-        ? "Completion is staged and will commit after the final response is saved. The focus will move to Finished and remain selected. Now provide the substantive user-facing answer, incorporating the outcome; do not merely confirm completion."
-        : input.request.operation === "record_blocker"
-          ? "Recorded the blocker on the current task."
-          : input.request.operation === "update_current"
-            ? "Updated the current focus summary."
-            : `Loaded ${goals.length} focus${goals.length === 1 ? "" : "es"}.`,
-    }
-  }
-
   updateFocus(input: {
     projectId: string
     flowId: string
@@ -2008,16 +1942,8 @@ export class V2FlowStore {
     turnId: string
     content: string
     reasoning?: string
-    goalFinalization?: GoalFinalization
+    goalFinalization: GoalFinalization
   }): V2Message {
-    const completionTask = this.handle.db.select().from(v2AgentTasks).where(eq(v2AgentTasks.currentTurnId, input.turnId)).limit(1).get()
-    const pendingCompletion = completionTask ? parseJsonObject(completionTask.metadataJson).pendingFocusCompletion : undefined
-    const completionOutcome = pendingCompletion && typeof pendingCompletion === "object" && typeof (pendingCompletion as Record<string, unknown>).outcome === "string"
-      ? (pendingCompletion as Record<string, unknown>).outcome as string
-      : undefined
-    const responseContent = !input.goalFinalization && completionOutcome
-      ? ensureCompletionOutcomeVisible(input.content, completionOutcome)
-      : input.content
     const operation = this.handle.sqlite.transaction(() => {
       const turn = this.requireTurn(input.projectId, input.flowId, input.turnId)
       if (!turn.goalId) throw new SocratesError("v2_turn_goal_missing", "The Flow turn has not been assigned to a goal.")
@@ -2035,7 +1961,7 @@ export class V2FlowStore {
         turnId: input.turnId,
         ordinal,
         role: "assistant",
-        content: responseContent,
+        content: input.content,
         reasoning: input.reasoning,
         status: "completed",
         parentMessageId: turn.userMessageId,
@@ -2049,21 +1975,29 @@ export class V2FlowStore {
       this.handle.db.insert(v2GoalMessageLinks).values({
         id: createId("v2link"), flowId: input.flowId, goalId: turn.goalId, messageId, turnId: input.turnId, relation: "primary", createdAt: now,
       }).run()
-      if (input.goalFinalization) {
-        this.finalizeGoal(input.projectId, input.flowId, turn.goalId, input.turnId, input.goalFinalization)
-      }
+      this.finalizeGoal(input.projectId, input.flowId, turn.goalId, input.turnId, input.goalFinalization)
       this.refreshCapsule(turn.goalId, input.flowId, input.turnId, now, "turn_completed")
       const row = this.handle.db.select().from(v2Messages).where(eq(v2Messages.id, messageId)).get()
       if (!row) throw new SocratesError("v2_turn_complete_failed", "The Flow response could not be saved.")
       return mapMessage(row)
     })
     const message = operation()
-    const completedTurn = this.requireTurn(input.projectId, input.flowId, input.turnId)
-    if (!input.goalFinalization && completedTurn.goalId && pendingCompletion && typeof pendingCompletion === "object") {
-      const outcome = completionOutcome ?? "Completed by Socrates."
-      this.updateFocus({ projectId: input.projectId, flowId: input.flowId, goalId: completedTurn.goalId, action: "finish", note: outcome })
+    try {
+      this.projectV2TaskToClassic(input.projectId, input.flowId, input.turnId)
+    } catch (error) {
+      const normalized = normalizeUnknownError(error)
+      this.recordError({
+        projectId: input.projectId,
+        flowId: input.flowId,
+        turnId: input.turnId,
+        source: "classic_projection",
+        code: "classic_projection_failed",
+        message: normalized.message,
+        ...(normalized.details === undefined ? {} : { details: normalized.details }),
+        ...(normalized.stack ? { stack: normalized.stack } : {}),
+        recoverable: true,
+      })
     }
-    this.projectV2TaskToClassic(input.projectId, input.flowId, input.turnId)
     return message
   }
 
@@ -3736,31 +3670,9 @@ export class V2FlowStore {
   }
 }
 
-const ensureCompletionOutcomeVisible = (response: string, outcome: string): string => {
-  const trimmedResponse = response.trim()
-  const trimmedOutcome = outcome.trim()
-  if (!trimmedOutcome) return response
-  const outcomeTokens = completionContentTokens(trimmedOutcome)
-  const responseTokens = new Set(completionContentTokens(trimmedResponse))
-  const coveredTokens = outcomeTokens.filter((token) => responseTokens.has(token)).length
-  if (outcomeTokens.length === 0 || coveredTokens / outcomeTokens.length >= 0.4) return response
-  return [trimmedOutcome, trimmedResponse].filter(Boolean).join("\n\n")
-}
-
-const completionContentTokens = (value: string): string[] => [
-  ...new Set(
-    (value.toLocaleLowerCase().match(/[\p{L}\p{N}_-]{4,}/gu) ?? [])
-      .filter((token) => !COMPLETION_CONTENT_STOP_WORDS.has(token)),
-  ),
-]
-
 const goalSearchTerms = (value: string): string[] => [
   ...new Set(value.toLocaleLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) ?? []),
 ].slice(0, 24)
-
-const COMPLETION_CONTENT_STOP_WORDS = new Set([
-  "after", "before", "completed", "completion", "current", "focus", "from", "have", "reported", "that", "the", "this", "with",
-])
 
 const mapFlow = (row: typeof v2Flows.$inferSelect): V2Flow => ({
   id: row.id,

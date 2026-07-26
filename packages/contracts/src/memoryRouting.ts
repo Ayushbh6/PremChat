@@ -131,44 +131,6 @@ export const memoryRouterPreTurnResultSchema = z
   .strict()
 export type MemoryRouterPreTurnResult = z.infer<typeof memoryRouterPreTurnResultSchema>
 
-export const memoryReconciliationActionSchema = z
-  .object({
-    operation: z.enum(["upsert", "replace", "remove", "archive", "condense"]),
-    ...memoryDestinationShape,
-    surface: z.enum(["project_notes", "project_memory", "repo_docs"]),
-    instruction: z.string().min(1).max(1_200),
-    reason: z.string().min(1).max(500),
-    evidenceReferences: z.array(z.string().regex(/^evd_[A-Za-z0-9_-]+$/)).max(5).default([]),
-    capabilityId: z.string().min(3).max(120).regex(/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/).optional(),
-    verifiedRuntime: z.string().min(1).max(200).optional(),
-    verifiedAt: z.string().datetime().optional(),
-  })
-  .strict()
-  .superRefine((input, context) => {
-    validateMemoryDestination(input, context)
-    if (input.surface === "project_notes" && ["runtime_context", "state_ledger"].includes(input.sectionId)) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["sectionId"], message: `${input.sectionId} is backend-owned and cannot be a reconciliation action.` })
-    }
-  })
-export type MemoryReconciliationAction = z.infer<typeof memoryReconciliationActionSchema>
-
-export const goalFinalizationSchema = z
-  .object({
-    state: z.enum(["active", "completed", "blocked", "discarded"]),
-    note: z.string().min(1).max(600),
-  })
-  .strict()
-export type GoalFinalization = z.infer<typeof goalFinalizationSchema>
-
-export const memoryRouterPostTurnResultSchema = z
-  .object({
-    actions: z.array(memoryReconciliationActionSchema).max(5),
-    reason: z.string().min(1).max(500),
-    goalFinalization: goalFinalizationSchema.nullable(),
-  })
-  .strict()
-export type MemoryRouterPostTurnResult = z.infer<typeof memoryRouterPostTurnResultSchema>
-
 export const memorySearchInputSchema = z
   .object({
     query: z.string().min(1).max(1_000),

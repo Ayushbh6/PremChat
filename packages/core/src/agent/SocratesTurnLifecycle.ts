@@ -14,12 +14,10 @@ import { AsyncEventQueue } from "./AsyncEventQueue"
 import {
   canLoadStableCachePrelude,
   canRunMemoryLoop,
-  clipText,
   emptyMemoryLoopRunResult,
   isStableCachePreludeRecord,
   memoryLoopWarning,
   memoryRouterBaseInput,
-  previewMemoryLoopOutput,
   renderActiveGoalDeveloperMessage,
   renderMemoryLoopDeveloperMessage,
   renderStableCachePrelude,
@@ -187,49 +185,6 @@ export class SocratesTurnLifecycle {
         } : {}),
         ...(stableCachePreludeMessage ? { stableCachePreludeMessage } : {}),
       }
-    }
-  }
-
-  async runPostEvidenceMemoryLoop(
-    input: SocratesAgentTurnInput,
-    messages: ModelMessage[],
-    context: { preflightSummary?: string; toolSummary: string; assistantDraft: string; activeGoal?: ActiveGoalCard },
-  ): Promise<MemoryLoopRunResult> {
-    if (!canRunMemoryLoop(this.provider, input, this.toolRegistry)) {
-      return emptyMemoryLoopRunResult()
-    }
-
-    try {
-      const route = await this.memoryRouterAgent.routePostTurn({
-        ...memoryRouterBaseInput(input, messages),
-        ...(context.preflightSummary ? { preflightSummary: context.preflightSummary } : {}),
-        toolSummary: context.toolSummary,
-        assistantDraft: context.assistantDraft,
-        ...(context.activeGoal ? { activeGoal: context.activeGoal } : {}),
-      })
-      const summary = summarizeMemoryLoop("post_evidence", route, [], [])
-      return {
-        events: [],
-        summary,
-        records: [],
-        ...(route.actions.length > 0
-          ? {
-              developerMessage: [
-                '<socrates_memory_reconciliation phase="finalization">',
-                "Before giving the final answer, reconcile these exact .socrates sections. The router only planned the work; you own every read and mutation.",
-                `actions: ${JSON.stringify(route.actions)}`,
-                "For each action: read the current section, apply the smallest exact patch using project_docs or repo_docs, then re-read the affected section and verify the stale claim is gone and the replacement is present. Replace/archive contradictions; do not append a competing claim. Include capability, verified_runtime, and verified_at anchors when supplied. If current evidence disproves an action, do not write it and state why in the final answer.",
-                "After verification, give the user the final answer.",
-                "</socrates_memory_reconciliation>",
-              ].join("\n"),
-            }
-          : {}),
-        reconciliationActions: route.actions,
-      }
-    } catch (error) {
-      const normalized = normalizeError(error)
-      const details = normalized.details === undefined ? "" : ` Details: ${clipText(previewMemoryLoopOutput(normalized.details), 4_000)}`
-      return memoryLoopWarning("post_evidence", `${normalized.code}: ${normalized.message}${details}`)
     }
   }
 

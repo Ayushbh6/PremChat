@@ -1,6 +1,5 @@
 import {
   toolExecutionResultSchema,
-  type MemoryReconciliationAction,
   type NormalizedToolCall,
   type ToolExecutionResult,
   type ToolName,
@@ -114,16 +113,14 @@ export type MemorySaveLedgerBatchInput = {
 export class ReconciliationVerificationLedger {
   private readonly targets = new Map<string, { label: string; mutated: boolean; verified: boolean }>()
   private readonly observed = new Map<string, { mutated: boolean; verified: boolean }>()
+  private checkpointStarted = false
 
-  require(actions: MemoryReconciliationAction[]): void {
-    for (const action of actions) {
-      const key = this.keyForAction(action)
-      const observed = this.observed.get(key)
-      this.targets.set(key, {
-        label: `${action.fileName}/${action.sectionId}`,
-        mutated: observed?.mutated ?? false,
-        verified: observed?.verified ?? false,
-      })
+  beginCheckpoint(): void {
+    this.checkpointStarted = true
+    for (const [key, observed] of this.observed) {
+      if (observed.mutated) {
+        this.targets.set(key, { label: this.labelForKey(key), ...observed })
+      }
     }
   }
 
@@ -147,6 +144,9 @@ export class ReconciliationVerificationLedger {
         observed.verified = true
       }
       this.observed.set(key, observed)
+      if (this.checkpointStarted && observed.mutated && !this.targets.has(key)) {
+        this.targets.set(key, { label: this.labelForKey(key), ...observed })
+      }
       const target = this.targets.get(key)
       if (target) Object.assign(target, observed)
     }
@@ -163,11 +163,6 @@ export class ReconciliationVerificationLedger {
       .join(", ")
   }
 
-  private keyForAction(action: MemoryReconciliationAction): string {
-    const owner = action.surface === "repo_docs" ? `repo:${action.fileName}` : `project:${action.surface === "project_notes" ? "notes" : "memory"}`
-    return `${owner}:${action.sectionId}`
-  }
-
   private keyForCall(call: NormalizedToolCall): string | undefined {
     if (!call.input || typeof call.input !== "object" || Array.isArray(call.input)) return undefined
     const input = call.input as Record<string, unknown>
@@ -179,6 +174,11 @@ export class ReconciliationVerificationLedger {
     }
     if (call.toolName === "repo_docs" && typeof input.path === "string") return `repo:${input.path}:${sectionId}`
     return undefined
+  }
+
+  private labelForKey(key: string): string {
+    const parts = key.split(":")
+    return parts.slice(1).join("/")
   }
 }
 

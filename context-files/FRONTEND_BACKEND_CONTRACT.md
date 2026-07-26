@@ -4,7 +4,7 @@ This document is the handshake between the frontend and backend workstreams.
 
 Both sides must build against this contract. The backend owns persistence, agent execution, providers, tools, approvals, and WebSocket event emission. The frontend owns routes, screens, user interactions, rendering, local view state, and event presentation.
 
-The executable source of truth for shared TypeScript types and schemas lives in `packages/contracts`. This document explains the frontend/backend contract and records the implemented V2 Seamless Flow boundary. `FLOW_NORTH_STAR.md` owns target product semantics and `UNIFIED_SOCRATES_LIFECYCLE.md` owns the detailed target lifecycle/cleanup boundary; current V2 schemas live in `packages/contracts/src/v2Flow.ts`, and current lifecycle/migration mechanics live in `V2_FLOW_ARCHITECTURE.md`. Current contracts that expose post-evidence routing, mutable focus-ledger authority, or 100-item ledger output are explicit convergence debt, not target precedent.
+The executable source of truth for shared TypeScript types and schemas lives in `packages/contracts`. This document explains the frontend/backend contract and records the implemented V2 Seamless Flow boundary. `FLOW_NORTH_STAR.md` owns product semantics and `UNIFIED_SOCRATES_LIFECYCLE.md` owns the detailed lifecycle/cleanup boundary; current V2 schemas live in `packages/contracts/src/v2Flow.ts`, and current lifecycle/migration mechanics live in `V2_FLOW_ARCHITECTURE.md`. Phase 1 removed post-turn routing contracts and mutable main-agent goal-ledger authority.
 
 ## Contract Goals
 
@@ -2628,23 +2628,6 @@ type MemoryRouterPreTurnResult = {
   reason: string
 }
 
-type MemoryReconciliationAction = {
-  operation: "upsert" | "replace" | "remove" | "archive" | "condense"
-  surface: "project_notes" | "project_memory" | "repo_docs"
-  fileName: MemoryRetrievalFile
-  sectionId: MemoryRetrievalSection
-  instruction: string // max 1,200 characters
-  reason: string // max 500 characters
-  evidenceReferences: string[] // max 5 backend-created evd_ ids
-  capabilityId?: string
-  verifiedRuntime?: string
-  verifiedAt?: string
-}
-
-type MemoryRouterPostTurnResult = {
-  actions: MemoryReconciliationAction[] // max 5
-  reason: string
-}
 ```
 
 The behavior stays simple and human-facing:
@@ -2652,14 +2635,14 @@ The behavior stays simple and human-facing:
 - Pre-turn routing returns exact valid file/section read targets, not boolean surfaces or loose doc hints.
 - Pre-turn runtime loads bounded identity sections (`core_identity`, `voice_and_presence`, `relationship_to_user`) plus global/project always-apply sections into one backend-owned per-project snapshot and renders it with the registry-generated surface map into a provider-agnostic stable cache prelude before conversation/user text. A stat fast path avoids re-reading unchanged files; changed files are content-hashed and parsed, but same-content rewrites or changes outside these standing sections retain the cached snapshot. Only a changed standing-section hash replaces it. The bounded cache uses least-recently-used eviction. This path emits no standing-section tool calls and does not depend on successful structured Memory Router generation. Router targets matching standing sections and exact repeated dynamic targets are hard-deduplicated; only dynamic docs remain in the later visible context tail.
 - Before router reasoning, the complete user prompt is shared-chunked and automatically hybrid-prefetched against eligible memory sections. Up to 12 prompt segments are merged into at most eight section parents; this does not consume the router's tool budget.
-- The pre-turn Memory Router has `memory_search` only for routing, runs after goal/task binding, and is strictly read-only. The target has no final/post-evidence Memory Router. Main Socrates may inspect normal task evidence through its shared tools, while `project_notes/runtime_context` and `project_notes/state_ledger` remain backend-owned and rejected as mutation targets.
-- If either router phase still fails, the backend persists a `memory_router` error plus every usage item already observed as failed `ai_usage_events` with phase/error metadata, then lets the ordinary task continue. Socrates is told not to claim routed recall or reconciliation succeeded. No durable retry/pending-reconciliation subsystem is created.
+- The pre-turn Memory Router has `memory_search` only for routing, runs after goal/task binding, and is strictly read-only. There is no final/post-turn Memory Router. Main Socrates may inspect normal task evidence through its shared tools, while `project_notes/runtime_context` and `project_notes/state_ledger` remain backend-owned and rejected as mutation targets.
+- If pre-turn routing still fails, the backend persists a `memory_router` error plus every usage item already observed as failed `ai_usage_events` with phase/error metadata, then lets the ordinary task continue. Socrates is told not to claim routed recall succeeded. No durable retry/pending-reconciliation subsystem is created.
 - The Global Memory Agent follows the same tool-loop then structured-final pattern. Its final Zod journal has bounded `summary`, `patternsObserved`, `skillsAffected`, `decisions`, `openInvestigations`, and `nextRunFocus`; scoped file/proposal work remains normal internal tool calls. A valid successful run creates one `memory_agent_journal` row and refreshes the generated Memory Agent Ledger file exposed by Memory Center.
 - The Memory Agent-only `read_memory_journal` tool is read-only. `list` defaults to 5 and caps at 10 compact previews; `read` accepts one run id. Character limits default to 8,000 for list serialization and 12,000 for a run, with a 20,000 hard maximum and explicit truncation metadata. It cannot write, delete, search, or embed journal history.
-- The router never authors `oldText`, `newText`, patches, hashes, or evidence ids. `evd_` ids are created and task-bound by backend code.
+- The router never authors `oldText`, `newText`, patches, hashes, or evidence ids. Backend task evidence remains private runtime state for Terminal continuation and audit paths.
 - Every user request creates one durable task. Automatic Terminal wait/resume turns stay inside that task; a user-authored follow-up starts a new task.
 - The first no-tool answer is held as a proposed draft. The same Socrates turn receives its mandatory reconciliation checkpoint there, completes and verifies any required `.socrates` work, then enters the strict no-tool structured final call.
-- Socrates opens exact planned targets and uses `project_docs` or `repo_docs` for mutations. The runtime blocks the final answer until every planned target has a successful mutation followed by a successful read of that same section.
+- Socrates opens exact targets and uses `project_docs` or `repo_docs` for mutations. The runtime blocks the final answer until every observed checkpoint mutation has a successful read of that same section after the mutation.
 - Stale claims are replaced, removed, archived, or condensed rather than contradicted by append-only prose. Verified runtime capability entries may include stable `capability`, `verified_runtime`, and `verified_at` anchors.
 
 ### `project_docs`

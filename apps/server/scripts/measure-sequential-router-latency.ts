@@ -26,7 +26,7 @@ for (const setting of [goalSettings, memorySettings]) {
 const provider = createDefaultModelProvider(credentials)
 const samples: Sample[] = []
 const sampleGoal: V2Goal = {
-  id: "goal_focus_ledger",
+  id: "goal_lifecycle_ledger",
   flowId: "latency_flow",
   projectId: "latency_project",
   ordinal: 1,

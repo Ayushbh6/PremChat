@@ -428,9 +428,7 @@ const createStructuredFinalAwareTestAgent = (provider: ModelProvider): SocratesA
       }
       if (request.system.includes("Memory Router Agent")) {
         return {
-          output: (request.system.includes("post-evidence")
-            ? { actions: [], reason: "No reconciliation needed in this server test.", goalFinalization: null }
-            : { readTargets: [], reason: "No routed recall needed in this server test." }) as TOutput,
+          output: { readTargets: [], reason: "No routed recall needed in this server test." } as TOutput,
         }
       }
       if (request.system.includes("Soul Confirmation Agent") && !provider.generateStructured) {
@@ -470,9 +468,7 @@ const createTestAgent = (): SocratesAgent => {
     async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
       if (request.system.includes("Memory Router Agent")) {
         return {
-          output: (request.system.includes("post-evidence")
-            ? { actions: [], reason: "No reconciliation needed.", goalFinalization: null }
-            : { readTargets: [], reason: "No routed recall needed." }) as TOutput,
+          output: { readTargets: [], reason: "No routed recall needed." } as TOutput,
         }
       }
       const sessionKey = request.sessionId ?? "default"
@@ -3761,9 +3757,7 @@ describe("WebSocket API", () => {
       }),
       async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
         if (request.system.includes("Memory Router Agent")) {
-          return { output: (request.system.includes("post-evidence")
-            ? { actions: [], reason: "No durable update is needed.", goalFinalization: null }
-            : { readTargets: [], reason: "No routed recall is needed." }) as TOutput }
+          return { output: { readTargets: [], reason: "No routed recall is needed." } as TOutput }
         }
         return { output: {
           finalAnswer: "Frontier-only persisted answer.",
@@ -3773,15 +3767,10 @@ describe("WebSocket API", () => {
       async *stream(request) {
         requests.push(request)
         const toolNames = request.tools?.map((tool) => tool.name) ?? []
-        if (!toolNames.includes("handover_to_frontier") && (toolNames.includes("memory_search") || toolNames.includes("turn_evidence"))) {
-          const isPostEvidence = JSON.stringify(request.messages).includes("post-evidence")
+        if (!toolNames.includes("handover_to_frontier") && toolNames.includes("memory_search")) {
           yield {
             type: "model.answer.delta",
-            text: JSON.stringify(
-              isPostEvidence
-                ? { actions: [], reason: "No durable update is needed.", goalFinalization: null }
-                : { readTargets: [], reason: "No routed recall is needed." },
-            ),
+            text: JSON.stringify({ readTargets: [], reason: "No routed recall is needed." }),
           }
           yield { type: "model.completed", usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 } }
           return
@@ -3862,10 +3851,11 @@ describe("WebSocket API", () => {
       const driverRequest = requests.find((request) => request.tools?.some((tool) => tool.name === "handover_to_frontier"))
       const frontierRequests = requests.filter((request) => (request as { modelId?: string }).modelId === "x-ai/grok-4.5")
       expect(driverRequest?.tools?.map((tool) => tool.name)).toContain("handover_to_frontier")
-      expect(frontierRequests).toHaveLength(1)
+      expect(frontierRequests).toHaveLength(2)
       expect(frontierRequests.every((request) => !request.tools?.some((tool) => tool.name === "handover_to_frontier"))).toBe(true)
       expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("Solve the difficult concurrency problem")
       expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("Resolve the final concurrency invariant")
+      expect(JSON.stringify(frontierRequests[1]?.messages)).toContain("socrates_reconciliation_checkpoint")
 
       const sqlite = new Database(dbPath)
       try {
@@ -3874,6 +3864,7 @@ describe("WebSocket API", () => {
           .all() as Array<{ providerId: string; modelId: string; status: string }>
         expect(calls).toEqual([
           { providerId: "openrouter", modelId: "deepseek/deepseek-v4-flash", status: "completed" },
+          { providerId: "openrouter", modelId: "x-ai/grok-4.5", status: "completed" },
           { providerId: "openrouter", modelId: "x-ai/grok-4.5", status: "completed" },
           { providerId: "openrouter", modelId: "x-ai/grok-4.5", status: "completed" },
         ])
@@ -3904,9 +3895,7 @@ describe("WebSocket API", () => {
       }),
       async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
         if (request.system.includes("Memory Router Agent")) {
-          return { output: (request.system.includes("post-evidence")
-            ? { actions: [], reason: "No durable update is needed.", goalFinalization: null }
-            : { readTargets: [], reason: "No routed recall is needed." }) as TOutput }
+          return { output: { readTargets: [], reason: "No routed recall is needed." } as TOutput }
         }
         return { output: {
           finalAnswer: "Socrates finished after the declined Frontier request.",
@@ -4043,22 +4032,19 @@ describe("WebSocket API", () => {
         const errors = sqlite
           .prepare("SELECT code, recoverable, details_json AS detailsJson FROM errors WHERE source = 'memory_router' ORDER BY created_at")
           .all() as Array<{ code: string; recoverable: number; detailsJson: string }>
-        expect(errors).toHaveLength(2)
-        expect(errors.map((error) => error.code)).toEqual(["structured_agent_output_invalid", "structured_agent_output_invalid"])
-        expect(errors.map((error) => JSON.parse(error.detailsJson).phase)).toEqual(["pre_turn", "post_evidence"])
+        expect(errors).toHaveLength(1)
+        expect(errors.map((error) => error.code)).toEqual(["structured_agent_output_invalid"])
+        expect(errors.map((error) => JSON.parse(error.detailsJson).phase)).toEqual(["pre_turn"])
 
         const usageRows = sqlite
           .prepare("SELECT status, metadata_json AS metadataJson FROM ai_usage_events WHERE source_kind = 'memory_router' ORDER BY created_at")
           .all() as Array<{ status: string; metadataJson: string }>
-        expect(usageRows).toHaveLength(6)
+        expect(usageRows).toHaveLength(3)
         expect(usageRows.every((row) => row.status === "failed")).toBe(true)
         expect(usageRows.map((row) => JSON.parse(row.metadataJson).phase)).toEqual([
           "pre_turn",
           "pre_turn",
           "pre_turn",
-          "post_evidence",
-          "post_evidence",
-          "post_evidence",
         ])
         expect(usageRows.every((row) => Boolean(JSON.parse(row.metadataJson).errorId))).toBe(true)
       } finally {
@@ -4459,7 +4445,7 @@ describe("WebSocket API", () => {
 
       expect(body.ok).toBe(true)
       if (body.ok) {
-        expect(body.data.tokenUsage.totalTokens).toBe(6)
+        expect(body.data.tokenUsage.totalTokens).toBe(12)
         expect(body.data.contextUsage?.contextUsedTokens).toBe(12_345)
         expect(body.data.contextUsage?.contextUsedTokens).not.toBe(body.data.tokenUsage.totalTokens)
         expect(body.data.lastRuntimeConfig).toEqual({
@@ -5358,7 +5344,7 @@ describe("WebSocket API", () => {
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "tool_docs.md"))).toBe(true)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "current_time.md"))).toBe(true)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "context_disposition.md"))).toBe(true)
-	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "focus_ledger.md"))).toBe(true)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "focus_ledger.md"))).toBe(false)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "handover_to_frontier.md"))).toBe(true)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "list_project_resources.md"))).toBe(true)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "trace_retrieve.md"))).toBe(true)
@@ -5380,7 +5366,6 @@ describe("WebSocket API", () => {
 	    expectStructuredToolDoc(socratesHome, path.join("memory_agent", "edit_files.md"))
 	    expectStructuredToolDoc(socratesHome, path.join("memory_agent", "user_profile.md"))
 	    expectStructuredToolDoc(socratesHome, "context_disposition.md")
-	    expectStructuredToolDoc(socratesHome, "focus_ledger.md")
 	    expectStructuredToolDoc(socratesHome, "handover_to_frontier.md")
 	    expectStructuredToolDoc(socratesHome, "list_project_resources.md")
 	    expectStructuredToolDoc(socratesHome, path.join("memory_agent", "current_time.md"))
@@ -7475,7 +7460,7 @@ describe("WebSocket API", () => {
       await waitForEvent(socket, "message.completed")
       await waitForEvent(socket, "turn.completed")
 
-      const nextTurnRequest = requests[2] as { messages: Array<{ role: string; content: unknown }> }
+      const nextTurnRequest = requests[3] as { messages: Array<{ role: string; content: unknown }> }
       expect(JSON.stringify(nextTurnRequest.messages)).toContain("Resources listed.")
       expect(JSON.stringify(nextTurnRequest.messages)).toContain("Continue without replaying tools")
       expect(JSON.stringify(nextTurnRequest.messages)).not.toContain("tool-result")
@@ -8752,8 +8737,9 @@ describe("WebSocket API", () => {
       const completed = await waitForEvent(secondSocket, "turn.completed")
       expect(completed.payload.turnId).toBe(started.payload.turnId)
       expect(trackedEvents.get(secondSocket)?.some(
-        (event) => event.type === "agent.answer.delta" && event.payload.text === "Part one. Part two.",
+        (event) => event.type === "message.completed" && event.payload.message.content === "Part one. Part two.",
       )).toBe(true)
+      expect(trackedEvents.get(secondSocket)?.some((event) => event.type === "agent.answer.delta")).toBe(false)
 
       const response = await app.inject({
         method: "GET",
@@ -8936,7 +8922,7 @@ describe("WebSocket API", () => {
         }
         expect(row.assistant_count).toBe(0)
         expect(row.failed_turn_count).toBe(1)
-        expect(row.failed_model_call_count).toBe(3)
+        expect(row.failed_model_call_count).toBe(4)
       } finally {
         sqlite.close()
       }

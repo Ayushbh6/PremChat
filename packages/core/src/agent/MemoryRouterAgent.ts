@@ -1,7 +1,5 @@
 import {
-  memoryRouterPostTurnResultSchema,
   memoryRouterPreTurnResultSchema,
-  type MemoryRouterPostTurnResult,
   type MemoryRouterPreTurnResult,
   type MemorySearchInput,
   type MemorySearchOutput,
@@ -13,12 +11,10 @@ import type { ModelMessage, ModelProvider, ModelUsage } from "@socrates/provider
 import { normalizeError, nowIso } from "@socrates/shared"
 import { chunkMarkdown } from "../retrieval"
 import {
-  buildPostTurnMemoryRouterUserContent,
   buildPreTurnMemoryRouterUserContent,
-  POST_TURN_MEMORY_ROUTER_SYSTEM_PROMPT,
   PRE_TURN_MEMORY_ROUTER_SYSTEM_PROMPT,
 } from "../prompts/memoryRoutingPrompt"
-import { createMemoryFinalizationToolRegistry, createMemoryRouterToolRegistry } from "../tools/registry"
+import { createMemoryRouterToolRegistry } from "../tools/registry"
 import type { ToolExecutors } from "../tools/types"
 import { AgentRuntime, type AgentRuntimeStructuredInput } from "./AgentRuntime"
 
@@ -51,7 +47,7 @@ type MemoryRouterAgentBaseInput = {
 }
 
 export type MemoryRouterRunRecord = {
-  phase: "pre_turn" | "post_evidence"
+  phase: "pre_turn"
   status: "completed" | "failed"
   providerId: RuntimeConfig["providerId"]
   modelId: string
@@ -77,13 +73,6 @@ export type ActiveGoalCard = Readonly<{
 }>
 
 export type MemoryRouterPreTurnInput = MemoryRouterAgentBaseInput
-export type MemoryRouterPostTurnInput = MemoryRouterAgentBaseInput & {
-  preflightSummary?: string
-  toolSummary: string
-  assistantDraft: string
-  activeGoal?: ActiveGoalCard
-}
-
 export class MemoryRouterAgent {
   private readonly runtime = new AgentRuntime()
 
@@ -117,38 +106,6 @@ export class MemoryRouterAgent {
       turnId: input.turnId,
       workspacePath: input.workspacePath,
       ...(input.cacheKey ? { cacheKey: `${input.cacheKey}:memory-router:pre-turn` } : {}),
-      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
-    })
-  }
-
-  async routePostTurn(input: MemoryRouterPostTurnInput): Promise<MemoryRouterPostTurnResult> {
-    const startedAt = nowIso()
-    return this.runRecorded(input, "post_evidence", startedAt, {
-      provider: this.provider,
-      providerId: input.modelSettings.providerId,
-      modelId: input.modelSettings.modelId,
-      runtimeConfig: routerRuntimeConfig(input.modelSettings),
-      system: POST_TURN_MEMORY_ROUTER_SYSTEM_PROMPT,
-      userContent: buildPostTurnMemoryRouterUserContent({
-        ...(input.projectName ? { projectName: input.projectName } : {}),
-        ...(input.projectDescription ? { projectDescription: input.projectDescription } : {}),
-        userMessage: input.userMessage,
-        recentMessages: input.recentMessages,
-        ...(input.preflightSummary ? { preflightSummary: input.preflightSummary } : {}),
-        toolSummary: input.toolSummary,
-        assistantDraft: input.assistantDraft,
-        ...(input.activeGoal ? { activeGoal: input.activeGoal } : {}),
-      }),
-      completion: { mode: "structured", schema: memoryRouterPostTurnResultSchema },
-      toolRegistry: createMemoryFinalizationToolRegistry(),
-      toolExecutors: input.toolExecutors,
-      maxToolCalls: MAX_ROUTER_TOOL_CALLS,
-      projectId: input.projectId,
-      conversationId: input.conversationId,
-      sessionId: input.sessionId,
-      turnId: input.turnId,
-      workspacePath: input.workspacePath,
-      ...(input.cacheKey ? { cacheKey: `${input.cacheKey}:memory-router:post-evidence` } : {}),
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
     })
   }

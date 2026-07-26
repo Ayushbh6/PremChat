@@ -34,12 +34,11 @@ import {
   type MemoryRouterRunRecord,
 } from "./MemoryRouterAgent"
 import { AgentRuntime } from "./AgentRuntime"
-import { buildSocratesFinalAnswerCheckpoint } from "../prompts/socratesFinalAnswerPrompt"
+import { buildSocratesFinalAnswerCheckpoint, buildSocratesReconciliationCheckpoint } from "../prompts/socratesFinalAnswerPrompt"
 import { SocratesTurnLifecycle } from "./SocratesTurnLifecycle"
 import { AsyncEventQueue } from "./AsyncEventQueue"
 import {
   attachModelMetadata,
-  canRunMemoryLoop,
   escapeXmlAttribute,
   frontierRuntimeConfig,
   insertDynamicPromptContext,
@@ -95,7 +94,7 @@ export type SocratesAgentTurnInput = {
   recordMemoryRouterRun?: (input: MemoryRouterRunRecord) => void | Promise<void>
   automaticMemorySearch?: (input: MemorySearchInput) => Promise<MemorySearchOutput>
   activeGoal?: ActiveGoalCard
-  finalAnswerMode?: "text" | "structured"
+  completionMode: "main_structured" | "worker_text"
   contextCompression?: ContextCompressionRuntime
   maxToolCallsPerTurn?: number
   maxConfirmedToolErrorsPerTurn?: number
@@ -111,8 +110,6 @@ export type StableCachePreludeSnapshot = {
   identitySections: Partial<Record<"core_identity" | "voice_and_presence" | "relationship_to_user", string>>
   cacheHit?: boolean
 }
-
-export type MemoryLoopPhase = "pre_turn" | "post_evidence"
 
 export type MemoryRouterModelSettings = Pick<WorkerModelSettings, "providerId" | "authMode" | "modelId" | "thinkingEnabled" | "thinkingEffort">
 export type FrontierModelSettings = Pick<WorkerModelSettings, "providerId" | "authMode" | "modelId" | "thinkingEnabled" | "thinkingEffort">
@@ -194,22 +191,19 @@ export class SocratesAgent {
     let docsPreflightSent = false
     let docsSyncCheckpointSent = false
     let pendingInteractiveTerminalName: string | undefined
-    let preTurnMemoryLoopSummary: string | undefined
     let activeGoal: ActiveGoalCard | undefined = input.activeGoal
-    let finalReconciliationSent = false
+    let finalCheckpointSent = false
     let accumulatedAnswerText = ""
     let currentProviderId = input.providerId
     let currentModelId = input.modelId
     let currentRuntimeConfig = input.runtimeConfig
     let handedOverToFrontier = isSameModelSelection(input.runtimeConfig, input.frontierModelSettings)
     let frontierHandoverRejected = false
-    const memoryFinalizationEnabled = canRunMemoryLoop(this.provider, input, this.toolRegistry)
     const reconciliationVerification = new ReconciliationVerificationLedger()
     let reconciliationReminderCount = 0
     let contextDispositionComplianceReminderCount = 0
 
     const preTurnMemoryLoop = await this.turnLifecycle.runPreTurnMemoryLoop(input, messages, docsLedger)
-    preTurnMemoryLoopSummary = preTurnMemoryLoop.summary
     activeGoal = preTurnMemoryLoop.activeGoal ?? activeGoal
     for (const event of preTurnMemoryLoop.events) {
       yield event
@@ -238,8 +232,8 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
     for (let step = 0; ; step += 1) {
       const dynamicTools = typeof input.dynamicTools === "function" ? input.dynamicTools() : input.dynamicTools
       const handoverAvailable = Boolean(
-        memoryFinalizationEnabled &&
-          !finalReconciliationSent &&
+        input.completionMode === "main_structured" &&
+          !finalCheckpointSent &&
           input.frontierModelSettings &&
           !handedOverToFrontier &&
           !frontierHandoverRejected,
@@ -250,7 +244,7 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
           : this.toolRegistry
               .modelDefinitions(dynamicTools)
               .filter((tool) => tool.name !== "handover_to_frontier" || handoverAvailable)
-      if (forceFinalNoTools && input.finalAnswerMode === "structured") {
+      if (forceFinalNoTools && input.completionMode === "main_structured") {
         const finalEvents: ModelEvent[] = []
         const result = await this.runtime.run({
           provider: this.provider,
@@ -293,7 +287,6 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
           yield attachModelMetadata(event, event.modelCallId ?? finalModelCallId, step)
         }
         yield { type: "agent.final_result", result: result.output }
-        yield attachModelMetadata({ type: "model.answer.delta", text: result.output.finalAnswer }, finalModelCallId, step)
         for (const event of finalEvents.filter((event) => event.type === "model.completed")) {
           yield attachModelMetadata(event, event.modelCallId ?? finalModelCallId, step)
         }
@@ -374,10 +367,10 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
       const toolRunIds = new Map<string, string>()
       let stepText = ""
       // The first no-tool answer is a proposed draft. Hold its user-visible
-      // deltas until the genuine task-finalization router has run.
-      const suppressAnswerDeltas = input.finalAnswerMode === "structured"
+      // deltas through same-Socrates reconciliation and structured finalization.
+      const suppressAnswerDeltas = input.completionMode === "main_structured"
         || docsLedger.requiresProjectMemoryReview()
-        || (memoryFinalizationEnabled && !finalReconciliationSent && tools.length > 0)
+      const suppressCheckpointReasoning = input.completionMode === "main_structured" && finalCheckpointSent
       const handoverToolExposed = tools.some((tool) => tool.name === "handover_to_frontier")
       const bufferAnswerForPotentialHandover = handoverToolExposed && !suppressAnswerDeltas
       const bufferedAnswerEvents: ModelEvent[] = []
@@ -437,6 +430,12 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
             text: modelEvent.text,
             ...(modelEvent.providerMetadata ? { providerMetadata: modelEvent.providerMetadata } : {}),
           })
+        }
+        if (
+          suppressCheckpointReasoning &&
+          (modelEvent.type === "model.reasoning.delta" || modelEvent.type === "model.reasoning.completed")
+        ) {
+          continue
         }
 
         if (modelEvent.type === "model.tool_call.streaming") {
@@ -576,50 +575,20 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
         })
       }
 
-      if (toolCalls.length === 0 && input.toolExecutors && tools.length > 0 && !finalReconciliationSent && memoryFinalizationEnabled) {
-        const evidence = input.toolExecutors.turn_evidence
-          ? await input.toolExecutors.turn_evidence(
-              { operation: "overview", limit: 10, charLimit: 8_000 },
-              {
-                projectId: input.projectId ?? "",
-                conversationId: input.conversationId ?? "",
-                sessionId: input.sessionId ?? "",
-                turnId: input.turnId ?? "",
-                workspacePath: input.workspacePath ?? "",
-                runtimeConfig: currentRuntimeConfig,
-                ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
-              },
-            )
-          : undefined
-        const finalMemoryLoop = await this.turnLifecycle.runPostEvidenceMemoryLoop(input, messages, {
-          ...(preTurnMemoryLoopSummary ? { preflightSummary: preTurnMemoryLoopSummary } : {}),
-          toolSummary: evidence
-            ? JSON.stringify({
-                scope: { taskId: evidence.taskId, rootTurnId: evidence.rootTurnId, status: evidence.status, resumedCount: evidence.resumedCount },
-                overview: evidence.content,
-                references: evidence.references,
-                truncation: evidence.truncation,
-              })
-            : "No structured task evidence was available.",
-          assistantDraft: stepText || accumulatedAnswerText,
-          ...(activeGoal ? { activeGoal } : {}),
+      if (toolCalls.length === 0 && input.completionMode === "main_structured" && !finalCheckpointSent) {
+        finalCheckpointSent = true
+        reconciliationVerification.beginCheckpoint()
+        messages.push({
+          role: "developer",
+          content: buildSocratesReconciliationCheckpoint({
+            ...(activeGoal ? { activeGoal } : {}),
+            ...((stepText || accumulatedAnswerText).trim() ? { proposedAnswer: stepText || accumulatedAnswerText } : {}),
+          }),
         })
-        finalReconciliationSent = true
-        reconciliationVerification.require(finalMemoryLoop.reconciliationActions ?? [])
-        for (const event of finalMemoryLoop.events) yield event
-        if (finalMemoryLoop.developerMessage) {
-          messages.push({ role: "developer", content: finalMemoryLoop.developerMessage })
-          if ((finalMemoryLoop.reconciliationActions?.length ?? 0) === 0) {
-            forceFinalNoTools = true
-          }
-          continue
-        }
-        messages.push({ role: "developer", content: "Task finalization check completed with no .socrates reconciliation needed. Give the final answer now without more tools." })
-        forceFinalNoTools = true
         continue
       }
 
-      if (toolCalls.length === 0 && finalReconciliationSent && reconciliationVerification.hasPending()) {
+      if (toolCalls.length === 0 && finalCheckpointSent && reconciliationVerification.hasPending()) {
         if (reconciliationReminderCount >= 2) {
           throw new SocratesError("memory_reconciliation_incomplete", `Required .socrates reconciliation was not verified: ${reconciliationVerification.pendingSummary()}`, { recoverable: true })
         }
@@ -631,7 +600,7 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
         continue
       }
 
-      if (toolCalls.length === 0 && input.finalAnswerMode === "structured") {
+      if (toolCalls.length === 0 && input.completionMode === "main_structured") {
         forceFinalNoTools = true
         continue
       }

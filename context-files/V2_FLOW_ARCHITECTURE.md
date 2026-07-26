@@ -1,6 +1,6 @@
 # Socrates V2 Flow Architecture
 
-This document records the current implemented architecture, migration constraints, and technical mechanics of the experimental Socrates V2 Seamless Flow experience. `FLOW_NORTH_STAR.md` is the product-intent authority and `UNIFIED_SOCRATES_LIFECYCLE.md` is the detailed target lifecycle/cleanup authority. Existing post-evidence Memory Router, mutable focus-ledger, optional/pending finalization, view-specific trace behavior, or bulk ledger mechanics documented here are technical debt to remove, not target precedent. Phase 3 replaced the released mirror-based Q&A bridge with canonical task/message identity and reference-based projections; Phase 4 completed the target navigation and live-answer presentation on those canonical reads. Namespaced physical runtime tables remain migration adapters rather than separate semantic state.
+This document records the current implemented architecture, migration constraints, and technical mechanics of the experimental Socrates V2 Seamless Flow experience. `FLOW_NORTH_STAR.md` is the product-intent authority and `UNIFIED_SOCRATES_LIFECYCLE.md` is the detailed lifecycle/cleanup authority. Phase 1 removed the post-turn Memory Router, mutable main-agent goal ledger, and pending finalization fallback. Phase 3 replaced the released mirror-based Q&A bridge with canonical task/message identity and reference-based projections; Phase 4 completed the target navigation and live-answer presentation on those canonical reads. Namespaced physical runtime tables remain migration adapters rather than separate semantic state.
 
 Status: the isolated first product cut is implemented behind the V2 boundary. Whole-workspace regression, production builds, normal runtime packaging, and a real browser E2E have passed. Formal accessibility automation, cross-platform release archives, full local speech-pack runs, and extended reliability validation remain; implementation does not mean that a 24-hour unattended soak has already passed.
 
@@ -180,7 +180,7 @@ completed
 archived
 ```
 
-The first cut creates, continues, parks, resumes, completes, reopens, and archives goals. The UI exposes switch, pause, finish, reopen, archive, pin, and unpin. Socrates itself may update the active focus summary, record a blocker, or stage completion through `focus_ledger`; staged completion commits only after the assistant answer is saved. General Conversation is protected from completion/archive, and unpinned parked work is safely auto-archived after seven inactive days. Destructive merge remains outside the first cut.
+The first cut creates, continues, parks, resumes, completes, reopens, and archives goals. The UI exposes switch, pause, finish, reopen, archive, pin, and unpin. Socrates finalizes only the already-bound goal through its mandatory structured final result; the answer, task, goal outcome, and refreshed capsule commit atomically before publication. General Conversation is protected from completion/archive, and unpinned parked work is safely auto-archived after seven inactive days. Destructive merge remains outside the first cut.
 
 ### Turn
 

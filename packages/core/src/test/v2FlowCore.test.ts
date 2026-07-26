@@ -21,18 +21,17 @@ import {
   type V2FlowContextMessage,
   type V2Goal,
 } from "../v2"
-import { createDefaultToolRegistry, createGoalRouterToolRegistry, createV2ToolRegistry } from "../tools/registry"
+import { createDefaultToolRegistry, createGoalRouterToolRegistry } from "../tools/registry"
 
 const flowId = "flow_1"
 
 describe("V2 Flow goal routing", () => {
-  it("inherits every Classic Socrates tool and adds only the V2 focus ledger", () => {
-    const classic = createDefaultToolRegistry().list().map((tool) => tool.name)
-    const seamless = createV2ToolRegistry().list().map((tool) => tool.name)
-    expect(seamless.filter((name) => name !== "focus_ledger")).toEqual(classic)
-    expect(seamless).toContain("handover_to_frontier")
-    expect(seamless).toContain("trace_retrieve")
-    expect(classic).not.toContain("focus_ledger")
+  it("uses one main Socrates tool registry without mutable goal authority", () => {
+    const mainTools = createDefaultToolRegistry().list().map((tool) => tool.name)
+    expect(mainTools).toContain("handover_to_frontier")
+    expect(mainTools).toContain("trace_retrieve")
+    expect(mainTools).not.toContain("focus_ledger")
+    expect(mainTools).not.toContain("turn_evidence")
     expect(createGoalRouterToolRegistry().list().map((tool) => tool.name)).toEqual(["goal_search"])
   })
 

@@ -9,7 +9,7 @@ import { SocratesStore } from "./services/store"
 import { registerWebSocketRoutes } from "./ws/websocket"
 import { ConversationTerminalManager } from "./ws/conversationTerminals"
 import { ConversationSubscriptions } from "./ws/conversationSubscriptions"
-import { createDefaultSocratesAgent, createV2SocratesAgent, type SocratesAgent } from "@socrates/core"
+import { createDefaultSocratesAgent, type SocratesAgent } from "@socrates/core"
 import { McpRuntime } from "@socrates/mcp"
 import { createDefaultModelProvider, type EmbeddingProvider, type ModelProvider } from "@socrates/providers"
 import { ProviderCredentialStore } from "./services/providerCredentials"
@@ -55,7 +55,7 @@ export const buildServer = async (options: BuildServerOptions) => {
   await store.initializeRetrieval()
   store.startGlobalMemoryScheduler()
   const agent = options.agent ?? createDefaultSocratesAgent(credentials)
-  const v2Agent = options.v2Agent ?? (options.agent ? options.agent : createV2SocratesAgent(credentials))
+  const v2Agent = options.v2Agent ?? (options.agent ? options.agent : createDefaultSocratesAgent(credentials))
   const titleProvider =
     options.titleProvider === false ? undefined : options.titleProvider ?? (options.agent ? undefined : createDefaultModelProvider(credentials))
   const mcpRuntime = new McpRuntime(socratesHome ? { socratesHome } : {})

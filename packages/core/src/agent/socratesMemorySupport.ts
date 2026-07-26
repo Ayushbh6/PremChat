@@ -1,8 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
 import type {
-  MemoryReconciliationAction,
-  MemoryRouterPostTurnResult,
   MemoryRouterPreTurnResult,
   RuntimeConfig,
   ToolExecutionResult,
@@ -14,7 +12,7 @@ import { renderSocratesSurfaceMap } from "@socrates/contracts"
 import { buildSocratesDynamicContext, type SocratesPromptContext } from "../prompts/socratesPrompt"
 import type { ToolLifecycleEvent } from "../tools/types"
 import type { ToolRegistry } from "../tools/registry"
-import type { SocratesAgentTurnInput, StableCachePreludeSnapshot, MemoryLoopPhase, MemoryRouterModelSettings, FrontierModelSettings } from "./SocratesAgent"
+import type { SocratesAgentTurnInput, StableCachePreludeSnapshot, MemoryRouterModelSettings, FrontierModelSettings } from "./SocratesAgent"
 import type { ActiveGoalCard } from "./MemoryRouterAgent"
 
 export type MemoryLoopRunResult = {
@@ -23,7 +21,6 @@ export type MemoryLoopRunResult = {
   records?: MemoryLoopToolRecord[]
   stableCachePreludeMessage?: string
   developerMessage?: string
-  reconciliationActions?: MemoryReconciliationAction[]
   activeGoal?: ActiveGoalCard
 }
 
@@ -210,19 +207,19 @@ export const isAlwaysApplyPlaceholderText = (text: string): boolean => {
 }
 
 export const summarizeMemoryLoop = (
-  phase: MemoryLoopPhase,
-  route: MemoryRouterPreTurnResult | MemoryRouterPostTurnResult,
+  phase: "pre_turn",
+  route: MemoryRouterPreTurnResult,
   records: MemoryLoopToolRecord[],
   skipped: string[],
 ): string => {
-  const routeSummary = "readTargets" in route ? `readTargets=${route.readTargets.length}` : `actions=${route.actions.length}`
+  const routeSummary = `readTargets=${route.readTargets.length}`
   const actions = records.map((record) => `${record.toolName}:${record.result.ok ? "ok" : record.result.error?.code ?? "failed"}`)
   return [`${phase}: ${routeSummary}`, `reason: ${route.reason}`, actions.length ? `actions: ${actions.join(", ")}` : "actions: none", ...skipped].join("\n")
 }
 
 export const renderMemoryLoopDeveloperMessage = (
-  phase: MemoryLoopPhase,
-  route: MemoryRouterPreTurnResult | MemoryRouterPostTurnResult,
+  phase: "pre_turn",
+  route: MemoryRouterPreTurnResult,
   records: MemoryLoopToolRecord[],
   skipped: string[],
   options: { stableCachePreludeApplied?: boolean } = {},
@@ -354,7 +351,7 @@ export const normalizeAlwaysApplyRules = (content: string | undefined): string =
   return rules.length > 0 ? rules.join("\n") : "- No always-apply rules recorded."
 }
 
-export const memoryLoopWarning = (phase: MemoryLoopPhase, warning: string): MemoryLoopRunResult => ({
+export const memoryLoopWarning = (phase: "pre_turn", warning: string): MemoryLoopRunResult => ({
   events: [],
   summary: `${phase}: memory loop warning: ${warning}`,
   developerMessage: `<socrates_memory_loop phase="${phase}" status="warning">\n${warning}\nContinue with the ordinary task. ${

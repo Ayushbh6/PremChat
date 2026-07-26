@@ -246,8 +246,8 @@ export const handleChatMessageSend = async (
   let finalResult: SocratesFinalAnswer | undefined
   let latestUsage: ModelUsage | undefined
   let lastAnswerModelCallId: string | undefined
-  let sawToolActivity = false
   let suspended = false
+  let durableTurnCommitted = false
   let suspendedWait: Extract<SocratesAgentEvent, { type: "agent.suspended" }>["wait"] | undefined
   const exposedMcpServers = new Set<string>()
   let activeGoal = continuation && flowStore ? flowStore.getClassicGoalForTurn(created.turnId) : undefined
@@ -288,7 +288,7 @@ export const handleChatMessageSend = async (
       promptContext,
       workspacePath,
       stableCachePreludeSnapshot,
-      finalAnswerMode: "structured",
+      completionMode: "main_structured",
       automaticMemorySearch: (input) => store.searchMemory(projectId, input, true),
       ...(activeGoal ? { activeGoal } : {}),
       toolExecutors: createToolExecutors(store, projectId, created.turnId, activeTurns, terminals, mcpRuntime, {
@@ -576,18 +576,6 @@ export const handleChatMessageSend = async (
           channel: "answer",
           text,
         })
-        const event = makeEvent(
-          "agent.answer.delta",
-          { messageId: modelCallId, text, modelCallId, stepIndex: agentEvent.stepIndex },
-          {
-            projectId,
-            conversationId,
-            sessionId: created.sessionId,
-            turnId: created.turnId,
-            actor: { type: "main_agent" },
-          },
-        )
-        appendAndEmit(emitEvent, store, event, "core")
       }
 
       if (agentEvent.type === "model.usage") {
@@ -620,7 +608,6 @@ export const handleChatMessageSend = async (
       }
 
       if (agentEvent.type === "tool.call.started") {
-        sawToolActivity = true
         const toolModelCallId = agentEvent.modelCallId ?? latestModelCallId
         store.createToolCall({
           toolCallId: agentEvent.toolCallId,
@@ -658,7 +645,6 @@ export const handleChatMessageSend = async (
       }
 
       if (agentEvent.type === "tool.call.streaming") {
-        sawToolActivity = true
         // Transient pre-call hint so the UI can show "Editing <file>" during the model
         // wait. It is replaced by the persisted tool.call.started event, so we do not store it.
         const event = makeEvent(
@@ -686,7 +672,6 @@ export const handleChatMessageSend = async (
       }
 
       if (agentEvent.type === "tool.call.output") {
-        sawToolActivity = true
         if (agentEvent.text) {
           store.appendShellOutput(agentEvent.toolCallId, agentEvent.stream, agentEvent.text)
         }
@@ -713,7 +698,6 @@ export const handleChatMessageSend = async (
       }
 
       if (agentEvent.type === "tool.call.completed") {
-        sawToolActivity = true
         store.completeToolCall(agentEvent.toolCallId, agentEvent.output)
         if (isBashOutput(agentEvent.output)) {
           store.updateShellCommandMetadata(agentEvent.toolCallId, {
@@ -779,7 +763,6 @@ export const handleChatMessageSend = async (
       }
 
       if (agentEvent.type === "tool.call.failed") {
-        sawToolActivity = true
         const errorId = store.recordError({
           conversationId,
           sessionId: created.sessionId,
@@ -880,16 +863,6 @@ export const handleChatMessageSend = async (
       return
     }
 
-    if (!answerText.trim() && !sawToolActivity) {
-      throw new SocratesError("model_empty_response", "Model provider completed without returning any assistant text.", {
-        details: {
-          providerId: runtimeConfig.providerId,
-          modelId: runtimeConfig.modelId,
-        },
-        recoverable: true,
-      })
-    }
-
     if (!finalResult) {
       throw new SocratesError("agent_final_result_missing", "Socrates completed without a validated final result.", { recoverable: true })
     }
@@ -898,7 +871,7 @@ export const handleChatMessageSend = async (
       conversationId,
       sessionId: created.sessionId,
       turnId: created.turnId,
-      content: answerText,
+      content: validatedFinalResult.finalAnswer,
       reasoning: reasoningText,
       ...(flowStore ? {
         afterPersist: (message) => {
@@ -906,18 +879,7 @@ export const handleChatMessageSend = async (
         },
       } : {}),
     })
-    const finalizedGoal = flowStore?.getClassicGoalForTurn(created.turnId)
-    if (finalizedGoal) store.indexGoalRetrieval(projectId, finalizedGoal.goalId)
-    for (const modelCallId of modelCallIds) {
-      store.completeModelCall({
-        modelCallId,
-        response: { messageId: assistantMessage.id, finish: "completed" },
-        ...(responseMetadataByModelCallId.has(modelCallId)
-          ? { providerResponse: responseMetadataByModelCallId.get(modelCallId) }
-          : {}),
-        ...(latestUsageByModelCallId.get(modelCallId) ? { usage: toStoredUsage(latestUsageByModelCallId.get(modelCallId) as ModelUsage) } : {}),
-      })
-    }
+    durableTurnCommitted = true
     const turnUsageReport = store.buildTurnUsageReport(created.turnId)
 
     const messageCompleted = makeEvent(
@@ -954,8 +916,21 @@ export const handleChatMessageSend = async (
       },
     )
     appendAndEmit(emitEvent, store, turnCompleted, "core")
+
+    const finalizedGoal = flowStore?.getClassicGoalForTurn(created.turnId)
+    if (finalizedGoal) store.indexGoalRetrieval(projectId, finalizedGoal.goalId)
+    for (const modelCallId of modelCallIds) {
+      store.completeModelCall({
+        modelCallId,
+        response: { messageId: assistantMessage.id, finish: "completed" },
+        ...(responseMetadataByModelCallId.has(modelCallId)
+          ? { providerResponse: responseMetadataByModelCallId.get(modelCallId) }
+          : {}),
+        ...(latestUsageByModelCallId.get(modelCallId) ? { usage: toStoredUsage(latestUsageByModelCallId.get(modelCallId) as ModelUsage) } : {}),
+      })
+    }
     store.indexTurnTraceDocuments(projectId, conversationId, created.turnId)
-    store.recordProjectStateLedgerTurn(projectId, conversationId, created.turnId, "completed", answerText)
+    store.recordProjectStateLedgerTurn(projectId, conversationId, created.turnId, "completed", validatedFinalResult.finalAnswer)
     store.completeTerminalTaskForTurn(created.turnId, "completed")
 
     const postTurnHistory = store.getConversationModelMessages(projectId, conversationId, { includeImageParts })
@@ -972,6 +947,19 @@ export const handleChatMessageSend = async (
       return
     }
     const normalized = normalizeError(error)
+    if (durableTurnCommitted) {
+      store.recordError({
+        conversationId,
+        sessionId: created.sessionId,
+        turnId: created.turnId,
+        source: "post_commit",
+        code: "post_commit_processing_failed",
+        message: normalized.message,
+        details: normalized.details,
+        recoverable: true,
+      })
+      return
+    }
     const errorId = store.failTurn({
       conversationId,
       sessionId: created.sessionId,
@@ -1183,7 +1171,6 @@ const createToolExecutors = (
   current_time: () => Promise.resolve(currentRuntimeTime()),
   trace_retrieve: (input, context) => store.retrieveMainToolTraces(projectId, context.conversationId, input as TraceRetrieveMainToolInput).then((result) => result as never),
   memory_search: (input) => store.searchMemory(projectId, input, false),
-  turn_evidence: (input, context) => Promise.resolve(store.getTaskEvidence(context.turnId, input)),
   tool_docs: (input) => Promise.resolve(store.runToolDocsTool(projectId, input)),
   skills: async (input, context) => {
     const output = input.operation === "preview_import" || input.operation === "commit_import"

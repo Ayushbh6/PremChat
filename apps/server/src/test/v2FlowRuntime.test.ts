@@ -140,13 +140,10 @@ const frontierProofProvider = () => {
     async *stream(request) {
       requests.push(request)
       const toolNames = request.tools?.map((tool) => tool.name) ?? []
-      if (!toolNames.includes("handover_to_frontier") && (toolNames.includes("memory_search") || toolNames.includes("turn_evidence"))) {
-        const postEvidence = JSON.stringify(request.messages).includes("post-evidence")
+      if (!toolNames.includes("handover_to_frontier") && toolNames.includes("memory_search")) {
         yield {
           type: "model.answer.delta",
-          text: JSON.stringify(postEvidence
-            ? { actions: [], reason: "No durable update is needed.", goalFinalization: null }
-            : { readTargets: [], reason: "No routed recall is needed." }),
+          text: JSON.stringify({ readTargets: [], reason: "No routed recall is needed." }),
         }
         yield { type: "model.completed", usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 } }
         return
@@ -185,15 +182,12 @@ const repairedMemoryRouterProvider = (): ModelProvider => {
       yield { type: "model.completed", usage: { inputTokens: 30, outputTokens: 5, totalTokens: 35 } }
     },
     async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>): Promise<StructuredModelResult<TOutput>> {
-      const phase = request.system.includes("post-evidence") ? "post_evidence" : "pre_turn"
+      const phase = "pre_turn"
       const attempt = (attempts.get(phase) ?? 0) + 1
       attempts.set(phase, attempt)
       const usage = { inputTokens: 10 + attempt, outputTokens: 2, totalTokens: 12 + attempt }
       if (attempt === 1) return { output: { invalid: true } as TOutput, usage }
-      const output = phase === "post_evidence"
-        ? { actions: [], reason: "No reconciliation needed.", goalFinalization: null }
-        : { readTargets: [], reason: "No memory recall needed." }
-      return { output: output as TOutput, usage }
+      return { output: { readTargets: [], reason: "No memory recall needed." } as TOutput, usage }
     },
   }
 }
@@ -287,9 +281,7 @@ const setup = (provider: ModelProvider, projectId = "proj_one", routerProvider?:
       }
       if (request.system.includes("Memory Router Agent") && !provider.generateStructured) {
         return {
-          output: (request.system.includes("post-evidence")
-            ? { actions: [], reason: "No reconciliation needed in this runtime test.", goalFinalization: null }
-            : { readTargets: [], reason: "No routed recall needed in this runtime test." }) as TOutput,
+          output: { readTargets: [], reason: "No routed recall needed in this runtime test." } as TOutput,
         }
       }
       if (!provider.generateStructured) throw new Error("Structured output was not configured for this test provider.")
@@ -510,7 +502,7 @@ describe("V2ExecutionRuntime", () => {
     expect(nextTurnMessages).not.toContain("<distilled_evidence")
   })
 
-  it("persists each repaired Memory Router attempt as its own V2 model call and usage row", async () => {
+  it("persists each repaired pre-turn Memory Router attempt as its own V2 model call and usage row", async () => {
     const testRuntime = setup(repairedMemoryRouterProvider())
     const flow = testRuntime.flowStore.ensureFlow("proj_one").flow
     await testRuntime.runtime.startTurn(asWebSocket(new FakeSocket()), messageCommand("proj_one", flow.id, "Check memory-router telemetry"))
@@ -522,9 +514,9 @@ describe("V2ExecutionRuntime", () => {
     const usages = testRuntime.handle.sqlite.prepare(
       "SELECT model_call_id AS modelCallId FROM v2_usage_events WHERE model_call_id IN (SELECT id FROM v2_model_calls WHERE role = 'memory_router')",
     ).all() as Array<{ modelCallId: string }>
-    expect(calls).toHaveLength(4)
+    expect(calls).toHaveLength(2)
     expect(calls.every((call) => call.status === "completed")).toBe(true)
-    expect(usages).toHaveLength(4)
+    expect(usages).toHaveLength(2)
     expect(new Set(usages.map((usage) => usage.modelCallId))).toEqual(new Set(calls.map((call) => call.id)))
     expect(testRuntime.flowStore.countV1Rows().model_calls).toBe(0)
   })
@@ -605,6 +597,7 @@ describe("V2ExecutionRuntime", () => {
       result: routing,
     })
     testRuntime.flowStore.completeTurn({
+      goalFinalization: { state: "active", note: "The task remains active." },
       projectId: "proj_one",
       flowId: flow.id,
       turnId: created.turn.id,
