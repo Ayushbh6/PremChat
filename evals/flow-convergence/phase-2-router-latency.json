@@ -1,32 +1,35 @@
 {
-  "schemaVersion": 1,
-  "measuredAt": "2026-07-25T16:57:04.273Z",
-  "path": "configured-direct-provider-fast-path",
+  "schemaVersion": 2,
+  "measuredAt": "2026-07-26T10:37:30.960Z",
+  "path": "isolated-openrouter-deepseek-sequential-pre-turn",
   "rounds": 3,
   "goalRouter": {
-    "providerId": "deepseek",
+    "providerId": "openrouter",
     "authMode": "api_key",
-    "modelId": "deepseek-v4-flash",
-    "thinkingEnabled": false
+    "modelId": "deepseek/deepseek-v4-flash",
+    "thinkingEnabled": false,
+    "thinkingEffort": "none"
   },
   "memoryRouter": {
-    "providerId": "deepseek",
+    "providerId": "openrouter",
     "authMode": "api_key",
-    "modelId": "deepseek-v4-flash",
-    "thinkingEnabled": false
+    "modelId": "deepseek/deepseek-v4-flash",
+    "thinkingEnabled": false,
+    "thinkingEffort": "none"
   },
   "samples": [
-    { "round": 1, "goalMs": 2286, "memoryMs": 6114, "sequentialTotalMs": 8401, "goalSearchCalls": 0, "memoryStatus": "completed" },
-    { "round": 2, "goalMs": 1770, "memoryMs": 6832, "sequentialTotalMs": 8602, "goalSearchCalls": 0, "memoryStatus": "completed" },
-    { "round": 3, "goalMs": 1971, "memoryMs": 7200, "sequentialTotalMs": 9171, "goalSearchCalls": 0, "memoryStatus": "completed" }
+    { "round": 1, "goalMs": 4927, "memoryMs": 8403, "sequentialTotalMs": 13330, "goalSearchCalls": 0, "goalRouteSource": "model", "goalRouteAction": "continue", "memoryStartedAfterGoalCompleted": true, "memoryRecordedMs": 8402, "memoryStatus": "completed" },
+    { "round": 2, "goalMs": 1920, "memoryMs": 12776, "sequentialTotalMs": 14695, "goalSearchCalls": 0, "goalRouteSource": "model", "goalRouteAction": "continue", "memoryStartedAfterGoalCompleted": true, "memoryRecordedMs": 12776, "memoryStatus": "completed" },
+    { "round": 3, "goalMs": 1666, "memoryMs": 12240, "sequentialTotalMs": 13906, "goalSearchCalls": 0, "goalRouteSource": "model", "goalRouteAction": "continue", "memoryStartedAfterGoalCompleted": true, "memoryRecordedMs": 12240, "memoryStatus": "completed" }
   ],
   "aggregate": {
-    "goalMedianMs": 1971,
-    "memoryMedianMs": 6832,
-    "sequentialMedianMs": 8602,
-    "sequentialMinMs": 8401,
-    "sequentialMaxMs": 9171
+    "goalMedianMs": 1920,
+    "memoryMedianMs": 12240,
+    "sequentialMedianMs": 13906,
+    "sequentialMinMs": 13330,
+    "sequentialMaxMs": 14695
   },
   "orderingInvariant": "Every sample recorded Memory Router start at or after Goal Router completion.",
+  "stateIsolation": "The harness required an explicit mktemp SOCRATES_HOME and did not read or mutate the normal Socrates database.",
   "scope": "Measures only the two sequential pre-turn model routers. It excludes retrieval-prefetch time, memory document reads, the main Socrates turn, and UI/network transport."
 }

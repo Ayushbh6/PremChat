@@ -209,6 +209,12 @@ export class CanonicalWorkStore {
     return this.handle.db.select().from(workTasks).where(eq(workTasks.goalId, goalId)).orderBy(asc(workTasks.startedAt)).all()
   }
 
+  taskOrdinal(goalId: string, sourceRuntime: WorkSourceRuntime, sourceTurnId: string): number {
+    const tasks = this.listGoalTasks(goalId)
+    const index = tasks.findIndex((task) => task.sourceRuntime === sourceRuntime && task.sourceTurnId === sourceTurnId)
+    return index >= 0 ? index + 1 : Math.max(1, tasks.length)
+  }
+
   listFlowToolCalls(flowId: string): V2ToolCall[] {
     const tasks = this.handle.db.select({ task: workTasks }).from(workTasks)
       .innerJoin(v2Goals, eq(v2Goals.id, workTasks.goalId))

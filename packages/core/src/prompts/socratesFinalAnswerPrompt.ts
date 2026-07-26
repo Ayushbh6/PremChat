@@ -1,7 +1,21 @@
 import type { ActiveGoalCard } from "../agent/MemoryRouterAgent"
+import type { ResolvedTurnContext } from "@socrates/contracts"
+
+const goalLines = (context: ResolvedTurnContext | undefined, fallback: ActiveGoalCard | undefined): string[] => context
+  ? [
+      `Bound goal: ${context.goal.title}`,
+      `Goal objective: ${context.goal.objective}`,
+      `Current goal state: ${context.goal.state}`,
+      `Current goal progress: ${context.goal.progress}`,
+      `Current task ${context.task.ordinal}: ${context.task.request}`,
+    ]
+  : fallback
+    ? [`Bound goal: ${fallback.title}`, `Current goal state: ${fallback.state}`, `Current goal note: ${fallback.note}`]
+    : ["No canonical goal is attached to this compatibility task."]
 
 export const buildSocratesReconciliationCheckpoint = (input: {
   activeGoal?: ActiveGoalCard
+  resolvedTurnContext?: ResolvedTurnContext
   proposedAnswer?: string
 }): string => [
   "<socrates_reconciliation_checkpoint>",
@@ -11,9 +25,7 @@ export const buildSocratesReconciliationCheckpoint = (input: {
   "When nothing durable changed, make no docs mutation. Ordinary workspace-only restrictions do not suppress bounded .socrates reconciliation, but a genuine semantic instruction not to remember/save/store the content is authoritative and must produce no reconciliation from that content.",
   "Backend-owned project_notes runtime_context and state_ledger are never mutation targets. Use only the normal main Socrates tools; there is no reconciliation router or planner.",
   "After all required reconciliation is complete and verified, return no user-facing answer yet. The runtime will request the strict no-tool final object next.",
-  ...(input.activeGoal
-    ? [`Bound goal: ${input.activeGoal.title}`, `Current goal state: ${input.activeGoal.state}`, `Current goal note: ${input.activeGoal.note}`]
-    : ["No canonical goal is attached to this compatibility task."]),
+  ...goalLines(input.resolvedTurnContext, input.activeGoal),
   ...(input.proposedAnswer?.trim()
     ? ["Provisional answer to reassess after reconciliation:", input.proposedAnswer.trim().slice(0, 20_000)]
     : []),
@@ -22,6 +34,7 @@ export const buildSocratesReconciliationCheckpoint = (input: {
 
 export const buildSocratesFinalAnswerCheckpoint = (input: {
   activeGoal?: ActiveGoalCard
+  resolvedTurnContext?: ResolvedTurnContext
   proposedAnswer?: string
 }): string => [
   "<socrates_final_answer_checkpoint>",
@@ -29,12 +42,8 @@ export const buildSocratesFinalAnswerCheckpoint = (input: {
   "Write finalAnswer as the complete user-facing answer. Re-evaluate the user's actual request against the verified work; do not repeat internal control text, tool syntax, or a provisional draft merely because it appeared earlier.",
   "Set goalFinalization from this validated answer. Use completed only when the requested coherent outcome is actually achieved by the answer; active when useful work remains; blocked only for a real external dependency; discarded only when the user abandoned or replaced the goal.",
   "Keep goalFinalization.note to one or two short human-facing lines. The note is ledger context, not part of finalAnswer.",
-  ...(input.activeGoal
-    ? [
-        `Active goal: ${input.activeGoal.title}`,
-        `Prior goal state: ${input.activeGoal.state}`,
-        `Prior goal note: ${input.activeGoal.note}`,
-      ]
+  ...(input.resolvedTurnContext || input.activeGoal
+    ? goalLines(input.resolvedTurnContext, input.activeGoal)
     : ["No canonical goal is attached to this compatibility turn. Return active with a concise note; the runtime will ignore that ledger value."]),
   ...(input.proposedAnswer?.trim()
     ? ["Provisional answer evidence to reassess:", input.proposedAnswer.trim().slice(0, 20_000)]

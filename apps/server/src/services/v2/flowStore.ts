@@ -65,6 +65,7 @@ import { fallbackV2LiveActivity } from "../../v2/liveActivity"
 import {
   CanonicalWorkStore,
   toFlowProjectedMessage,
+  type WorkSourceRuntime,
 } from "../workState/canonicalWorkStore"
 import {
   conversations,
@@ -699,6 +700,37 @@ export class V2FlowStore {
     }
   }
 
+  getActiveGoalCard(input: {
+    flowId: string
+    goalId: string
+    sourceRuntime: WorkSourceRuntime
+    sourceTurnId: string
+    taskRequest: string
+  }): ActiveGoalCard {
+    const goal = this.handle.db.select().from(v2Goals).where(and(eq(v2Goals.id, input.goalId), eq(v2Goals.flowId, input.flowId))).limit(1).get()
+    if (!goal) throw new SocratesError("v2_goal_not_found", "The active goal was not found.", { recoverable: true })
+    const capsule = this.handle.db.select().from(v2GoalCapsules)
+      .where(and(eq(v2GoalCapsules.goalId, input.goalId), eq(v2GoalCapsules.status, "active")))
+      .orderBy(desc(v2GoalCapsules.version)).limit(1).get()
+    const transition = this.getGoalTransitionContext(input.flowId, input.goalId)
+    return {
+      goalId: goal.id,
+      title: goal.title,
+      objective: goal.summary ?? goal.title,
+      state: goal.status,
+      note: capsule?.summary ?? goal.summary ?? "Work is active.",
+      taskOrdinal: this.canonicalWork.taskOrdinal(input.goalId, input.sourceRuntime, input.sourceTurnId),
+      taskRequest: input.taskRequest,
+      ...(transition ? {
+        transition: {
+          previousGoalTitle: transition.goalTitle,
+          relationship: "This task follows the immediately preceding goal in the same project flow.",
+          verifiedOutcome: transition.verifiedOutcome,
+        },
+      } : {}),
+    }
+  }
+
   listGoalSearchMatches(input: {
     flowId: string
     query: string
@@ -925,9 +957,13 @@ export class V2FlowStore {
       turnId: input.turnId,
       conversationId: input.conversationId,
     })
-    const goal = this.handle.db.select().from(v2Goals).where(eq(v2Goals.id, goalId)).get()
-    if (!goal) throw new SocratesError("v2_goal_not_found", "The routed goal was not found.")
-    return { goalId, title: goal.title, state: goal.status, note: goal.summary ?? "Work is active." }
+    return this.getActiveGoalCard({
+      flowId: input.context.flowId,
+      goalId,
+      sourceRuntime: "classic",
+      sourceTurnId: input.turnId,
+      taskRequest: input.userMessage,
+    })
   }
 
   finalizeClassicGoal(turnId: string, finalization: GoalFinalization, assistantMessageId?: string): void {
@@ -970,8 +1006,14 @@ export class V2FlowStore {
   getClassicGoalForTurn(turnId: string): ActiveGoalCard | undefined {
     const link = this.handle.db.select().from(v2ClassicTurnGoalLinks).where(eq(v2ClassicTurnGoalLinks.turnId, turnId)).limit(1).get()
     if (!link) return undefined
-    const goal = this.handle.db.select().from(v2Goals).where(eq(v2Goals.id, link.goalId)).limit(1).get()
-    return goal ? { goalId: goal.id, title: goal.title, state: goal.status, note: goal.summary ?? "Work is active." } : undefined
+    const user = this.handle.db.select().from(messages).where(eq(messages.id, link.userMessageId)).limit(1).get()
+    return this.getActiveGoalCard({
+      flowId: link.flowId,
+      goalId: link.goalId,
+      sourceRuntime: "classic",
+      sourceTurnId: turnId,
+      taskRequest: user?.content ?? "Continue the current task.",
+    })
   }
 
   attachClassicGoalAssistantMessage(turnId: string, assistantMessageId: string): void {

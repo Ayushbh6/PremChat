@@ -11,6 +11,7 @@ import {
   type V2Turn,
 } from "@socrates/contracts"
 import {
+  createResolvedTurnContextSeed,
   findModelOption,
   type SocratesAgent,
   type SocratesAgentEvent,
@@ -466,10 +467,8 @@ export class V2ExecutionRuntime {
         this.deps.sharedStore.findAvailableModelOption(runtimeConfig.providerId, runtimeConfig.modelId, runtimeConfig.authMode ?? "api_key") ??
         findModelOption(runtimeConfig.providerId, runtimeConfig.modelId, runtimeConfig.authMode ?? "api_key")
       const messages = await this.buildWorkingMessages({
-        projectId: command.projectId,
         flowId: command.flowId,
         goalId: activeGoalId,
-        query: command.payload.content,
         includeImages: selectedModel?.capabilities?.vision === true,
         ...(continuation ? { lateDeveloperContext: continuation.wakeContext } : {}),
       })
@@ -496,9 +495,13 @@ export class V2ExecutionRuntime {
       })
       const streamMessageId = `${created.turn.id}_assistant`
       const fileFreshness = this.activeTurns.getFileFreshness(created.turn.id)
-      const activeGoalSnapshot = this.deps.store.getSnapshot(command.projectId, command.flowId)
-      const activeGoal = activeGoalSnapshot.goals.find((goal) => goal.id === activeGoalId)
-      const activeCapsule = activeGoalSnapshot.latestCapsules.find((capsule) => capsule.goalId === activeGoalId)
+      const activeGoal = this.deps.store.getActiveGoalCard({
+        flowId: command.flowId,
+        goalId: activeGoalId,
+        sourceRuntime: "v2_flow",
+        sourceTurnId: created.turn.id,
+        taskRequest: command.payload.content,
+      })
       for await (const event of this.deps.agent.streamTurn({
         projectId: command.projectId,
         // V2 owns execution. The bridge mirrors only completed visible turns
@@ -518,14 +521,13 @@ export class V2ExecutionRuntime {
         stableCachePreludeSnapshot,
         completionMode: "main_structured",
         automaticMemorySearch: (memoryInput) => this.deps.sharedStore.searchMemory(command.projectId, memoryInput, true),
-        ...(activeGoal ? {
-          activeGoal: {
-            goalId: activeGoal.id,
-            title: activeGoal.title,
-            state: activeGoal.status,
-            note: activeCapsule?.summary ?? activeGoal.summary ?? "Work is active.",
-          },
-        } : {}),
+        activeGoal,
+        resolvedTurnContextSeed: createResolvedTurnContextSeed({
+          projectName: promptContext.projectName,
+          ...(promptContext.projectDescription ? { projectDescription: promptContext.projectDescription } : {}),
+          goal: activeGoal,
+          messages,
+        }),
         recordMemoryRouterRun: async (run) => {
           const error = run.error
             ? this.deps.store.recordError({
@@ -789,10 +791,8 @@ export class V2ExecutionRuntime {
 
       this.deps.sharedStore.indexV2TurnRetrieval(command.projectId, created.turn.id)
       const postTurnMessages = await this.buildWorkingMessages({
-        projectId: command.projectId,
         flowId: command.flowId,
         goalId: activeGoalId,
-        query: command.payload.content,
         includeImages: selectedModel?.capabilities?.vision === true,
       })
       await this.deps.agent.precomputeContext({
@@ -853,10 +853,8 @@ export class V2ExecutionRuntime {
   }
 
   private async buildWorkingMessages(input: {
-    projectId: string
     flowId: string
     goalId: string
-    query: string
     includeImages: boolean
     lateDeveloperContext?: string
   }) {
@@ -865,19 +863,8 @@ export class V2ExecutionRuntime {
     // runtime as Classic. The shared 170k/180k compactor owns history
     // reduction; this view layer must not silently truncate a separate tail.
     const retained = history
-    const snapshot = this.deps.store.getSnapshot(input.projectId, input.flowId)
-    const capsule = snapshot.latestCapsules.find((item) => item.goalId === input.goalId)
-    const transition = this.deps.store.getGoalTransitionContext(input.flowId, input.goalId)
-    const sections = [
-      `<active_goal id="${input.goalId}">${snapshot.foregroundGoal?.title ?? "Current Flow goal"}</active_goal>`,
-      capsule ? `<goal_capsule version="${capsule.version}">${capsule.summary}</goal_capsule>` : "",
-      transition
-        ? `<goal_transition_context>Previous goal: ${transition.goalTitle}\nPrevious user request: ${transition.user}\nValidated answer: ${transition.assistant}\nVerified outcome: ${transition.verifiedOutcome}</goal_transition_context>`
-        : "",
-      input.lateDeveloperContext ? `<terminal_wake_context>${input.lateDeveloperContext}</terminal_wake_context>` : "",
-    ].filter(Boolean)
-    if (sections.length <= 1) return retained
-    const developer = { role: "developer" as const, content: `<socrates_v2_flow_context>\n${sections.join("\n\n")}\n</socrates_v2_flow_context>` }
+    if (!input.lateDeveloperContext) return retained
+    const developer = { role: "developer" as const, content: `<socrates_runtime_context>\n<terminal_wake_context>${input.lateDeveloperContext}</terminal_wake_context>\n</socrates_runtime_context>` }
     const lastUserIndex = retained.map((message) => message.role).lastIndexOf("user")
     if (lastUserIndex < 0) return [...retained, developer]
     return [...retained.slice(0, lastUserIndex), developer, ...retained.slice(lastUserIndex)]

@@ -1,6 +1,7 @@
 import type { WebSocket } from "ws"
 import {
   DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS,
+  createResolvedTurnContextSeed,
   findModelOption,
   type ContextCompactionLifecycleEvent,
   type ContextCompressionRuntime,
@@ -291,6 +292,14 @@ export const handleChatMessageSend = async (
       completionMode: "main_structured",
       automaticMemorySearch: (input) => store.searchMemory(projectId, input, true),
       ...(activeGoal ? { activeGoal } : {}),
+      ...(activeGoal ? {
+        resolvedTurnContextSeed: createResolvedTurnContextSeed({
+          projectName: promptContext.projectName,
+          ...(promptContext.projectDescription ? { projectDescription: promptContext.projectDescription } : {}),
+          goal: activeGoal,
+          messages: modelHistory,
+        }),
+      } : {}),
       toolExecutors: createToolExecutors(store, projectId, created.turnId, activeTurns, terminals, mcpRuntime, {
         exposeMcpServer: (serverId) => exposedMcpServers.add(serverId),
       }),

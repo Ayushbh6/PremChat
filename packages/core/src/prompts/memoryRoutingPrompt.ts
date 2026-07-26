@@ -31,7 +31,14 @@ export type MemoryRoutingPromptInput = {
   recentMessages: ModelMessage[]
   automaticCandidates?: MemorySearchResult[]
   automaticCoverageWarning?: string
-  activeGoal?: Readonly<{ title: string; state: string; note: string }>
+  activeGoal?: Readonly<{
+    title: string
+    state: string
+    note: string
+    objective?: string
+    taskOrdinal?: number
+    taskRequest?: string
+  }>
 }
 
 export const buildPreTurnMemoryRouterUserContent = (input: MemoryRoutingPromptInput): string =>
@@ -45,7 +52,14 @@ export const buildPreTurnMemoryRouterUserContent = (input: MemoryRoutingPromptIn
     "",
     "# Resolved Goal Context",
     input.activeGoal
-      ? [`title: ${input.activeGoal.title}`, `state: ${input.activeGoal.state}`, `note: ${input.activeGoal.note}`].join("\n")
+      ? [
+          `title: ${input.activeGoal.title}`,
+          `objective: ${input.activeGoal.objective ?? input.activeGoal.title}`,
+          `state: ${input.activeGoal.state}`,
+          `progress: ${input.activeGoal.note}`,
+          ...(input.activeGoal.taskOrdinal ? [`task: ${input.activeGoal.taskOrdinal}`] : []),
+          ...(input.activeGoal.taskRequest ? [`request: ${input.activeGoal.taskRequest}`] : []),
+        ].join("\n")
       : "(goal tracking unavailable)",
     "",
     "# Automatic Memory Candidates",

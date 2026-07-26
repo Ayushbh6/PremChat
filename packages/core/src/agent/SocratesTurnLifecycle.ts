@@ -18,7 +18,6 @@ import {
   isStableCachePreludeRecord,
   memoryLoopWarning,
   memoryRouterBaseInput,
-  renderActiveGoalDeveloperMessage,
   renderMemoryLoopDeveloperMessage,
   renderStableCachePrelude,
   renderStableCachePreludeSnapshot,
@@ -138,11 +137,10 @@ export class SocratesTurnLifecycle {
       : renderStableCachePrelude(records)
 
     if (!canRunMemoryLoop(this.provider, input, this.toolRegistry)) {
-      const activeGoal = input.activeGoal
       return {
         events: [],
         records,
-        ...(activeGoal ? { activeGoal, developerMessage: renderActiveGoalDeveloperMessage(activeGoal) } : {}),
+        ...(input.activeGoal ? { activeGoal: input.activeGoal } : {}),
         ...(stableCachePreludeMessage ? { stableCachePreludeMessage } : {}),
       }
     }
@@ -169,7 +167,7 @@ export class SocratesTurnLifecycle {
         records,
         ...(activeGoal ? { activeGoal } : {}),
         ...(stableCachePreludeMessage ? { stableCachePreludeMessage } : {}),
-        developerMessage: activeGoal ? `${memoryDeveloperMessage}\n${renderActiveGoalDeveloperMessage(activeGoal)}` : memoryDeveloperMessage,
+        developerMessage: memoryDeveloperMessage,
       }
     } catch (error) {
       const normalized = normalizeError(error)
@@ -179,10 +177,7 @@ export class SocratesTurnLifecycle {
         ...warning,
         events: [...events, ...warning.events],
         records,
-        ...(activeGoal ? {
-          activeGoal,
-          developerMessage: `${warning.developerMessage ?? ""}\n${renderActiveGoalDeveloperMessage(activeGoal)}`.trim(),
-        } : {}),
+        ...(activeGoal ? { activeGoal } : {}),
         ...(stableCachePreludeMessage ? { stableCachePreludeMessage } : {}),
       }
     }

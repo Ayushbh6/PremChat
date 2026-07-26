@@ -1,5 +1,3 @@
-import os from "node:os"
-import path from "node:path"
 import Database from "better-sqlite3"
 import { MemoryRouterAgent, routeV2Goal, type V2Goal } from "@socrates/core"
 import type { WorkerModelSettings } from "@socrates/contracts"
@@ -7,21 +5,51 @@ import { createDefaultModelProvider } from "@socrates/providers"
 import { ProviderCredentialStore } from "../src/services/providerCredentials"
 
 const rounds = Math.max(1, Math.min(5, Number.parseInt(process.argv[2] ?? "3", 10) || 3))
-const socratesHome = process.env.SOCRATES_HOME?.trim() || path.join(os.homedir(), ".Socrates")
-const dbPath = process.env.SOCRATES_DB_PATH?.trim() || path.join(socratesHome, "socrates.sqlite")
-const sqlite = new Database(dbPath, { readonly: true, fileMustExist: true })
-const settings = new Map(
-  (sqlite.prepare("SELECT worker_id, provider_id, auth_mode, model_id, thinking_enabled, thinking_effort FROM worker_model_settings WHERE worker_id IN ('goal_router', 'memory_router')").all() as WorkerRow[])
-    .map((row) => [row.worker_id, workerSettings(row)]),
-)
-sqlite.close()
+const socratesHome = process.env.SOCRATES_HOME?.trim()
+if (!socratesHome) throw new Error("SOCRATES_HOME must point to explicit isolated test state.")
+const providerId = process.env.ROUTER_PROVIDER_ID?.trim()
+const modelId = process.env.ROUTER_MODEL_ID?.trim()
+const settings = providerId && modelId
+  ? new Map([
+      ["goal_router", explicitWorkerSettings("goal_router", providerId, modelId)],
+      ["memory_router", explicitWorkerSettings("memory_router", providerId, modelId)],
+    ])
+  : readWorkerSettings(process.env.SOCRATES_DB_PATH?.trim())
 
 const goalSettings = requiredSetting(settings, "goal_router")
 const memorySettings = requiredSetting(settings, "memory_router")
 const credentials = new ProviderCredentialStore({ socratesHome })
 for (const setting of [goalSettings, memorySettings]) {
-  const status = credentials.check(setting.providerId, setting.authMode ?? "api_key")
+  const status = credentials.check(setting.providerId)
   if (!status.configured) throw new Error(`${setting.providerId}/${setting.authMode ?? "api_key"} is not configured.`)
+}
+
+function readWorkerSettings(dbPath: string | undefined): Map<string, WorkerModelSettings> {
+  if (!dbPath) throw new Error("Set ROUTER_PROVIDER_ID and ROUTER_MODEL_ID, or provide an explicit isolated SOCRATES_DB_PATH.")
+  const sqlite = new Database(dbPath, { readonly: true, fileMustExist: true })
+  try {
+    return new Map(
+      (sqlite.prepare("SELECT worker_id, provider_id, auth_mode, model_id, thinking_enabled, thinking_effort FROM worker_model_settings WHERE worker_id IN ('goal_router', 'memory_router')").all() as WorkerRow[])
+        .map((row) => [row.worker_id, workerSettings(row)]),
+    )
+  } finally {
+    sqlite.close()
+  }
+}
+
+function explicitWorkerSettings(workerId: "goal_router" | "memory_router", providerId: string, modelId: string): WorkerModelSettings {
+  if (!(["openrouter", "deepseek", "openai", "google", "ollama"] as string[]).includes(providerId)) {
+    throw new Error(`Unsupported ROUTER_PROVIDER_ID: ${providerId}`)
+  }
+  return {
+    workerId,
+    providerId: providerId as WorkerModelSettings["providerId"],
+    authMode: "api_key",
+    modelId,
+    thinkingEnabled: false,
+    thinkingEffort: "none",
+    updatedAt: new Date(0).toISOString(),
+  }
 }
 const provider = createDefaultModelProvider(credentials)
 const samples: Sample[] = []

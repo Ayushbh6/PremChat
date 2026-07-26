@@ -70,6 +70,14 @@ export type ActiveGoalCard = Readonly<{
   title: string
   state: string
   note: string
+  objective?: string
+  taskOrdinal?: number
+  taskRequest?: string
+  transition?: Readonly<{
+    previousGoalTitle: string
+    relationship: string
+    verifiedOutcome: string
+  }>
 }>
 
 export type MemoryRouterPreTurnInput = MemoryRouterAgentBaseInput

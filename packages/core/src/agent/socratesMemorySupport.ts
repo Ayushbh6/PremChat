@@ -80,15 +80,6 @@ export const memoryRouterModelSettingsFor = (input: SocratesAgentTurnInput): Mem
     thinkingEffort: "none",
   }
 
-export const renderActiveGoalDeveloperMessage = (goal: ActiveGoalCard): string => [
-  '<socrates_active_goal source="project_goal_ledger">',
-  `title: ${goal.title}`,
-  `state: ${goal.state}`,
-  `note: ${goal.note}`,
-  "Treat this as the primary goal for the current turn. Do not expose internal goal ids.",
-  "</socrates_active_goal>",
-].join("\n")
-
 export const isSameModelSelection = (runtimeConfig: RuntimeConfig, settings: FrontierModelSettings | undefined): boolean =>
   Boolean(
     settings &&

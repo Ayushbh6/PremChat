@@ -10,6 +10,8 @@ import {
   type NormalizedToolCall,
   type ProviderId,
   type RuntimeConfig,
+  type ResolvedTurnContext,
+  type ResolvedTurnContextSeed,
   type ToolExecutionResult,
   type ToolName,
   type WaitToolOutput,
@@ -35,6 +37,7 @@ import {
 } from "./MemoryRouterAgent"
 import { AgentRuntime } from "./AgentRuntime"
 import { buildSocratesFinalAnswerCheckpoint, buildSocratesReconciliationCheckpoint } from "../prompts/socratesFinalAnswerPrompt"
+import { prepareTurnContext, renderResolvedTurnContext } from "./prepareTurnContext"
 import { SocratesTurnLifecycle } from "./SocratesTurnLifecycle"
 import { AsyncEventQueue } from "./AsyncEventQueue"
 import {
@@ -94,6 +97,7 @@ export type SocratesAgentTurnInput = {
   recordMemoryRouterRun?: (input: MemoryRouterRunRecord) => void | Promise<void>
   automaticMemorySearch?: (input: MemorySearchInput) => Promise<MemorySearchOutput>
   activeGoal?: ActiveGoalCard
+  resolvedTurnContextSeed?: ResolvedTurnContextSeed
   completionMode: "main_structured" | "worker_text"
   contextCompression?: ContextCompressionRuntime
   maxToolCallsPerTurn?: number
@@ -192,6 +196,7 @@ export class SocratesAgent {
     let docsSyncCheckpointSent = false
     let pendingInteractiveTerminalName: string | undefined
     let activeGoal: ActiveGoalCard | undefined = input.activeGoal
+    let resolvedTurnContext: ResolvedTurnContext | undefined
     let finalCheckpointSent = false
     let accumulatedAnswerText = ""
     let currentProviderId = input.providerId
@@ -214,6 +219,10 @@ export class SocratesAgent {
     insertDynamicPromptContext(messages, input.promptContext)
     if (preTurnMemoryLoop.developerMessage) {
       messages.push({ role: "developer", content: preTurnMemoryLoop.developerMessage })
+    }
+    if (input.resolvedTurnContextSeed) {
+      resolvedTurnContext = prepareTurnContext(input.resolvedTurnContextSeed, preTurnMemoryLoop.records)
+      messages.push({ role: "developer", content: renderResolvedTurnContext(resolvedTurnContext) })
     }
     if (input.toolExecutors && input.workspacePath) {
       messages.push({
@@ -255,6 +264,7 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
           messages: [...messages, {
             role: "developer",
             content: buildSocratesFinalAnswerCheckpoint({
+              ...(resolvedTurnContext ? { resolvedTurnContext } : {}),
               ...(activeGoal ? { activeGoal } : {}),
               ...(accumulatedAnswerText.trim() ? { proposedAnswer: accumulatedAnswerText } : {}),
             }),
@@ -581,6 +591,7 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
         messages.push({
           role: "developer",
           content: buildSocratesReconciliationCheckpoint({
+            ...(resolvedTurnContext ? { resolvedTurnContext } : {}),
             ...(activeGoal ? { activeGoal } : {}),
             ...((stepText || accumulatedAnswerText).trim() ? { proposedAnswer: stepText || accumulatedAnswerText } : {}),
           }),
