@@ -302,6 +302,7 @@ export const handleChatMessageSend = async (
       } : {}),
       toolExecutors: createToolExecutors(store, projectId, created.turnId, activeTurns, terminals, mcpRuntime, {
         exposeMcpServer: (serverId) => exposedMcpServers.add(serverId),
+        ...(activeGoal ? { goalId: activeGoal.goalId } : {}),
       }),
       dynamicTools: () =>
         mcpRuntime ? [...exposedMcpServers].flatMap((serverId) => mcpRuntime.getDynamicToolDefinitions(serverId, { workspacePath })) : [],
@@ -1070,7 +1071,7 @@ const createToolExecutors = (
   activeTurns: ActiveTurns,
   terminals: ConversationTerminalManager,
   mcpRuntime?: McpRuntime,
-  options: { exposeMcpServer?: (serverId: string) => void } = {},
+  options: { exposeMcpServer?: (serverId: string) => void; goalId?: string } = {},
 ): ToolExecutors => {
   const withFreshness = <C extends object>(context: C): C & { fileFreshness?: FileFreshnessTracker } => {
     const tracker = activeTurns.getFileFreshness(turnId)
@@ -1178,7 +1179,15 @@ const createToolExecutors = (
     })
   },
   current_time: () => Promise.resolve(currentRuntimeTime()),
-  trace_retrieve: (input, context) => store.retrieveMainToolTraces(projectId, context.conversationId, input as TraceRetrieveMainToolInput).then((result) => result as never),
+  trace_retrieve: (input, context) => {
+    if (!options.goalId) throw new SocratesError("trace_goal_context_unavailable", "The current goal context is unavailable.", { recoverable: true })
+    return store.retrieveUnifiedMainToolTraces({
+      projectId,
+      presentedConversationId: context.conversationId,
+      goalId: options.goalId,
+      request: input as TraceRetrieveMainToolInput,
+    }).then((result) => result as never)
+  },
   memory_search: (input) => store.searchMemory(projectId, input, false),
   tool_docs: (input) => Promise.resolve(store.runToolDocsTool(projectId, input)),
   skills: async (input, context) => {

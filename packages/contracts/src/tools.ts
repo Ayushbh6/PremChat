@@ -745,7 +745,7 @@ export type TraceRetrieveMode = z.infer<typeof traceRetrieveModeSchema>
 export const traceRetrieveMainModeSchema = z.enum(["lexical", "semantic", "combined", "audit"])
 export type TraceRetrieveMainMode = z.infer<typeof traceRetrieveMainModeSchema>
 
-export const traceRetrieveMainScopeSchema = z.enum(["current_conversation", "recent_conversations", "project"])
+export const traceRetrieveMainScopeSchema = z.enum(["presented_context", "current_goal", "project"])
 export type TraceRetrieveMainScope = z.infer<typeof traceRetrieveMainScopeSchema>
 
 const traceRetrieveMainCommonSearchShape = {
@@ -791,17 +791,16 @@ export const traceRetrieveMainInspectInputSchema = z
   .object({
     operation: z.literal("inspect"),
     resultNumber: z.number().int().positive().max(8).optional(),
-    turnId: z.string().min(1).optional(),
     conversationTitle: z.string().min(1).max(240).optional(),
     turnNo: z.number().int().positive().max(10_000).optional(),
     charLimit: z.number().int().positive().max(80_000).optional(),
   })
   .strict()
   .superRefine((input, context) => {
-    if (!input.resultNumber && !input.turnId && !(input.conversationTitle && input.turnNo)) {
+    if (!input.resultNumber && !(input.conversationTitle && input.turnNo)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "inspect requires resultNumber, turnId, or conversationTitle plus turnNo.",
+        message: "inspect requires resultNumber or conversationTitle plus turnNo.",
       })
     }
   })
@@ -816,7 +815,7 @@ export const traceRetrieveMainResultSchema = z
   .object({
     resultNumber: z.number().int().positive().max(8),
     content: z.string(),
-    turnId: z.string().min(1),
+    turnId: z.string().min(1).optional(),
     conversationTitle: z.string().min(1),
     turnNumber: z.number().int().positive(),
     matchedRole: z.enum(["user", "assistant"]),

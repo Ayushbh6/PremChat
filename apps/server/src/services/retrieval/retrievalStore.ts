@@ -174,18 +174,21 @@ export class RetrievalStore {
     conversationId: string,
     input: TraceRetrieveMainToolInput,
     exactConversationId?: string,
+    exactGoalId?: string,
+    exactTurnId?: string,
   ): Promise<TraceRetrieveMainToolOutput> {
     if (input.operation === "inspect") {
-      return this.inspectMainTrace(projectId, conversationId, input)
+      return this.inspectMainTrace(projectId, conversationId, input, exactTurnId)
     }
     if (input.mode === "audit") {
-      const results = this.auditTrace(projectId, conversationId, input, exactConversationId)
+      const results = this.auditTrace(projectId, conversationId, input, exactConversationId, exactGoalId)
       this.recentTraceResults.set(traceResultKey(projectId, conversationId), results)
       return { results, totalMatches: results.length }
     }
     if (!input.query) {
       const results = this.rawTraceParents(projectId, conversationId, {
         ...(exactConversationId ? { conversationId: exactConversationId } : {}),
+        ...(exactGoalId ? { goalId: exactGoalId } : {}),
         ...(input.scope ? { scope: input.scope } : {}),
         ...(input.conversationTitle ? { conversationTitle: input.conversationTitle } : {}),
         ...("turnNo" in input && input.turnNo ? { turnNumber: input.turnNo } : {}),
@@ -202,9 +205,12 @@ export class RetrievalStore {
       mode,
       filters: {
         corpusKind: "trace_turn",
-        ...(input.scope ? { scope: input.scope } : { scope: "project" }),
+        scope: "project",
+        ...(input.scope === "presented_context" && conversationId ? { conversationId } : {}),
+        ...(input.scope === "current_goal" && exactGoalId ? { goalId: exactGoalId } : {}),
         ...(input.conversationTitle ? { conversationTitle: input.conversationTitle } : {}),
         ...(exactConversationId ? { conversationId: exactConversationId } : {}),
+        ...(exactGoalId ? { goalId: exactGoalId } : {}),
         ...(input.role ? { role: input.role } : {}),
         ...(input.createdAfter ? { createdAfter: input.createdAfter } : {}),
         ...(input.createdBefore ? { createdBefore: input.createdBefore } : {}),
@@ -222,43 +228,6 @@ export class RetrievalStore {
       occurredAt: result.metadata.occurredAt,
     }))
     this.recentTraceResults.set(traceResultKey(projectId, conversationId), results)
-    return { results, totalMatches: results.length }
-  }
-
-  async retrieveV2FlowTrace(
-    projectId: string,
-    flowId: string,
-    input: TraceRetrieveMainToolInput,
-  ): Promise<TraceRetrieveMainToolOutput> {
-    if (input.operation === "inspect" || input.mode === "audit" || !input.query) {
-      throw new SocratesError("v2_trace_local_operation_required", "This Seamless trace operation must use the V2 evidence store.", { recoverable: true })
-    }
-    const mode = input.mode ?? "lexical"
-    const ranked = await this.search({
-      projectId,
-      query: input.query,
-      mode,
-      filters: {
-        corpusKind: "trace_turn",
-        runtimeKind: "v2_flow",
-        flowId,
-        ...(input.conversationTitle ? { conversationTitle: input.conversationTitle } : {}),
-        ...(input.role ? { role: input.role } : {}),
-        ...(input.createdAfter ? { createdAfter: input.createdAfter } : {}),
-        ...(input.createdBefore ? { createdBefore: input.createdBefore } : {}),
-      },
-      ...(input.limit ? { limit: input.limit } : {}),
-    })
-    const results = ranked.map((result) => ({
-      resultNumber: result.rank,
-      content: result.content,
-      turnId: result.metadata.turnId,
-      conversationTitle: result.metadata.conversationTitle,
-      turnNumber: result.metadata.turnNumber,
-      matchedRole: result.metadata.matchedRole as "user" | "assistant",
-      status: result.metadata.status as TraceRetrieveVisibleStatus,
-      occurredAt: result.metadata.occurredAt,
-    }))
     return { results, totalMatches: results.length }
   }
 
@@ -409,9 +378,10 @@ export class RetrievalStore {
     projectId: string,
     conversationId: string,
     input: Extract<TraceRetrieveMainToolInput, { operation: "inspect" }>,
+    exactTurnId?: string,
   ): TraceRetrieveMainToolOutput {
     const previous = input.resultNumber ? this.recentTraceResults.get(traceResultKey(projectId, conversationId))?.[input.resultNumber - 1] : undefined
-    const turnId = input.turnId ?? previous?.turnId
+    const turnId = exactTurnId ?? previous?.turnId
     const results = this.rawTraceParents(projectId, conversationId, {
       ...(turnId ? { turnId } : {}),
       ...(input.conversationTitle ? { conversationTitle: input.conversationTitle } : {}),
@@ -430,10 +400,11 @@ export class RetrievalStore {
     projectId: string,
     currentConversationId: string,
     options: {
-      scope?: "current_conversation" | "recent_conversations" | "project"
+      scope?: "presented_context" | "current_goal" | "project"
       conversationTitle?: string
       conversationId?: string
       turnId?: string
+      goalId?: string
       turnNumber?: number
       limit?: number
       fullParent?: boolean
@@ -450,14 +421,13 @@ export class RetrievalStore {
       where.push("t.conversation_id = ?")
       params.push(options.conversationId)
     }
-    if (options.scope === "current_conversation") {
+    if (options.goalId) {
+      where.push("EXISTS (SELECT 1 FROM work_tasks wt WHERE wt.source_runtime = 'classic' AND wt.source_turn_id = t.id AND wt.goal_id = ?)")
+      params.push(options.goalId)
+    }
+    if (options.scope === "presented_context") {
       where.push("t.conversation_id = ?")
       params.push(currentConversationId)
-    } else if (options.scope === "recent_conversations") {
-      const ids = this.recentConversationIds(projectId, 10)
-      if (ids.length === 0) return []
-      where.push(`t.conversation_id IN (${ids.map(() => "?").join(",")})`)
-      params.push(...ids)
     }
     if (options.conversationTitle) {
       where.push("LOWER(c.title) = LOWER(?)")
@@ -515,6 +485,7 @@ export class RetrievalStore {
     currentConversationId: string,
     input: Extract<TraceRetrieveMainToolInput, { mode: "audit" }>,
     exactConversationId?: string,
+    exactGoalId?: string,
   ): TraceRetrieveMainResult[] {
     const sourceKinds = auditSourceKinds(input.include)
     const where = ["td.project_id = ?", "c.status IN ('active','archived')", `td.source_kind IN (${sourceKinds.map(() => "?").join(",")})`, "trace_documents_fts MATCH ?"]
@@ -523,14 +494,13 @@ export class RetrievalStore {
       where.push("td.conversation_id = ?")
       params.push(exactConversationId)
     }
-    if (input.scope === "current_conversation") {
+    if (exactGoalId) {
+      where.push("EXISTS (SELECT 1 FROM work_tasks wt WHERE wt.source_runtime = 'classic' AND wt.source_turn_id = t.id AND wt.goal_id = ?)")
+      params.push(exactGoalId)
+    }
+    if (input.scope === "presented_context") {
       where.push("td.conversation_id = ?")
       params.push(currentConversationId)
-    } else if (input.scope === "recent_conversations") {
-      const ids = this.recentConversationIds(projectId, 10)
-      if (ids.length === 0) return []
-      where.push(`td.conversation_id IN (${ids.map(() => "?").join(",")})`)
-      params.push(...ids)
     }
     if (input.conversationTitle) {
       where.push("LOWER(c.title) = LOWER(?)")

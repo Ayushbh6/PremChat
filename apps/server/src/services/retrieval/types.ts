@@ -16,6 +16,7 @@ export type RetrievalIndexRow = {
   scope: "global" | "project"
   runtimeKind: "classic" | "v2_flow" | "memory" | "goal"
   flowId: string
+  goalId: string
   surface: MemoryRetrievalSurface | ""
   fileName: MemoryRetrievalFile | ""
   sectionId: MemoryRetrievalSection | ""
@@ -36,6 +37,7 @@ export type RetrievalSearchFilters = {
   scope?: "current_conversation" | "recent_conversations" | "project" | "global" | "all"
   runtimeKind?: "classic" | "v2_flow" | "memory" | "goal"
   flowId?: string
+  goalId?: string
   conversationId?: string
   conversationTitle?: string
   role?: RetrievalRole | "any"

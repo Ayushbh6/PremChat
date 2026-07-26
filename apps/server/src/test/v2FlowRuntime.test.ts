@@ -657,6 +657,14 @@ describe("V2ExecutionRuntime", () => {
     expect((testRuntime.handle.sqlite.prepare("SELECT COUNT(*) AS count FROM events").get() as { count: number }).count).toBe(0)
     expect(testRuntime.sharedStore.getMemoryAgent().pending).toMatchObject({ turnCount: 1, shouldRun: true })
 
+    await testRuntime.sharedStore.configureProjectEmbeddings("proj_one", {
+      providerId: "ollama",
+      modelId: "embeddinggemma",
+      credentialSource: "none",
+    })
+    testRuntime.sharedStore.indexV2TurnRetrieval("proj_one", created.turn.id)
+    await testRuntime.sharedStore.waitForRetrievalIdle("proj_one")
+
     const searched = await testRuntime.sharedStore.retrieveGlobalToolTraces({
       mode: "audit",
       projectId: "proj_one",
@@ -705,10 +713,31 @@ describe("V2ExecutionRuntime", () => {
     }, toolContext)
     const auditResult = mainAudit.results[0]
     expect(auditResult && "content" in auditResult ? auditResult.content : "").toContain("V2TERMINAL-MEMORY-TRACE-88")
+    expect(auditResult).not.toHaveProperty("turnId")
     const mainInspect = await mainTraceTools.trace_retrieve({ operation: "inspect", resultNumber: 1 }, toolContext)
     expect(mainInspect.results[0]).toMatchObject({ conversationTitle: `Seamless Flow · ${applied.goal.title}` })
     const inspectResult = mainInspect.results[0]
     expect(inspectResult && "content" in inspectResult ? inspectResult.content : "").toContain("V2ERROR-MEMORY-TRACE-99")
+    expect(inspectResult).not.toHaveProperty("turnId")
+
+    for (const mode of ["lexical", "semantic", "combined"] as const) {
+      const request = { mode, scope: "current_goal" as const, query: "exact restart evidence" }
+      const flowView = await testRuntime.sharedStore.retrieveUnifiedMainToolTraces({
+        projectId: "proj_one",
+        presentedConversationId: flow.id,
+        goalId: applied.goal.id,
+        request,
+      })
+      const classicView = await testRuntime.sharedStore.retrieveUnifiedMainToolTraces({
+        projectId: "proj_one",
+        presentedConversationId: "classic_projection_probe",
+        goalId: applied.goal.id,
+        request,
+      })
+      expect(flowView).toEqual(classicView)
+      expect(flowView.results[0]?.content).toContain("exact restart evidence")
+      expect(flowView.results[0]).not.toHaveProperty("turnId")
+    }
 
     const completedNote = testRuntime.sharedStore.runMemoryNotesTool({
       operation: "mark_done",

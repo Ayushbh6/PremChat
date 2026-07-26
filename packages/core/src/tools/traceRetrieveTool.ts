@@ -12,7 +12,7 @@ import type { SocratesTool } from "./types"
 export const traceRetrieveTool: SocratesTool<typeof traceRetrieveMainToolInputSchema._type, typeof traceRetrieveMainToolOutputSchema._type> = {
   name: "trace_retrieve",
   description:
-    "Recall any prior visible conversation in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to current_conversation or recent_conversations only when useful. Results expose numbered human context and turn references; use inspect with resultNumber or turnId for the full Q&A parent. This tool cannot search other projects.",
+    "Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Results expose numbered human context; use inspect with resultNumber for the full Q&A parent. Internal conversation, Flow, goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.",
   inputSchema: traceRetrieveMainToolInputSchema,
   modelInputSchema: traceRetrieveMainToolInputSchema,
   resultSchema: traceRetrieveMainToolOutputSchema,

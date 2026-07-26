@@ -2115,13 +2115,17 @@ describe("tool contracts", () => {
 
   it("validates the clean project trace and exact memory-routing contracts", () => {
     expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "lexical", query: "slow mode" }).success).toBe(true)
+    expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "lexical", query: "slow mode", scope: "presented_context" }).success).toBe(true)
+    expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "combined", query: "slow mode", scope: "current_goal" }).success).toBe(true)
+    expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "lexical", query: "slow mode", scope: "current_conversation" }).success).toBe(false)
+    expect(traceRetrieveMainToolInputSchema.safeParse({ operation: "inspect", turnId: "opaque_turn" }).success).toBe(false)
     expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "lexical", query: "x".repeat(129) }).success).toBe(false)
     expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "semantic", query: "what we know about slow mode" }).success).toBe(true)
     expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "semantic", query: "x".repeat(1_001) }).success).toBe(false)
     expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "lexical", query: "slow mode", projectId: "proj_1" }).success).toBe(false)
     expect(
       traceRetrieveMainToolOutputSchema.safeParse({
-        results: [{ resultNumber: 1, content: "Use slow mode.", turnId: "turn_1", conversationTitle: "Planning", turnNumber: 2, matchedRole: "user", status: "complete", occurredAt: timestamp }],
+        results: [{ resultNumber: 1, content: "Use slow mode.", conversationTitle: "Planning", turnNumber: 2, matchedRole: "user", status: "complete", occurredAt: timestamp }],
         totalMatches: 1,
       }).success,
     ).toBe(true)

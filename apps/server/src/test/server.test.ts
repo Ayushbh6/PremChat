@@ -6794,7 +6794,7 @@ describe("WebSocket API", () => {
       const semantic = await store.retrieveMainToolTraces(project.id, conversation.id, {
         query: "BLUE-LANTERN-42",
         mode: "semantic",
-        scope: "current_conversation",
+        scope: "presented_context",
       })
       expect(semantic.results[0]?.turnId).toBe(target.turnId)
       expect(semantic.results[0]?.matchedRole).toBe("user")
@@ -6802,7 +6802,7 @@ describe("WebSocket API", () => {
       const combined = await store.retrieveMainToolTraces(project.id, conversation.id, {
         query: "fuzzy blue memory",
         mode: "combined",
-        scope: "current_conversation",
+        scope: "presented_context",
       })
       expect(combined.results[0]?.turnId).toBe(target.turnId)
       const runs = handle.sqlite.prepare("SELECT mode, corpus_kind AS corpusKind, status FROM retrieval_runs ORDER BY created_at").all() as Array<{ mode: string; corpusKind: string; status: string }>

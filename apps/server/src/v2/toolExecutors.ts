@@ -1,7 +1,6 @@
 import type {
   ProjectResource,
   TraceRetrieveMainToolInput,
-  TraceRetrieveMainToolOutput,
 } from "@socrates/contracts"
 import type { McpRuntime } from "@socrates/mcp"
 import type { ToolExecutors } from "@socrates/core"
@@ -47,7 +46,6 @@ export type V2ToolExecutorsInput = {
 export const createV2ToolExecutors = (input: V2ToolExecutorsInput): ToolExecutors => {
   let skillsDiscoverySeen = false
   let skillsAvailable: boolean | undefined
-  const lastTraceTurnIds: string[] = []
   const withFreshness = <C extends object>(context: C): C & { fileFreshness?: ReturnType<ActiveTurns["getFileFreshness"]> } => {
     const tracker = input.activeTurns.getFileFreshness(input.turnId)
     return tracker ? { ...context, fileFreshness: tracker } : context
@@ -99,16 +97,12 @@ export const createV2ToolExecutors = (input: V2ToolExecutorsInput): ToolExecutor
       turnId: input.turnId,
     }),
     current_time: async () => currentRuntimeTime(),
-    trace_retrieve: async (toolInput) => {
-      const output = await retrieveV2Trace(
-        input.sharedStore,
-        input.projectId,
-        input.flowId,
-        toolInput as TraceRetrieveMainToolInput,
-        lastTraceTurnIds,
-      )
-      return output
-    },
+    trace_retrieve: (toolInput) => input.sharedStore.retrieveUnifiedMainToolTraces({
+      projectId: input.projectId,
+      presentedConversationId: input.flowId,
+      goalId: input.goalId,
+      request: toolInput as TraceRetrieveMainToolInput,
+    }),
     memory_search: (toolInput) => input.sharedStore.searchMemory(input.projectId, toolInput, false),
     tool_docs: async (toolInput) => input.sharedStore.runToolDocsTool(input.projectId, toolInput),
     skills: async (toolInput, context) => {
@@ -187,66 +181,6 @@ export const createV2ToolExecutors = (input: V2ToolExecutorsInput): ToolExecutor
     },
   }
 }
-
-const retrieveV2Trace = (
-  sharedStore: SocratesStore,
-  projectId: string,
-  flowId: string,
-  input: TraceRetrieveMainToolInput,
-  lastTraceTurnIds: string[],
-): Promise<TraceRetrieveMainToolOutput> => {
-  if (input.operation === "inspect") {
-    const turnId = input.turnId ?? (input.resultNumber ? lastTraceTurnIds[input.resultNumber - 1] : undefined)
-    if (!turnId) return Promise.resolve({ results: [], totalMatches: 0, warnings: ["No matching Seamless Flow turn was found."] })
-    return sharedStore.retrieveGlobalToolTraces({
-      operation: "inspect",
-      projectId,
-      turnId,
-      ...(input.charLimit ? { charLimit: input.charLimit } : {}),
-    }).then(stripGlobalTraceProject)
-  }
-  const globalInput = input.mode === "audit"
-    ? {
-        mode: "audit" as const,
-        query: input.query,
-        scope: "project" as const,
-        projectId,
-        ...(input.conversationTitle ? { conversationTitle: input.conversationTitle } : {}),
-        ...(input.role ? { role: input.role } : {}),
-        ...(input.createdAfter ? { createdAfter: input.createdAfter } : {}),
-        ...(input.createdBefore ? { createdBefore: input.createdBefore } : {}),
-        ...(input.limit ? { limit: input.limit } : {}),
-        ...(input.include ? { include: input.include } : {}),
-        ...(input.paths ? { paths: input.paths } : {}),
-        ...(input.command ? { command: input.command } : {}),
-        ...(input.toolNames ? { toolNames: input.toolNames } : {}),
-      }
-    : {
-        mode: "lexical" as const,
-        scope: "project" as const,
-        projectId,
-        ...(input.query ? { query: input.query } : {}),
-        ...(input.conversationTitle ? { conversationTitle: input.conversationTitle } : {}),
-        ...(input.role ? { role: input.role } : {}),
-        ...(input.createdAfter ? { createdAfter: input.createdAfter } : {}),
-        ...(input.createdBefore ? { createdBefore: input.createdBefore } : {}),
-        ...(input.limit ? { limit: input.limit } : {}),
-        ...("turnNo" in input && input.turnNo ? { turnNo: input.turnNo } : {}),
-      }
-  return sharedStore.retrieveGlobalToolTraces(globalInput).then((output) => {
-    const stripped = stripGlobalTraceProject(output)
-    lastTraceTurnIds.splice(0, lastTraceTurnIds.length, ...stripped.results.map((result) => result.turnId))
-    return stripped
-  })
-}
-
-const stripGlobalTraceProject = (
-  output: Awaited<ReturnType<SocratesStore["retrieveGlobalToolTraces"]>>,
-): TraceRetrieveMainToolOutput => ({
-  results: output.results.map(({ projectTitle: _projectTitle, ...result }) => result),
-  totalMatches: output.totalMatches,
-  ...(output.warnings ? { warnings: output.warnings } : {}),
-})
 
 const isProjectResourceRead = (value: string): boolean => {
   const normalized = value.replaceAll("\\", "/")

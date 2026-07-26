@@ -84,6 +84,7 @@ import type {
   TraceRetrieveToolInput,
   TraceRetrieveToolOutput,
   TraceRetrieveMainToolInput,
+  TraceRetrieveMainToolOutput,
   UserProfileToolInput,
   UserProfileToolOutput,
   UpdateProjectWorkspaceRequest,
@@ -1243,10 +1244,6 @@ export class SocratesStore {
     this.retrieval.enqueueGoal(projectId, goalId)
   }
 
-  retrieveV2FlowTraces(projectId: string, flowId: string, input: TraceRetrieveMainToolInput) {
-    return this.retrieval.retrieveV2FlowTrace(projectId, flowId, input)
-  }
-
   deleteV2FlowRetrieval(projectId: string, flowId: string): void {
     this.retrieval.deleteV2Flow(projectId, flowId)
   }
@@ -1255,7 +1252,10 @@ export class SocratesStore {
     return this.traces.retrieve(projectId, conversationId, input)
   }
 
-  async retrieveGlobalToolTraces(input: TraceRetrieveGlobalToolInput): Promise<TraceRetrieveGlobalToolOutput> {
+  async retrieveGlobalToolTraces(
+    input: TraceRetrieveGlobalToolInput,
+    authority?: { scope: "presented_context" | "current_goal" | "project"; presentedConversationId: string; goalId: string },
+  ): Promise<TraceRetrieveGlobalToolOutput> {
     if (input.operation === "inspect") {
       const previous = input.resultNumber ? this.globalTraceRefs[input.resultNumber - 1] : undefined
       const turnId = input.turnId ?? previous?.turnId
@@ -1272,17 +1272,20 @@ export class SocratesStore {
       }
       const inspected = await this.retrieval.retrieveMainTrace(projectId, "", {
         operation: "inspect",
-        ...(turnId ? { turnId } : {}),
         ...(input.conversationTitle ? { conversationTitle: input.conversationTitle } : {}),
         ...(input.turnNo ? { turnNo: input.turnNo } : {}),
         ...(input.charLimit ? { charLimit: input.charLimit } : {}),
-      })
+      }, undefined, undefined, turnId)
       const results = inspected.results.map((result, index) => ({ ...result, resultNumber: index + 1, projectTitle: this.projectTitle(projectId) }))
-      this.globalTraceRefs = results.map((result) => ({ projectId, turnId: result.turnId }))
+      this.globalTraceRefs = results.flatMap((result) => result.turnId ? [{ projectId, turnId: result.turnId }] : [])
       return { results, totalMatches: results.length }
     }
 
     const projectIds = this.resolveGlobalRetrievalProjectIds(input)
+    const exactConversationId = authority?.scope === "presented_context"
+      ? authority.presentedConversationId
+      : typeof input.conversationId === "string" ? input.conversationId : undefined
+    const exactGoalId = authority?.scope === "current_goal" ? authority.goalId : undefined
     const warnings: string[] = []
     const limit = Math.min(8, input.limit ?? 8)
     const query = input.query?.trim()
@@ -1296,7 +1299,8 @@ export class SocratesStore {
             projectId,
             "",
             toMainTraceSearchInput(input),
-            input.conversationId,
+            exactConversationId,
+            exactGoalId,
           )
           for (const result of projectResult.results) {
             collected.push({
@@ -1309,7 +1313,10 @@ export class SocratesStore {
           warnings.push(`${this.projectTitle(projectId)}: ${error instanceof Error ? error.message : String(error)}`)
         }
         try {
-          for (const candidate of this.searchV2GlobalTraceTurns(projectId, input)) {
+          for (const candidate of this.searchV2GlobalTraceTurns(projectId, input, {
+            ...(exactConversationId ? { exactConversationId } : {}),
+            ...(exactGoalId ? { exactGoalId } : {}),
+          })) {
             collected.push({ projectId, result: candidate.result, rawScore: candidate.rawScore })
           }
         } catch (error) {
@@ -1319,8 +1326,8 @@ export class SocratesStore {
     } else {
       for (const projectId of projectIds) {
         try {
-          const selectedV2Flow = input.conversationId
-            ? Boolean(this.handle.sqlite.prepare("SELECT 1 FROM v2_flows WHERE id = ? AND project_id = ? LIMIT 1").get(input.conversationId, projectId))
+          const selectedV2Flow = exactConversationId
+            ? Boolean(this.handle.sqlite.prepare("SELECT 1 FROM v2_flows WHERE id = ? AND project_id = ? LIMIT 1").get(exactConversationId, projectId))
             : false
           const ranked = await this.retrieval.search({
             projectId,
@@ -1329,11 +1336,12 @@ export class SocratesStore {
             filters: {
               corpusKind: "trace_turn",
               scope: "project",
-              ...(input.conversationId
+              ...(exactConversationId
                 ? selectedV2Flow
-                  ? { runtimeKind: "v2_flow" as const, flowId: input.conversationId }
-                  : { conversationId: input.conversationId }
+                  ? { runtimeKind: "v2_flow" as const, flowId: exactConversationId }
+                  : { conversationId: exactConversationId }
                 : {}),
+              ...(exactGoalId ? { goalId: exactGoalId } : {}),
               ...(input.conversationTitle ? { conversationTitle: input.conversationTitle } : {}),
               ...(input.role ? { role: input.role } : {}),
               ...(input.createdAfter ? { createdAfter: input.createdAfter } : {}),
@@ -1368,8 +1376,8 @@ export class SocratesStore {
       : collected.map((candidate) => candidate.rawScore)
     const ranked = rankDistinctParents(
       collected.map((candidate, index) => ({
-        chunkId: `${candidate.projectId}:${candidate.result.turnId}`,
-        parentId: `${candidate.projectId}:${candidate.result.turnId}`,
+        chunkId: `${candidate.projectId}:${candidate.result.turnId ?? candidate.result.conversationTitle}:${candidate.result.turnNumber}`,
+        parentId: `${candidate.projectId}:${candidate.result.turnId ?? candidate.result.conversationTitle}:${candidate.result.turnNumber}`,
         content: candidate.result.content,
         rawScore: normalized[index] ?? 0,
         normalizedScore: normalized[index] ?? 0,
@@ -1379,12 +1387,32 @@ export class SocratesStore {
       { limit },
     )
     const results = ranked.map(({ metadata }, index) => ({ ...metadata.result, resultNumber: index + 1 }))
-    this.globalTraceRefs = ranked.map(({ metadata }) => ({ projectId: metadata.projectId, turnId: metadata.result.turnId }))
+    this.globalTraceRefs = ranked.flatMap(({ metadata }) => metadata.result.turnId ? [{ projectId: metadata.projectId, turnId: metadata.result.turnId }] : [])
     return { results, totalMatches: results.length, ...(warnings.length ? { warnings } : {}) }
   }
 
   retrieveMainToolTraces(projectId: string, conversationId: string, input: TraceRetrieveMainToolInput | TraceRetrieveToolInput) {
     return this.retrieval.retrieveMainTrace(projectId, conversationId, traceRetrieveMainToolInputSchema.parse(input))
+  }
+
+  async retrieveUnifiedMainToolTraces(input: {
+    projectId: string
+    presentedConversationId: string
+    goalId: string
+    request: TraceRetrieveMainToolInput
+  }): Promise<TraceRetrieveMainToolOutput> {
+    const request = traceRetrieveMainToolInputSchema.parse(input.request)
+    const globalInput = mainTraceRequestToGlobalInput(input.projectId, request)
+    const output = await this.retrieveGlobalToolTraces(globalInput, {
+      scope: request.operation === "inspect" ? "project" : request.scope ?? "project",
+      presentedConversationId: input.presentedConversationId,
+      goalId: input.goalId,
+    })
+    return {
+      results: output.results.map(({ projectTitle: _projectTitle, turnId: _turnId, ...result }) => result),
+      totalMatches: output.totalMatches,
+      ...(output.warnings ? { warnings: output.warnings } : {}),
+    }
   }
 
   searchMemory(projectId: string, input: MemorySearchInput, automaticFallback = false) {
@@ -1479,12 +1507,20 @@ export class SocratesStore {
   private searchV2GlobalTraceTurns(
     projectId: string,
     input: TraceRetrieveGlobalSearchInput,
+    authority: { exactConversationId?: string | string[]; exactGoalId?: string } = {},
   ): Array<{ result: Omit<TraceRetrieveGlobalResult, "resultNumber">; rawScore: number }> {
     const where = ["t.project_id = ?", "t.status IN ('completed','failed','cancelled')", "f.status IN ('active','archived')"]
     const params: unknown[] = [projectId]
-    if (input.conversationId) {
+    if (authority.exactConversationId && typeof authority.exactConversationId === "string") {
+      where.push("t.flow_id = ?")
+      params.push(authority.exactConversationId)
+    } else if (input.conversationId) {
       where.push("t.flow_id = ?")
       params.push(input.conversationId)
+    }
+    if (authority.exactGoalId) {
+      where.push("t.goal_id = ?")
+      params.push(authority.exactGoalId)
     }
     if (input.conversationTitle) {
       where.push("LOWER(CASE WHEN g.title IS NULL OR trim(g.title) = '' THEN 'Seamless Flow' ELSE 'Seamless Flow · ' || g.title END) = LOWER(?)")
@@ -1755,6 +1791,50 @@ const exactOccurrenceCount = (text: string, query: string): number => {
     offset = next + Math.max(1, query.length)
   }
   return count
+}
+
+const mainTraceRequestToGlobalInput = (
+  projectId: string,
+  request: TraceRetrieveMainToolInput,
+): TraceRetrieveGlobalToolInput => {
+  if (request.operation === "inspect") {
+    return {
+      operation: "inspect",
+      ...(request.resultNumber ? { resultNumber: request.resultNumber } : {}),
+      ...(request.conversationTitle ? { conversationTitle: request.conversationTitle } : {}),
+      ...(request.turnNo ? { turnNo: request.turnNo } : {}),
+      ...(request.charLimit ? { charLimit: request.charLimit } : {}),
+    }
+  }
+  const common = {
+    scope: "project" as const,
+    projectId,
+    ...(request.conversationTitle ? { conversationTitle: request.conversationTitle } : {}),
+    ...(request.role ? { role: request.role } : {}),
+    ...(request.createdAfter ? { createdAfter: request.createdAfter } : {}),
+    ...(request.createdBefore ? { createdBefore: request.createdBefore } : {}),
+    ...(request.limit ? { limit: request.limit } : {}),
+  }
+  if (request.mode === "audit") {
+    return {
+      ...common,
+      mode: "audit",
+      query: request.query,
+      ...(request.include ? { include: request.include } : {}),
+      ...(request.paths ? { paths: request.paths } : {}),
+      ...(request.command ? { command: request.command } : {}),
+      ...(request.toolNames ? { toolNames: request.toolNames } : {}),
+    }
+  }
+  if (request.mode === "semantic" || request.mode === "combined") {
+    return { ...common, mode: request.mode, query: request.query }
+  }
+  return {
+    ...common,
+    mode: "lexical",
+    ...(request.query ? { query: request.query } : {}),
+    ...("turnNo" in request && request.turnNo ? { turnNo: request.turnNo } : {}),
+  }
 }
 
 const toMainTraceSearchInput = (

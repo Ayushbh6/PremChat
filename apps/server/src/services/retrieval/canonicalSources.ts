@@ -12,6 +12,7 @@ const LOW_PRIORITY_MEMORY_SECTION_IDS = new Set(["runtime_context", "legacy_cont
 type CanonicalTurnRow = {
   runtimeKind: "classic" | "v2_flow"
   flowId: string
+  goalId: string
   projectId: string
   conversationId: string
   conversationTitle: string | null
@@ -55,6 +56,7 @@ export const loadCanonicalTraceRows = (handle: DatabaseHandle, projectId: string
     .prepare(
       `WITH numbered_turns AS (
          SELECT t.id AS turnId,
+                COALESCE((SELECT wt.goal_id FROM work_tasks wt WHERE wt.source_runtime = 'classic' AND wt.source_turn_id = t.id LIMIT 1), '') AS goalId,
                 t.conversation_id AS conversationId,
                 t.status AS turnStatus,
                 t.started_at AS startedAt,
@@ -103,6 +105,7 @@ export const loadCanonicalTraceRows = (handle: DatabaseHandle, projectId: string
       `WITH numbered_v2_turns AS (
          SELECT t.id AS turnId,
                 t.flow_id AS flowId,
+                COALESCE(t.goal_id, '') AS goalId,
                 t.status AS turnStatus,
                 t.started_at AS startedAt,
                 t.completed_at AS completedAt,
@@ -200,6 +203,7 @@ const traceChunksForTurn = (row: CanonicalTurnRow): RetrievalIndexRow[] => {
     scope: "project" as const,
     runtimeKind: row.runtimeKind,
     flowId: row.flowId,
+    goalId: row.goalId,
     surface: "" as const,
     fileName: "" as const,
     sectionId: "" as const,
@@ -248,6 +252,7 @@ const memoryChunksForSection = (activeProjectId: string, row: CanonicalMemorySec
     scope,
     runtimeKind: "memory" as const,
     flowId: "",
+    goalId: "",
     surface: mapped.surface,
     fileName: mapped.fileName,
     sectionId: row.sectionId as MemoryRetrievalSection,
@@ -283,6 +288,7 @@ const goalCardRow = (row: CanonicalGoalRow): RetrievalIndexRow => {
     scope: "project",
     runtimeKind: "goal",
     flowId: row.flowId,
+    goalId: row.goalId,
     surface: "",
     fileName: "",
     sectionId: "",
