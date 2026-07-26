@@ -13,6 +13,7 @@ import { openDatabase, runMigrations, type DatabaseHandle } from "../db/client"
 import { loadCanonicalTraceRows } from "../services/retrieval/canonicalSources"
 import { SocratesStore } from "../services/store"
 import { V2FlowStore } from "../services/v2/flowStore"
+import { CanonicalWorkStore } from "../services/workState/canonicalWorkStore"
 
 const handles: DatabaseHandle[] = []
 const roots: string[] = []
@@ -112,6 +113,45 @@ const seedClassicTurn = (handle: DatabaseHandle, input: {
 }
 
 describe("V2FlowStore isolation and lifecycle", () => {
+  it("persists a suspended reconciliation watermark on the canonical task without changing its goal binding", () => {
+    const { handle, store } = setup()
+    const { flow } = store.ensureFlow("proj_one")
+    const created = store.createTurn({
+      projectId: "proj_one",
+      flowId: flow.id,
+      clientMessageId: createId("v2msg"),
+      content: "Run a four-hour simulated task.",
+      attachmentIds: [],
+      runtimeConfig,
+    })
+    const applied = store.applyRouting({
+      projectId: "proj_one",
+      flowId: flow.id,
+      turnId: created.turn.id,
+      messageId: created.userMessage.id,
+      messageContent: created.userMessage.content,
+      result: forcedCreateResult(store, flow.id),
+    })
+    const canonical = new CanonicalWorkStore(handle)
+    canonical.saveReconciliationWatermark("v2_flow", created.turn.id, {
+      lastReconciledEvidenceSequence: 4,
+      lastObservedEvidenceSequence: 9,
+      lastCheckpointAt: "2026-07-26T08:00:00.000Z",
+      lastVerifiedMutationBoundary: 8,
+      pendingCheckpointReason: "suspension_resume",
+    })
+
+    expect(canonical.getReconciliationWatermark("v2_flow", created.turn.id)).toMatchObject({
+      state: {
+        lastReconciledEvidenceSequence: 4,
+        lastObservedEvidenceSequence: 9,
+        lastVerifiedMutationBoundary: 8,
+        pendingCheckpointReason: "suspension_resume",
+      },
+    })
+    expect(canonical.findTaskBySourceTurn(created.turn.id)?.goalId).toBe(applied.goal.id)
+  })
+
   it("keeps snapshot and router consumers bounded with 500 goals and 500 canonical tasks", () => {
     const { handle, store } = setup()
     const initial = store.ensureFlow("proj_one")

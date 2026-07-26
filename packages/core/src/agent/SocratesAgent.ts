@@ -64,6 +64,11 @@ import {
   sanitizeToolExecutionResultForModel,
   stableToolInputKey,
 } from "./socratesToolResultSupport"
+import {
+  ReconciliationWatermarkController,
+  buildSocratesProgressReconciliationCheckpoint,
+  type ReconciliationWatermarkState,
+} from "./reconciliationWatermark"
 
 export type SocratesAgentTurnInput = {
   projectId?: string
@@ -106,6 +111,10 @@ export type SocratesAgentTurnInput = {
   dynamicTools?: ModelToolDefinition[] | (() => ModelToolDefinition[])
   abortSignal?: AbortSignal
   fileFreshness?: import("../tools/types").FileFreshnessTracker
+  reconciliationWatermark?: ReconciliationWatermarkState
+  persistReconciliationWatermark?: (state: ReconciliationWatermarkState) => void | Promise<void>
+  reconciliationClock?: () => number
+  taskStartedAt?: string
 }
 
 export type StableCachePreludeSnapshot = {
@@ -205,6 +214,16 @@ export class SocratesAgent {
     let handedOverToFrontier = isSameModelSelection(input.runtimeConfig, input.frontierModelSettings)
     let frontierHandoverRejected = false
     const reconciliationVerification = new ReconciliationVerificationLedger()
+    const progressReconciliationEnabled = input.completionMode === "main_structured"
+    const reconciliationNow = input.reconciliationClock ?? Date.now
+    const reconciliationWatermark = new ReconciliationWatermarkController({
+      ...(input.reconciliationWatermark ? { state: input.reconciliationWatermark } : {}),
+      ...(input.taskStartedAt ? { startedAt: input.taskStartedAt } : {}),
+      ...(input.reconciliationClock ? { now: input.reconciliationClock } : {}),
+    })
+    const persistReconciliationWatermark = async () => {
+      await input.persistReconciliationWatermark?.(reconciliationWatermark.state())
+    }
     let reconciliationReminderCount = 0
     let contextDispositionComplianceReminderCount = 0
 
@@ -239,6 +258,18 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
     }
 
     for (let step = 0; ; step += 1) {
+      const pendingProgressCheckpoint = !progressReconciliationEnabled || finalCheckpointSent
+        ? undefined
+        : reconciliationWatermark.beginPendingCheckpoint()
+      if (pendingProgressCheckpoint) {
+        reconciliationVerification.beginCheckpoint()
+        reconciliationReminderCount = 0
+        messages.push({
+          role: "developer",
+          content: buildSocratesProgressReconciliationCheckpoint(pendingProgressCheckpoint),
+        })
+        await persistReconciliationWatermark()
+      }
       const dynamicTools = typeof input.dynamicTools === "function" ? input.dynamicTools() : input.dynamicTools
       const handoverAvailable = Boolean(
         input.completionMode === "main_structured" &&
@@ -335,6 +366,19 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
         yield event
         if (event.type === "context.compaction.failed") {
           throw event.error
+        }
+      }
+      if (progressReconciliationEnabled && !finalCheckpointSent && preparedContext.compactionEvents.some((event) => event.type === "context.compaction.completed")) {
+        reconciliationWatermark.markCompactionBoundary()
+        await persistReconciliationWatermark()
+        if (!reconciliationWatermark.activeCheckpoint() && reconciliationWatermark.beginPendingCheckpoint()) {
+          reconciliationVerification.beginCheckpoint()
+          messages.push({
+            role: "developer",
+            content: buildSocratesProgressReconciliationCheckpoint(reconciliationWatermark.activeCheckpoint()!),
+          })
+          await persistReconciliationWatermark()
+          continue
         }
       }
       if (input.abortSignal?.aborted) {
@@ -535,7 +579,7 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
       }
 
       const requestedHandover = toolCalls.find((toolCall) => toolCall.toolName === "handover_to_frontier")
-      if (!requestedHandover) {
+      if (!requestedHandover && !reconciliationWatermark.activeCheckpoint()) {
         accumulatedAnswerText += stepText
         for (const event of bufferedAnswerEvents) {
           yield event
@@ -585,6 +629,24 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
         })
       }
 
+      if (toolCalls.length === 0 && reconciliationWatermark.activeCheckpoint()) {
+        if (reconciliationVerification.hasPending()) {
+          if (reconciliationReminderCount >= 2) {
+            throw new SocratesError("memory_reconciliation_incomplete", `Required .socrates progress reconciliation was not verified: ${reconciliationVerification.pendingSummary()}`, { recoverable: true })
+          }
+          reconciliationReminderCount += 1
+          messages.push({
+            role: "developer",
+            content: `Progress checkpoint cannot close until the required .socrates reconciliation is verified. Pending: ${reconciliationVerification.pendingSummary()}. Read the changed target again, then continue the same task without answering.`,
+          })
+          continue
+        }
+        reconciliationWatermark.completeCheckpoint()
+        await persistReconciliationWatermark()
+        reconciliationReminderCount = 0
+        continue
+      }
+
       if (toolCalls.length === 0 && input.completionMode === "main_structured" && !finalCheckpointSent) {
         finalCheckpointSent = true
         reconciliationVerification.beginCheckpoint()
@@ -612,6 +674,8 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
       }
 
       if (toolCalls.length === 0 && input.completionMode === "main_structured") {
+        reconciliationWatermark.completeFinalCheckpoint()
+        await persistReconciliationWatermark()
         forceFinalNoTools = true
         continue
       }
@@ -678,11 +742,20 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
         docsLedger,
       })
 
+      let approvalRequestedAt: number | undefined
       for await (const event of batch.events) {
+        if (event.type === "approval.requested") approvalRequestedAt ??= reconciliationNow()
         yield event
       }
 
       const execution = await batch.done
+      const operationalToolCalls = toolCalls.filter((toolCall) => toolCall.toolName !== "context_disposition")
+      const operationalResults = execution.results.filter((result) => result.toolName !== "context_disposition")
+      reconciliationWatermark.recordBatch(operationalToolCalls, operationalResults)
+      if (approvalRequestedAt !== undefined && reconciliationNow() - approvalRequestedAt >= 60_000) {
+        reconciliationWatermark.markSuspension()
+      }
+      await persistReconciliationWatermark()
       const interactiveTerminalName = interactiveTerminalAwaitingInput(execution.results)
       if (interactiveTerminalName) {
         pendingInteractiveTerminalName = interactiveTerminalName
@@ -692,6 +765,8 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
           result.ok === true && result.toolName === "wait" && waitToolOutputSchema.safeParse(result.output).success,
       )
       if (waitResult?.output.status === "waiting") {
+        reconciliationWatermark.markSuspension()
+        await persistReconciliationWatermark()
         yield { type: "agent.suspended", wait: waitResult.output }
         return
       }
@@ -758,8 +833,6 @@ You are Frontier and now own this task for the rest of the current turn. Continu
       }
       const nativeToolMessages = execution.results.flatMap((result) => nativeFollowUpMessagesForToolResult(result, input.workspacePath))
       messages.push(...nativeToolMessages)
-      const operationalToolCalls = toolCalls.filter((toolCall) => toolCall.toolName !== "context_disposition")
-      const operationalResults = execution.results.filter((result) => result.toolName !== "context_disposition")
       docsLedger.recordBatch({ toolCalls: operationalToolCalls, results: operationalResults })
       reconciliationVerification.recordBatch(operationalToolCalls, operationalResults)
       const ledgerUpdate = actionLedger.recordBatch({

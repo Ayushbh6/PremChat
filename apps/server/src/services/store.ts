@@ -2,6 +2,7 @@ import type {
   CompleteCompactionSnapshotInput,
   ContextCompactionSummary,
   FailCompactionSnapshotInput,
+  ReconciliationWatermarkState,
   StableCachePreludeSnapshot,
   StartCompactionSnapshotInput,
 } from "@socrates/core"
@@ -1437,6 +1438,18 @@ export class SocratesStore {
       content: result.content,
     }))).catch(() => [])
     return selectBoundedGoalHistory(input.messages, retrieved)
+  }
+
+  getTaskReconciliationWatermark(sourceRuntime: "classic" | "v2_flow", sourceTurnId: string) {
+    return this.canonicalWork?.getReconciliationWatermark(sourceRuntime, sourceTurnId)
+  }
+
+  saveTaskReconciliationWatermark(
+    sourceRuntime: "classic" | "v2_flow",
+    sourceTurnId: string,
+    state: ReconciliationWatermarkState,
+  ): void {
+    this.canonicalWork?.saveReconciliationWatermark(sourceRuntime, sourceTurnId, state)
   }
 
   searchMemory(projectId: string, input: MemorySearchInput, automaticFallback = false) {

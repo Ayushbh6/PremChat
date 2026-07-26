@@ -504,6 +504,7 @@ export class V2ExecutionRuntime {
         sourceTurnId: created.turn.id,
         taskRequest: command.payload.content,
       })
+      const reconciliationWatermark = this.deps.sharedStore.getTaskReconciliationWatermark("v2_flow", created.turn.id)
       for await (const event of this.deps.agent.streamTurn({
         projectId: command.projectId,
         // V2 owns execution. The bridge mirrors only completed visible turns
@@ -522,6 +523,11 @@ export class V2ExecutionRuntime {
         workspacePath,
         stableCachePreludeSnapshot,
         completionMode: "main_structured",
+        ...(reconciliationWatermark ? {
+          reconciliationWatermark: reconciliationWatermark.state,
+          taskStartedAt: reconciliationWatermark.taskStartedAt,
+          persistReconciliationWatermark: (state) => this.deps.sharedStore.saveTaskReconciliationWatermark("v2_flow", created.turn.id, state),
+        } : {}),
         automaticMemorySearch: (memoryInput) => this.deps.sharedStore.searchMemory(command.projectId, memoryInput, true),
         activeGoal,
         resolvedTurnContextSeed: createResolvedTurnContextSeed({

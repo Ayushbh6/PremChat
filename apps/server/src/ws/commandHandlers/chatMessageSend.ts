@@ -282,6 +282,9 @@ export const handleChatMessageSend = async (
         messages: modelHistory,
       })
     }
+    const reconciliationWatermark = activeGoal
+      ? store.getTaskReconciliationWatermark("classic", created.turnId)
+      : undefined
     for await (const agentEvent of agent.streamTurn({
       projectId,
       conversationId,
@@ -298,6 +301,11 @@ export const handleChatMessageSend = async (
       workspacePath,
       stableCachePreludeSnapshot,
       completionMode: "main_structured",
+      ...(reconciliationWatermark ? {
+        reconciliationWatermark: reconciliationWatermark.state,
+        taskStartedAt: reconciliationWatermark.taskStartedAt,
+        persistReconciliationWatermark: (state) => store.saveTaskReconciliationWatermark("classic", created.turnId, state),
+      } : {}),
       automaticMemorySearch: (input) => store.searchMemory(projectId, input, true),
       ...(activeGoal ? { activeGoal } : {}),
       ...(activeGoal ? {

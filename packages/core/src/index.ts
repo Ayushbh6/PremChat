@@ -74,6 +74,15 @@ export {
   selectBoundedGoalHistory,
   type RetrievedGoalHistoryItem,
 } from "./context/boundedGoalHistory"
+export {
+  RECONCILIATION_ACTIVITY_EVIDENCE_LIMIT,
+  RECONCILIATION_LONG_TASK_MS,
+  ReconciliationWatermarkController,
+  buildSocratesProgressReconciliationCheckpoint,
+  type ReconciliationCheckpoint,
+  type ReconciliationCheckpointReason,
+  type ReconciliationWatermarkState,
+} from "./agent/reconciliationWatermark"
 export { buildSocratesDynamicContext, buildSocratesSystemPrompt, socratesBasePrompt, type SocratesPromptContext } from "./prompts/socratesPrompt"
 export { buildMemoryAgentSystemPrompt, memoryAgentBasePrompt, type MemoryAgentPromptContext } from "./prompts/memoryPrompt"
 export { buildSkillWriterSystemPrompt, skillWriterBasePrompt, type SkillWriterPromptContext } from "./prompts/skillWriterPrompt"

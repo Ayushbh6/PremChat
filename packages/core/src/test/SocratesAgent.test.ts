@@ -3399,6 +3399,84 @@ describe("SocratesAgent", () => {
       },
     })
   })
+  it("runs one bounded same-Socrates progress checkpoint after a verified mutation milestone", async () => {
+    const streamRequests: ModelRequestLike[] = []
+    const persisted: Array<import("../index").ReconciliationWatermarkState> = []
+    let structuredCalls = 0
+    let streamCalls = 0
+    const provider: ModelProvider = {
+      countTokens: fakeCountTokens,
+      async generateStructured() {
+        structuredCalls += 1
+        return structuredCalls === 1
+          ? { output: { readTargets: [], reason: "No recall needed." } as never }
+          : { output: { finalAnswer: "Implemented and verified.", goalFinalization: { state: "completed", note: "Mutation milestone verified." } } as never }
+      },
+      async *stream(request) {
+        if (request.system.includes("Memory Router Agent")) {
+          yield { type: "model.completed" }
+          return
+        }
+        streamRequests.push(request)
+        streamCalls += 1
+        if (streamCalls === 1) {
+          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "notes", toolName: "project_docs", input: { operation: "read", area: "notes" } } }
+          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "rules", toolName: "repo_docs", input: { operation: "read", path: "REPO_RULES.md" } } }
+          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "patch", toolName: "apply_patch", input: { patch: "*** Begin Patch" } } }
+          yield { type: "model.completed", finishReason: "tool-calls" }
+          return
+        }
+        yield { type: "model.completed" }
+      },
+    }
+    const executors = emptyToolExecutors()
+    executors.apply_patch = async () => ({
+      changedFiles: [{ path: "a.ts", operation: "edited" }, { path: "b.ts", operation: "edited" }],
+      diff: "two verified files",
+      dryRun: false,
+      truncation: { truncated: false, charLimit: 20_000, returnedLength: 18 },
+    })
+
+    const agent = new SocratesAgent(provider)
+    for await (const _event of agent.streamTurn({
+      completionMode: "main_structured",
+      projectId: "proj_1",
+      conversationId: "conv_1",
+      sessionId: "sess_1",
+      turnId: "turn_1",
+      providerId: "openai",
+      modelId: "gpt-5.4-mini",
+      runtimeConfig: {
+        providerId: "openai",
+        modelId: "gpt-5.4-mini",
+        thinkingEnabled: false,
+        thinkingEffort: "none",
+        approvalMode: "manual",
+        sandboxMode: "workspace_write",
+      },
+      messages: [{ role: "user", content: "Implement the two-file milestone." }],
+      workspacePath: "/tmp",
+      toolExecutors: executors,
+      requestApproval: async () => ({ decision: "approved" }),
+      taskStartedAt: "2026-07-26T10:00:00.000Z",
+      reconciliationClock: () => Date.parse("2026-07-26T10:01:00.000Z"),
+      persistReconciliationWatermark: (state) => {
+        persisted.push(state)
+      },
+    })) {
+      // Drain the same Socrates turn through progress and final checkpoints.
+    }
+
+    expect(streamRequests).toHaveLength(4)
+    expect(countSubstring(JSON.stringify(streamRequests[1]?.messages), "<socrates_progress_reconciliation_checkpoint>")).toBe(1)
+    expect(JSON.stringify(streamRequests[1]?.messages)).toContain("substantial_verified_mutation")
+    expect(countSubstring(JSON.stringify(streamRequests[3]?.messages), "<socrates_reconciliation_checkpoint>")).toBe(1)
+    expect(persisted.at(-1)).toMatchObject({
+      lastReconciledEvidenceSequence: 3,
+      lastObservedEvidenceSequence: 3,
+      lastVerifiedMutationBoundary: 3,
+    })
+  })
 })
 
 describe("bash tool policy", () => {

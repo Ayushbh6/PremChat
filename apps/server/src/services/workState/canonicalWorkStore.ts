@@ -1,5 +1,6 @@
 import type { ConversationPartialTurn, ConversationToolRun, Message, MessageAttachment, V2Message, V2MessageAttachment, V2ToolCall, V2Turn } from "@socrates/contracts"
 import { createId, nowIso, SocratesError } from "@socrates/shared"
+import type { ReconciliationWatermarkState } from "@socrates/core"
 import { and, asc, eq, inArray } from "drizzle-orm"
 import type { DatabaseHandle } from "../../db/client"
 import {
@@ -21,6 +22,11 @@ import {
 } from "../../db/schema"
 
 export type WorkSourceRuntime = "classic" | "v2_flow"
+
+export type CanonicalTaskReconciliationWatermark = Readonly<{
+  state: ReconciliationWatermarkState
+  taskStartedAt: string
+}>
 
 export type CanonicalMessageProjection = Readonly<{
   canonicalTaskId: string
@@ -343,6 +349,32 @@ export class CanonicalWorkStore {
     return this.handle.db.select().from(workTasks).where(eq(workTasks.sourceTurnId, sourceTurnId)).limit(1).get()
   }
 
+  getReconciliationWatermark(sourceRuntime: WorkSourceRuntime, sourceTurnId: string): CanonicalTaskReconciliationWatermark | undefined {
+    const task = this.findTask(sourceRuntime, sourceTurnId)
+    if (!task) return undefined
+    const metadata = taskMetadata(task.metadataJson)
+    const stored = parseReconciliationWatermark(metadata.reconciliationWatermark)
+    return {
+      state: stored ?? {
+        lastReconciledEvidenceSequence: 0,
+        lastObservedEvidenceSequence: 0,
+        lastCheckpointAt: task.startedAt,
+        lastVerifiedMutationBoundary: 0,
+      },
+      taskStartedAt: task.startedAt,
+    }
+  }
+
+  saveReconciliationWatermark(sourceRuntime: WorkSourceRuntime, sourceTurnId: string, state: ReconciliationWatermarkState): void {
+    const task = this.findTask(sourceRuntime, sourceTurnId)
+    if (!task) throw new SocratesError("canonical_task_not_found", "The canonical task reconciliation watermark could not be saved.")
+    const metadata = taskMetadata(task.metadataJson)
+    this.handle.db.update(workTasks).set({
+      metadataJson: JSON.stringify({ ...metadata, reconciliationWatermark: state }),
+      updatedAt: nowIso(),
+    }).where(eq(workTasks.id, task.id)).run()
+  }
+
   private projectedTasks(conversationId: string): WorkTaskRow[] {
     return this.handle.db.select({ task: workTasks }).from(conversationTaskProjections)
       .innerJoin(workTasks, eq(workTasks.id, conversationTaskProjections.taskId))
@@ -623,6 +655,45 @@ export class CanonicalWorkStore {
     const goal = this.handle.db.select({ flowId: v2Goals.flowId }).from(v2Goals).where(eq(v2Goals.id, goalId)).limit(1).get()
     if (!goal) throw new SocratesError("canonical_goal_not_found", "The projected task goal no longer exists.")
     return goal.flowId
+  }
+}
+
+const taskMetadata = (value: string | null): Record<string, unknown> => {
+  const parsed = parseJson(value)
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
+}
+
+const parseReconciliationWatermark = (value: unknown): ReconciliationWatermarkState | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
+  const state = value as Record<string, unknown>
+  if (
+    !Number.isInteger(state.lastReconciledEvidenceSequence) ||
+    !Number.isInteger(state.lastObservedEvidenceSequence) ||
+    !Number.isInteger(state.lastVerifiedMutationBoundary) ||
+    (state.lastReconciledEvidenceSequence as number) < 0 ||
+    (state.lastObservedEvidenceSequence as number) < (state.lastReconciledEvidenceSequence as number) ||
+    (state.lastVerifiedMutationBoundary as number) < 0 ||
+    (state.lastVerifiedMutationBoundary as number) > (state.lastObservedEvidenceSequence as number) ||
+    typeof state.lastCheckpointAt !== "string" ||
+    !Number.isFinite(Date.parse(state.lastCheckpointAt))
+  ) return undefined
+  const reason = state.pendingCheckpointReason
+  const allowedReasons = new Set([
+    "substantial_verified_mutation",
+    "milestone_completion",
+    "suspension_resume",
+    "context_compaction",
+    "long_task_activity",
+    "documented_state_contradiction",
+  ])
+  return {
+    lastReconciledEvidenceSequence: state.lastReconciledEvidenceSequence as number,
+    lastObservedEvidenceSequence: state.lastObservedEvidenceSequence as number,
+    lastCheckpointAt: state.lastCheckpointAt,
+    lastVerifiedMutationBoundary: state.lastVerifiedMutationBoundary as number,
+    ...(typeof reason === "string" && allowedReasons.has(reason)
+      ? { pendingCheckpointReason: reason as NonNullable<ReconciliationWatermarkState["pendingCheckpointReason"]> }
+      : {}),
   }
 }
 
