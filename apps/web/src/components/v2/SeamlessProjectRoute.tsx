@@ -431,8 +431,14 @@ export function SeamlessProjectRoute({ projectId }: SeamlessProjectRouteProps) {
       hasEarlierMessages={snapshot.messageWindow.hasEarlier}
       isLoadingEarlierMessages={runtime.isLoadingEarlierMessages}
       earlierMessagesError={runtime.earlierMessagesError ?? undefined}
+      hasEarlierGoals={snapshot.goalWindow?.hasEarlier ?? false}
+      isLoadingEarlierGoals={runtime.isLoadingEarlierGoals}
+      earlierGoalsError={runtime.earlierGoalsError ?? undefined}
       onLoadEarlierMessages={() => {
         void runtime.loadEarlierMessages();
+      }}
+      onLoadEarlierGoals={() => {
+        void runtime.loadEarlierGoals();
       }}
       onSelectGoal={(goalId) => {
         setSelectedGoalIdOverride(goalId);

@@ -28,6 +28,8 @@ export const createResolvedTurnContextSeed = (input: {
     objective: input.goal.objective?.trim() || input.goal.title,
     state: input.goal.state,
     progress: input.goal.note,
+    openDecisions: input.goal.openDecisions ?? [],
+    blockers: input.goal.blockers ?? [],
   },
   task: {
     ordinal: input.goal.taskOrdinal ?? 1,
@@ -67,6 +69,8 @@ export const renderResolvedTurnContext = (context: ResolvedTurnContext): string 
   `GOAL OBJECTIVE\n${context.goal.objective}`,
   `GOAL STATE\n${context.goal.state}`,
   `GOAL PROGRESS\n${context.goal.progress}`,
+  ...(context.goal.openDecisions.length ? [`OPEN DECISIONS\n${context.goal.openDecisions.map((item) => `- ${item}`).join("\n")}`] : []),
+  ...(context.goal.blockers.length ? [`ACTIVE BLOCKERS\n${context.goal.blockers.map((item) => `- ${item}`).join("\n")}`] : []),
   `CURRENT TASK - ${context.task.ordinal}\n${context.task.request}`,
   ...(context.transition ? [
     `PRECEDING GOAL TRANSITION\nPrevious goal: ${context.transition.previousGoalTitle}\nRelationship: ${context.transition.relationship}\nVerified outcome: ${context.transition.verifiedOutcome}`,

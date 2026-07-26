@@ -10,6 +10,7 @@ import {
   v2DeleteTurnResponseSchema,
   v2EnsureFlowResponseSchema,
   v2ListFlowMessagesResponseSchema,
+  v2ListGoalsResponseSchema,
   v2MessageAttachmentSchema,
   v2ServerEventSchema,
   type ApiError,
@@ -20,6 +21,8 @@ import {
   type V2Message,
   type V2MessageAttachment,
   type V2MessageWindow,
+  type V2Goal,
+  type V2GoalWindow,
   type V2ServerEvent,
   type V2SpeechJob,
 } from "@socrates/contracts";
@@ -131,6 +134,7 @@ export type V2ClientMessagePage = Readonly<{
   messages: V2Message[];
   messageWindow: V2MessageWindow;
 }>;
+export type V2ClientGoalPage = Readonly<{ goals: V2Goal[]; goalWindow: V2GoalWindow }>;
 
 export class V2ApiError extends Error {
   readonly error: ApiError;
@@ -256,6 +260,19 @@ export const v2Api = {
     return request(
       `${scopedFlowPath(projectId, flowId)}/messages?${query.toString()}`,
       v2ListFlowMessagesResponseSchema,
+    );
+  },
+
+  listGoals: async (
+    projectId: string,
+    flowId: string,
+    beforeOrdinal: number,
+    limit = 25,
+  ): Promise<V2ClientGoalPage> => {
+    const query = new URLSearchParams({ beforeOrdinal: String(beforeOrdinal), limit: String(limit) });
+    return request(
+      `${scopedFlowPath(projectId, flowId)}/goals?${query.toString()}`,
+      v2ListGoalsResponseSchema,
     );
   },
 

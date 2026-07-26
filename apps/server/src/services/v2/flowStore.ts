@@ -9,6 +9,7 @@ import {
   MAX_TEXT_ATTACHMENT_BYTES,
   type GoalFinalization,
   V2_FLOW_MESSAGE_PAGE_MAX,
+  V2_FLOW_GOAL_PAGE_SIZE,
   V2_FLOW_SNAPSHOT_MESSAGE_LIMIT,
   type V2Approval,
   type TerminalWaitWakeOn,
@@ -25,6 +26,7 @@ import {
   type V2FlowSnapshot,
   type V2LiveActivity,
   type V2Goal,
+  type V2GoalWindow,
   type V2GoalCapsule,
   type V2GoalMessageLink,
   type V2GoalRoutingRun,
@@ -209,6 +211,11 @@ export type V2MessagePage = Readonly<{
   messageWindow: V2MessageWindow
 }>
 
+export type V2GoalPage = Readonly<{
+  goals: V2Goal[]
+  goalWindow: V2GoalWindow
+}>
+
 export type GoalTransitionContext = Readonly<{
   goalTitle: string
   user: string
@@ -323,12 +330,24 @@ export class V2FlowStore {
     if (!flowRow || flowRow.status === "archived") {
       throw new SocratesError("v2_flow_not_found", "This project does not have an active Seamless Flow.", { recoverable: true })
     }
-    const goals = this.handle.db.select().from(v2Goals).where(eq(v2Goals.flowId, flowRow.id)).orderBy(asc(v2Goals.ordinal)).all()
+    const totalGoals = (this.handle.sqlite.prepare("SELECT COUNT(*) AS count FROM v2_goals WHERE flow_id = ?").get(flowRow.id) as { count: number }).count
+    const goalRows = this.handle.db.select().from(v2Goals).where(eq(v2Goals.flowId, flowRow.id))
+      .orderBy(desc(v2Goals.ordinal)).limit(V2_FLOW_GOAL_PAGE_SIZE).all()
+    const beforeGoalOrdinal = goalRows.at(-1)?.ordinal
+    if (flowRow.foregroundGoalId && !goalRows.some((goal) => goal.id === flowRow.foregroundGoalId)) {
+      const foreground = this.handle.db.select().from(v2Goals).where(eq(v2Goals.id, flowRow.foregroundGoalId)).limit(1).get()
+      if (foreground) goalRows.splice(Math.max(0, goalRows.length - 1), 1, foreground)
+    }
+    const goals = goalRows.sort((left, right) => left.ordinal - right.ordinal)
     const messagePage = this.loadMessagePage(flowRow.id, undefined, V2_FLOW_SNAPSHOT_MESSAGE_LIMIT)
     const latestCapsules = this.handle.db
       .select()
       .from(v2GoalCapsules)
-      .where(and(eq(v2GoalCapsules.flowId, flowRow.id), eq(v2GoalCapsules.status, "active")))
+      .where(and(
+        eq(v2GoalCapsules.flowId, flowRow.id),
+        eq(v2GoalCapsules.status, "active"),
+        inArray(v2GoalCapsules.goalId, goals.map((goal) => goal.id)),
+      ))
       .orderBy(asc(v2GoalCapsules.goalId))
       .all()
       .map(mapCapsule)
@@ -358,7 +377,7 @@ export class V2FlowStore {
     const flow = mapFlow(flowRow)
     const mappedGoals = goals.map(mapGoal)
     const activeTurn = activeTurnRow ? mapTurn(activeTurnRow) : this.canonicalWork.findActiveFlowTurn(flowRow.id)
-    const canonicalToolCalls = this.canonicalWork.listFlowToolCalls(flowRow.id)
+    const canonicalToolCalls = this.canonicalWork.listFlowToolCalls(flowRow.id).slice(-200)
     const activeTerminals = terminalRows.map(mapTerminal)
     const pendingApprovals = approvalRows.map(mapApproval)
     const liveActivity = activeTurn
@@ -375,6 +394,9 @@ export class V2FlowStore {
         ? { foregroundGoal: mappedGoals.find((goal) => goal.id === flow.foregroundGoalId) }
         : {}),
       goals: mappedGoals,
+      goalWindow: totalGoals > goalRows.length
+        ? { totalGoals, hasEarlier: true, beforeOrdinal: beforeGoalOrdinal! }
+        : { totalGoals, hasEarlier: false },
       latestCapsules,
       messages: messagePage.messages,
       messageWindow: messagePage.messageWindow,
@@ -719,6 +741,8 @@ export class V2FlowStore {
       objective: goal.summary ?? goal.title,
       state: goal.status,
       note: capsule?.summary ?? goal.summary ?? "Work is active.",
+      openDecisions: parseJsonArray(capsule?.openQuestionsJson ?? "[]").slice(0, 5),
+      blockers: goal.status === "blocked" ? [goal.summary ?? "This goal is blocked."] : [],
       taskOrdinal: this.canonicalWork.taskOrdinal(input.goalId, input.sourceRuntime, input.sourceTurnId),
       taskRequest: input.taskRequest,
       ...(transition ? {
@@ -1857,23 +1881,47 @@ export class V2FlowStore {
     return operation()
   }
 
-  listGoalsForRouter(flowId: string): V2Goal[] {
-    return this.handle.db
+  listGoalsForRouter(flowId: string, anchorGoalIds: readonly string[] = []): V2Goal[] {
+    const goals = this.handle.db
       .select()
       .from(v2Goals)
       .where(eq(v2Goals.flowId, flowId))
-      .orderBy(asc(v2Goals.ordinal))
+      .orderBy(desc(v2Goals.pinned), desc(v2Goals.lastActiveAt))
       .all()
-      .map(mapGoal)
+    const byId = new Map(goals.map((goal) => [goal.id, goal]))
+    return uniqueStrings([...anchorGoalIds, ...goals.map((goal) => goal.id)])
+      .flatMap((goalId) => byId.has(goalId) ? [mapGoal(byId.get(goalId)!)] : [])
+      .slice(0, 25)
   }
 
-  listCapsulesForRouter(flowId: string): V2GoalCapsule[] {
+  listGoals(projectId: string, flowId: string, beforeOrdinal?: number, limit = V2_FLOW_GOAL_PAGE_SIZE): V2GoalPage {
+    this.getFlow(projectId, flowId)
+    const boundedLimit = Math.min(Math.max(1, limit), V2_FLOW_GOAL_PAGE_SIZE)
+    const where = beforeOrdinal === undefined
+      ? eq(v2Goals.flowId, flowId)
+      : and(eq(v2Goals.flowId, flowId), lt(v2Goals.ordinal, beforeOrdinal))
+    const rows = this.handle.db.select().from(v2Goals).where(where)
+      .orderBy(desc(v2Goals.ordinal)).limit(boundedLimit + 1).all()
+    const hasEarlier = rows.length > boundedLimit
+    const visible = rows.slice(0, boundedLimit)
+    const totalGoals = (this.handle.sqlite.prepare("SELECT COUNT(*) AS count FROM v2_goals WHERE flow_id = ?").get(flowId) as { count: number }).count
+    return {
+      goals: visible.map(mapGoal).sort((left, right) => left.ordinal - right.ordinal),
+      goalWindow: hasEarlier
+        ? { totalGoals, hasEarlier: true, beforeOrdinal: Math.min(...visible.map((goal) => goal.ordinal)) }
+        : { totalGoals, hasEarlier: false },
+    }
+  }
+
+  listCapsulesForRouter(flowId: string, goalIds?: readonly string[]): V2GoalCapsule[] {
     return this.handle.db
       .select()
       .from(v2GoalCapsules)
       .where(and(eq(v2GoalCapsules.flowId, flowId), eq(v2GoalCapsules.status, "active")))
       .orderBy(asc(v2GoalCapsules.goalId))
       .all()
+      .filter((capsule) => !goalIds || goalIds.includes(capsule.goalId))
+      .slice(0, 25)
       .map(mapCapsule)
   }
 

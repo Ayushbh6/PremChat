@@ -11,6 +11,28 @@ afterEach(async () => {
 })
 
 describe("V2 Flow deletion routes", () => {
+  it("serves bounded goal pages with a continuation cursor", async () => {
+    const app = Fastify({ logger: false })
+    runningApps.push(app)
+    const listGoals = vi.fn(() => ({
+      goals: [],
+      goalWindow: { totalGoals: 500, hasEarlier: true, beforeOrdinal: 451 },
+    }))
+
+    await registerV2FlowRoutes(app, { listGoals } as unknown as V2FlowStore)
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v2/projects/proj_1/flows/v2flow_1/goals?beforeOrdinal=476&limit=25",
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({
+      ok: true,
+      data: { goalWindow: { totalGoals: 500, hasEarlier: true, beforeOrdinal: 451 } },
+    })
+    expect(listGoals).toHaveBeenCalledWith("proj_1", "v2flow_1", 476, 25)
+  })
+
   it("removes only the deleted turn from retrieval instead of rebuilding the project index", async () => {
     const app = Fastify({ logger: false })
     runningApps.push(app)

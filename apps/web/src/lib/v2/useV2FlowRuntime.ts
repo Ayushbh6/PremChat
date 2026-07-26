@@ -35,6 +35,8 @@ export function useV2FlowRuntime({ projectId }: UseV2FlowRuntimeInput) {
   const [contextError, setContextError] = useState<string | null>(null);
   const [isLoadingEarlierMessages, setIsLoadingEarlierMessages] = useState(false);
   const [earlierMessagesError, setEarlierMessagesError] = useState<string | null>(null);
+  const [isLoadingEarlierGoals, setIsLoadingEarlierGoals] = useState(false);
+  const [earlierGoalsError, setEarlierGoalsError] = useState<string | null>(null);
   const processedEventIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
@@ -49,6 +51,8 @@ export function useV2FlowRuntime({ projectId }: UseV2FlowRuntimeInput) {
       setContextError(null);
       setIsLoadingEarlierMessages(false);
       setEarlierMessagesError(null);
+      setIsLoadingEarlierGoals(false);
+      setEarlierGoalsError(null);
       setLoadError(null);
       try {
         const capabilities = await v2Api.getCapabilities();
@@ -178,6 +182,29 @@ export function useV2FlowRuntime({ projectId }: UseV2FlowRuntimeInput) {
     }
   }, [isLoadingEarlierMessages, projectId, state?.snapshot]);
 
+  const loadEarlierGoals = useCallback(async () => {
+    const snapshot = state?.snapshot;
+    const beforeOrdinal = snapshot?.goalWindow?.beforeOrdinal;
+    if (!snapshot?.goalWindow?.hasEarlier || beforeOrdinal === undefined || isLoadingEarlierGoals) return;
+    setIsLoadingEarlierGoals(true);
+    setEarlierGoalsError(null);
+    try {
+      const page = await v2Api.listGoals(projectId, snapshot.flow.id, beforeOrdinal);
+      setState((current) => {
+        if (!current || current.snapshot.flow.id !== snapshot.flow.id) return current;
+        return v2FlowRuntimeReducer(current, {
+          type: "prepend_goals",
+          goals: page.goals,
+          goalWindow: page.goalWindow,
+        });
+      });
+    } catch (error) {
+      setEarlierGoalsError(error instanceof Error ? error.message : "Earlier goals could not be loaded.");
+    } finally {
+      setIsLoadingEarlierGoals(false);
+    }
+  }, [isLoadingEarlierGoals, projectId, state?.snapshot]);
+
   const requireScope = useCallback(() => {
     if (!state) throw new Error("The project flow is still loading.");
     return {
@@ -299,6 +326,8 @@ export function useV2FlowRuntime({ projectId }: UseV2FlowRuntimeInput) {
     contextError,
     isLoadingEarlierMessages,
     earlierMessagesError,
+    isLoadingEarlierGoals,
+    earlierGoalsError,
     isHydrating,
     loadError,
     socketError,
@@ -306,6 +335,7 @@ export function useV2FlowRuntime({ projectId }: UseV2FlowRuntimeInput) {
     isConnected: socket.isConnected,
     refresh,
     loadEarlierMessages,
+    loadEarlierGoals,
     sendMessage,
     respondToClarification,
     updateFocus,

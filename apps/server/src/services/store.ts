@@ -5,7 +5,7 @@ import type {
   StableCachePreludeSnapshot,
   StartCompactionSnapshotInput,
 } from "@socrates/core"
-import { normalizeScores, rankDistinctParents } from "@socrates/core"
+import { normalizeScores, rankDistinctParents, selectBoundedGoalHistory } from "@socrates/core"
 import type {
   ChatMessageSendPayload,
   CompleteOnboardingRequest,
@@ -107,6 +107,7 @@ import {
   listOllamaChatModels,
   type EmbeddingProvider,
   type ModelProvider,
+  type ModelMessage,
   type ProviderCredentialResolver,
 } from "@socrates/providers"
 import { SocratesError } from "@socrates/shared"
@@ -1413,6 +1414,29 @@ export class SocratesStore {
       totalMatches: output.totalMatches,
       ...(output.warnings ? { warnings: output.warnings } : {}),
     }
+  }
+
+  async prepareBoundedGoalHistory(input: {
+    projectId: string
+    goalId: string
+    query: string
+    messages: readonly ModelMessage[]
+  }): Promise<ModelMessage[]> {
+    const retrieved = await this.retrieval.search({
+      projectId: input.projectId,
+      query: input.query,
+      mode: "combined",
+      filters: { corpusKind: "trace_turn", scope: "project", goalId: input.goalId },
+      limit: 3,
+      automaticFallback: true,
+    }).then((results) => results.map((result) => ({
+      resultNumber: result.rank,
+      conversationTitle: result.metadata.conversationTitle,
+      turnNumber: result.metadata.turnNumber,
+      occurredAt: result.metadata.occurredAt,
+      content: result.content,
+    }))).catch(() => [])
+    return selectBoundedGoalHistory(input.messages, retrieved)
   }
 
   searchMemory(projectId: string, input: MemorySearchInput, automaticFallback = false) {

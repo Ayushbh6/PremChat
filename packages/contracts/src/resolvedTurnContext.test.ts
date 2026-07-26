@@ -3,7 +3,7 @@ import { resolvedTurnContextSchema, resolvedTurnContextSeedSchema } from "./reso
 
 const seed = {
   project: { name: "Socrates", description: "One runtime, two views." },
-  goal: { title: "Converge Flow", objective: "Use one lifecycle.", state: "foreground", progress: "Phase 2 is active." },
+  goal: { title: "Converge Flow", objective: "Use one lifecycle.", state: "foreground", progress: "Phase 2 is active.", openDecisions: [], blockers: [] },
   task: { ordinal: 3, request: "Continue the convergence work." },
   history: [{ role: "user" as const, content: "Continue." }],
 }

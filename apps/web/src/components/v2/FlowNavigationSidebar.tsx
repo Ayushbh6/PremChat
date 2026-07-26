@@ -20,6 +20,9 @@ interface FlowNavigationSidebarProps {
   hasEarlier?: boolean
   isLoadingEarlier?: boolean
   earlierError?: string
+  hasEarlierGoals?: boolean
+  isLoadingEarlierGoals?: boolean
+  earlierGoalsError?: string
   queryCounts: ReadonlyMap<string, number>
   onCollapse: () => void
   onExpand: () => void
@@ -27,6 +30,7 @@ interface FlowNavigationSidebarProps {
   onSelectQuery: (queryId: string) => void
   onReturnToCurrent: () => void
   onLoadEarlier?: () => void
+  onLoadEarlierGoals?: () => void
 }
 
 export function FlowNavigationSidebar({
@@ -40,6 +44,9 @@ export function FlowNavigationSidebar({
   hasEarlier,
   isLoadingEarlier,
   earlierError,
+  hasEarlierGoals,
+  isLoadingEarlierGoals,
+  earlierGoalsError,
   queryCounts,
   onCollapse,
   onExpand,
@@ -47,6 +54,7 @@ export function FlowNavigationSidebar({
   onSelectQuery,
   onReturnToCurrent,
   onLoadEarlier,
+  onLoadEarlierGoals,
 }: FlowNavigationSidebarProps) {
   const [navigation, setNavigation] = useState<{ projectId: string; level: NavigationLevel }>(() => ({
     projectId: currentProjectId,
@@ -175,6 +183,17 @@ export function FlowNavigationSidebar({
                   </button>
                 )
               })}
+              {hasEarlierGoals && onLoadEarlierGoals ? (
+                <button
+                  type="button"
+                  onClick={onLoadEarlierGoals}
+                  disabled={isLoadingEarlierGoals}
+                  className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-brand-text-light transition hover:bg-white/70 hover:text-brand-text-dark disabled:cursor-wait disabled:opacity-60"
+                >
+                  {isLoadingEarlierGoals ? "Loading…" : "Load earlier goals"}
+                </button>
+              ) : null}
+              {earlierGoalsError ? <p className="mt-2 text-xs text-red-600" role="alert">{earlierGoalsError}</p> : null}
             </div>
           ) : (
             <div className="relative space-y-1 before:absolute before:bottom-2 before:left-[0.3125rem] before:top-2 before:w-px before:bg-gray-200">

@@ -63,6 +63,9 @@ export interface FlowWorkspaceProps {
   hasEarlierMessages?: boolean;
   isLoadingEarlierMessages?: boolean;
   earlierMessagesError?: string;
+  hasEarlierGoals?: boolean;
+  isLoadingEarlierGoals?: boolean;
+  earlierGoalsError?: string;
   composer: ChatComposerProps<V2MessageAttachment>;
   onReadAloud?: (itemId: string) => void;
   activeReadAloudMessageId?: string | undefined;
@@ -75,6 +78,7 @@ export interface FlowWorkspaceProps {
   onTerminalStop?: (terminalId: string) => void;
   onTerminalRename?: (terminalId: string, name: string) => void;
   onLoadEarlierMessages?: () => void;
+  onLoadEarlierGoals?: () => void;
   onSelectGoal?: (goalId: string) => void;
   onFocusAction?: (goalId: string, action: "switch" | "pause" | "finish" | "reopen" | "archive" | "pin" | "unpin") => void;
   onDeleteGoal?: (goalId: string) => Promise<void>;
@@ -107,6 +111,9 @@ export function FlowWorkspace({
   hasEarlierMessages = false,
   isLoadingEarlierMessages = false,
   earlierMessagesError,
+  hasEarlierGoals = false,
+  isLoadingEarlierGoals = false,
+  earlierGoalsError,
   composer,
   onReadAloud,
   activeReadAloudMessageId,
@@ -119,6 +126,7 @@ export function FlowWorkspace({
   onTerminalStop,
   onTerminalRename,
   onLoadEarlierMessages,
+  onLoadEarlierGoals,
   onSelectGoal,
   onFocusAction,
   onDeleteGoal,
@@ -312,6 +320,9 @@ export function FlowWorkspace({
         hasEarlier={hasEarlierMessages}
         isLoadingEarlier={isLoadingEarlierMessages}
         earlierError={earlierMessagesError}
+        hasEarlierGoals={hasEarlierGoals}
+        isLoadingEarlierGoals={isLoadingEarlierGoals}
+        earlierGoalsError={earlierGoalsError}
         queryCounts={queryCounts}
         onSelectGoal={(goalId) => {
           setSelectedExchangeKey(null);
@@ -326,6 +337,7 @@ export function FlowWorkspace({
           setIsSidebarCollapsed(true);
         }}
         onLoadEarlier={onLoadEarlierMessages}
+        onLoadEarlierGoals={onLoadEarlierGoals}
       />
 
       <section className={styles.flowShell} data-inspector={isInspectorOpen ? "open" : "closed"}>

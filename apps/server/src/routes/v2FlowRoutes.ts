@@ -5,6 +5,7 @@ import { z } from "zod"
 import {
   MAX_MESSAGE_ATTACHMENTS,
   V2_FLOW_MESSAGE_PAGE_MAX,
+  V2_FLOW_GOAL_PAGE_SIZE,
   V2_FLOW_SNAPSHOT_MESSAGE_LIMIT,
   v2EnsureFlowRequestSchema,
   v2EnsureFlowResponseSchema,
@@ -12,6 +13,7 @@ import {
   v2DeleteGoalResponseSchema,
   v2DeleteTurnResponseSchema,
   v2ListFlowMessagesResponseSchema,
+  v2ListGoalsResponseSchema,
 } from "@socrates/contracts"
 import { SocratesError } from "@socrates/shared"
 import { fail, ok, toApiError } from "../http"
@@ -34,6 +36,12 @@ const messagesQuerySchema = z
   .object({
     beforeOrdinal: z.coerce.number().int().positive().optional(),
     limit: z.coerce.number().int().min(1).max(V2_FLOW_MESSAGE_PAGE_MAX).default(V2_FLOW_SNAPSHOT_MESSAGE_LIMIT),
+  })
+  .strict()
+const goalsQuerySchema = z
+  .object({
+    beforeOrdinal: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().min(1).max(V2_FLOW_GOAL_PAGE_SIZE).default(V2_FLOW_GOAL_PAGE_SIZE),
   })
   .strict()
 const evidenceRetrieveSchema = z
@@ -162,6 +170,18 @@ export const registerV2FlowRoutes = async (app: FastifyInstance, store: V2FlowSt
       const query = parse(messagesQuerySchema, request.query, "invalid_query")
       const page = store.listMessages(scope.projectId, scope.flowId, query.beforeOrdinal, query.limit)
       return ok(v2ListFlowMessagesResponseSchema.parse(page))
+    } catch (error) {
+      return sendRouteError(reply, error)
+    }
+  })
+
+  app.get("/api/v2/projects/:projectId/flows/:flowId/goals", async (request, reply) => {
+    try {
+      const scope = parse(flowParamsSchema, request.params, "invalid_route_params")
+      const query = parse(goalsQuerySchema, request.query, "invalid_query")
+      return ok(v2ListGoalsResponseSchema.parse(
+        store.listGoals(scope.projectId, scope.flowId, query.beforeOrdinal, query.limit),
+      ))
     } catch (error) {
       return sendRouteError(reply, error)
     }

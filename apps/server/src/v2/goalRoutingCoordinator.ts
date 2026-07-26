@@ -30,6 +30,11 @@ export const resolveFlowGoal = async (input: ResolveFlowGoalInput): Promise<Reso
     : snapshot.flow.foregroundGoalId
   const previousGoalId = input.store.previousRoutingGoalId(input.flowId, selectedGoalId)
   const retrievedGoalIds = await input.sharedStore.searchGoalCards(input.projectId, input.messageContent, 12).catch(() => [] as string[])
+  const routingGoals = input.store.listGoalsForRouter(input.flowId, [
+    ...(selectedGoalId ? [selectedGoalId] : []),
+    ...(previousGoalId ? [previousGoalId] : []),
+    ...retrievedGoalIds,
+  ])
   const setting = input.sharedStore.getWorkerModelSetting("goal_router")
   const model = {
     providerId: setting.providerId,
@@ -45,10 +50,10 @@ export const resolveFlowGoal = async (input: ResolveFlowGoalInput): Promise<Reso
     turnId: input.turnId,
     workspacePath: input.workspacePath,
     userMessage: input.messageContent,
-    goals: snapshot.goals,
+    goals: routingGoals,
     ...(selectedGoalId ? { selectedGoalId } : {}),
     ...(previousGoalId ? { previousGoalId } : {}),
-    capsules: snapshot.latestCapsules,
+    capsules: input.store.listCapsulesForRouter(input.flowId, routingGoals.map((goal) => goal.id)),
     recentTurns: input.store.listRecentRoutingTurns(input.flowId, 3),
     ...(selectedGoalId ? { selectedGoalTurns: input.store.listGoalRoutingTurns(input.flowId, selectedGoalId, 5) } : {}),
     candidateGoalIds: retrievedGoalIds,

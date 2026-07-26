@@ -70,6 +70,8 @@ export type ActiveGoalCard = Readonly<{
   title: string
   state: string
   note: string
+  openDecisions?: readonly string[]
+  blockers?: readonly string[]
   objective?: string
   taskOrdinal?: number
   taskRequest?: string

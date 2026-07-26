@@ -39,6 +39,7 @@ export type V2TerminalOutputChunk = Extract<V2ServerEvent, { type: "v2.terminal.
 export type V2FlowRuntimeAction =
   | { type: "hydrate"; snapshot: V2FlowSnapshot }
   | { type: "prepend_messages"; messages: V2Message[]; messageWindow: V2MessageWindow }
+  | { type: "prepend_goals"; goals: V2FlowSnapshot["goals"]; goalWindow: NonNullable<V2FlowSnapshot["goalWindow"]> }
   | { type: "event"; event: V2ServerEvent }
   | { type: "clear_error" };
 
@@ -71,6 +72,12 @@ const mergeMessages = (left: V2Message[], right: V2Message[]): V2Message[] => {
   const byId = new Map(left.map((message) => [message.id, message]));
   for (const message of right) byId.set(message.id, message);
   return sortMessages([...byId.values()]);
+};
+
+const mergeGoals = (left: V2FlowSnapshot["goals"], right: V2FlowSnapshot["goals"]): V2FlowSnapshot["goals"] => {
+  const byId = new Map(left.map((goal) => [goal.id, goal]));
+  for (const goal of right) byId.set(goal.id, goal);
+  return [...byId.values()].sort((a, b) => a.ordinal - b.ordinal);
 };
 
 const withMessage = (snapshot: V2FlowSnapshot, message: V2Message): V2FlowSnapshot => {
@@ -118,6 +125,16 @@ export function v2FlowRuntimeReducer(
         ...state.snapshot,
         messages: mergeMessages(action.messages, state.snapshot.messages),
         messageWindow: action.messageWindow,
+      },
+    };
+  }
+  if (action.type === "prepend_goals") {
+    return {
+      ...state,
+      snapshot: {
+        ...state.snapshot,
+        goals: mergeGoals(action.goals, state.snapshot.goals),
+        goalWindow: action.goalWindow,
       },
     };
   }

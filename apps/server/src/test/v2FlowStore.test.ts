@@ -112,6 +112,41 @@ const seedClassicTurn = (handle: DatabaseHandle, input: {
 }
 
 describe("V2FlowStore isolation and lifecycle", () => {
+  it("keeps snapshot and router consumers bounded with 500 goals and 500 canonical tasks", () => {
+    const { handle, store } = setup()
+    const initial = store.ensureFlow("proj_one")
+    const generalGoalId = initial.goals.find((goal) => goal.kind === "general")?.id
+    if (!generalGoalId) throw new Error("Expected General Conversation")
+    const now = nowIso()
+    const insertGoal = handle.sqlite.prepare(
+      "INSERT INTO v2_goals (id, flow_id, project_id, ordinal, title, summary, kind, status, origin, priority, pinned, last_active_at, created_at, updated_at) VALUES (?, ?, 'proj_one', ?, ?, ?, 'work', 'parked', 'test', 50, 0, ?, ?, ?)",
+    )
+    const insertTask = handle.sqlite.prepare(
+      "INSERT INTO work_tasks (id, project_id, goal_id, source_runtime, source_turn_id, started_at, created_at, updated_at) VALUES (?, 'proj_one', ?, 'v2_flow', ?, ?, ?, ?)",
+    )
+    const transaction = handle.sqlite.transaction(() => {
+      for (let ordinal = 2; ordinal <= 500; ordinal += 1) {
+        const goalId = `scale_goal_${ordinal}`
+        const timestamp = new Date(Date.parse(now) + ordinal * 1_000).toISOString()
+        insertGoal.run(goalId, initial.flow.id, ordinal, `Scale goal ${ordinal}`, `Compact progress ${ordinal}`, timestamp, timestamp, timestamp)
+        insertTask.run(`scale_task_${ordinal}`, goalId, `scale_turn_${ordinal}`, timestamp, timestamp, timestamp)
+      }
+      insertTask.run("scale_task_general", generalGoalId, "scale_turn_general", now, now, now)
+    })
+    transaction()
+
+    const snapshot = store.getSnapshot("proj_one", initial.flow.id)
+    expect(snapshot.goals).toHaveLength(25)
+    expect(snapshot.goalWindow).toEqual({ totalGoals: 500, hasEarlier: true, beforeOrdinal: 476 })
+    expect(snapshot.goals.some((goal) => goal.id === generalGoalId)).toBe(true)
+    const earlierGoals = store.listGoals("proj_one", initial.flow.id, snapshot.goalWindow?.beforeOrdinal, 25)
+    expect(earlierGoals.goals).toHaveLength(25)
+    expect(earlierGoals.goals.map((goal) => goal.ordinal)).toEqual(Array.from({ length: 25 }, (_, index) => 451 + index))
+    expect(earlierGoals.goalWindow).toEqual({ totalGoals: 500, hasEarlier: true, beforeOrdinal: 451 })
+    expect(store.listGoalsForRouter(initial.flow.id)).toHaveLength(25)
+    expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM work_tasks").get()).toEqual({ count: 500 })
+  })
+
   it("inherits Classic attachment manifests and provider image parts without creating a Classic message", () => {
     const { store } = setup()
     const { flow } = store.ensureFlow("proj_one")

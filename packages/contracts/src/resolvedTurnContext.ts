@@ -27,6 +27,8 @@ export const resolvedTurnContextSeedSchema = z.object({
     objective: z.string().min(1).max(2_000),
     state: z.string().min(1).max(100),
     progress: z.string().min(1).max(4_000),
+    openDecisions: z.array(z.string().min(1).max(1_000)).max(5).default([]),
+    blockers: z.array(z.string().min(1).max(1_000)).max(5).default([]),
   }).strict(),
   task: z.object({
     ordinal: z.number().int().positive(),

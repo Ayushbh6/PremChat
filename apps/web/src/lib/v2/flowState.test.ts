@@ -44,6 +44,22 @@ const snapshot = (selectedGoal: V2Goal): V2FlowSnapshot => ({
 });
 
 describe("V2 Flow runtime focus state", () => {
+  it("merges an earlier goal page without duplicating the foreground goal", () => {
+    const current = goal("foreground")
+    const earlier = { ...goal("parked"), id: "goal_earlier", ordinal: 0, title: "Earlier goal" }
+    const initial = initialV2FlowRuntimeState({
+      ...snapshot(current),
+      goalWindow: { totalGoals: 2, hasEarlier: true, beforeOrdinal: 1 },
+    })
+    const next = v2FlowRuntimeReducer(initial, {
+      type: "prepend_goals",
+      goals: [earlier, current],
+      goalWindow: { totalGoals: 2, hasEarlier: false },
+    })
+    expect(next.snapshot.goals.map((item) => item.id)).toEqual(["goal_earlier", "goal_review"])
+    expect(next.snapshot.goalWindow).toEqual({ totalGoals: 2, hasEarlier: false })
+  })
+
   it("keeps a completed goal selected when lifecycle changes", () => {
     const active = goal("foreground");
     const completed = goal("completed");

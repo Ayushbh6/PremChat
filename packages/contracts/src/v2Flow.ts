@@ -769,6 +769,7 @@ export const v2SpeechJobSchema = z.discriminatedUnion("engine", [
 
 export const V2_FLOW_SNAPSHOT_MESSAGE_LIMIT = 100
 export const V2_FLOW_MESSAGE_PAGE_MAX = 200
+export const V2_FLOW_GOAL_PAGE_SIZE = 25
 
 export const v2MessageWindowSchema = z
   .object({
@@ -793,11 +794,36 @@ export const v2MessageWindowSchema = z
     }
   })
 
+export const v2GoalWindowSchema = z
+  .object({
+    totalGoals: z.number().int().nonnegative(),
+    hasEarlier: z.boolean(),
+    beforeOrdinal: z.number().int().positive().optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.hasEarlier && value.beforeOrdinal === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["beforeOrdinal"],
+        message: "A goal cursor is required when earlier goals are available.",
+      })
+    }
+    if (!value.hasEarlier && value.beforeOrdinal !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["beforeOrdinal"],
+        message: "A goal cursor must be omitted when the goal window is complete.",
+      })
+    }
+  })
+
 export const v2FlowSnapshotSchema = z
   .object({
     flow: v2FlowSchema,
     foregroundGoal: v2GoalSchema.optional(),
     goals: z.array(v2GoalSchema),
+    goalWindow: v2GoalWindowSchema.optional(),
     latestCapsules: z.array(v2GoalCapsuleSchema),
     messages: z.array(v2MessageSchema),
     messageWindow: v2MessageWindowSchema,
@@ -849,7 +875,19 @@ export const v2ListTimelineResponseSchema = z
   })
   .strict()
 
-export const v2ListGoalsResponseSchema = z.object({ goals: z.array(v2GoalSchema) }).strict()
+export const v2ListGoalsRequestSchema = z
+  .object({
+    beforeOrdinal: z.number().int().positive().optional(),
+    limit: z.number().int().min(1).max(V2_FLOW_GOAL_PAGE_SIZE).default(V2_FLOW_GOAL_PAGE_SIZE),
+  })
+  .strict()
+
+export const v2ListGoalsResponseSchema = z
+  .object({
+    goals: z.array(v2GoalSchema).max(V2_FLOW_GOAL_PAGE_SIZE),
+    goalWindow: v2GoalWindowSchema,
+  })
+  .strict()
 export const v2GetGoalResponseSchema = z
   .object({
     goal: v2GoalSchema,
@@ -1336,6 +1374,7 @@ export type V2Feedback = z.infer<typeof v2FeedbackSchema>
 export type V2CredentialInputRequest = z.infer<typeof v2CredentialInputRequestSchema>
 export type V2SpeechJob = z.infer<typeof v2SpeechJobSchema>
 export type V2MessageWindow = z.infer<typeof v2MessageWindowSchema>
+export type V2GoalWindow = z.infer<typeof v2GoalWindowSchema>
 export type V2FlowSnapshot = z.infer<typeof v2FlowSnapshotSchema>
 export type V2CreateSpeechJobRequest = z.infer<typeof v2CreateSpeechJobRequestSchema>
 export type V2DeleteGoalResponse = z.infer<typeof v2DeleteGoalResponseSchema>

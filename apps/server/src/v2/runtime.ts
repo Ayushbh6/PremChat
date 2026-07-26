@@ -467,8 +467,10 @@ export class V2ExecutionRuntime {
         this.deps.sharedStore.findAvailableModelOption(runtimeConfig.providerId, runtimeConfig.modelId, runtimeConfig.authMode ?? "api_key") ??
         findModelOption(runtimeConfig.providerId, runtimeConfig.modelId, runtimeConfig.authMode ?? "api_key")
       const messages = await this.buildWorkingMessages({
+        projectId: command.projectId,
         flowId: command.flowId,
         goalId: activeGoalId,
+        query: command.payload.content,
         includeImages: selectedModel?.capabilities?.vision === true,
         ...(continuation ? { lateDeveloperContext: continuation.wakeContext } : {}),
       })
@@ -791,8 +793,10 @@ export class V2ExecutionRuntime {
 
       this.deps.sharedStore.indexV2TurnRetrieval(command.projectId, created.turn.id)
       const postTurnMessages = await this.buildWorkingMessages({
+        projectId: command.projectId,
         flowId: command.flowId,
         goalId: activeGoalId,
+        query: command.payload.content,
         includeImages: selectedModel?.capabilities?.vision === true,
       })
       await this.deps.agent.precomputeContext({
@@ -853,8 +857,10 @@ export class V2ExecutionRuntime {
   }
 
   private async buildWorkingMessages(input: {
+    projectId: string
     flowId: string
     goalId: string
+    query: string
     includeImages: boolean
     lateDeveloperContext?: string
   }) {
@@ -862,7 +868,12 @@ export class V2ExecutionRuntime {
     // Flow supplies the full active-goal conversation to the same Socrates
     // runtime as Classic. The shared 170k/180k compactor owns history
     // reduction; this view layer must not silently truncate a separate tail.
-    const retained = history
+    const retained = await this.deps.sharedStore.prepareBoundedGoalHistory({
+      projectId: input.projectId,
+      goalId: input.goalId,
+      query: input.query,
+      messages: history,
+    })
     if (!input.lateDeveloperContext) return retained
     const developer = { role: "developer" as const, content: `<socrates_runtime_context>\n<terminal_wake_context>${input.lateDeveloperContext}</terminal_wake_context>\n</socrates_runtime_context>` }
     const lastUserIndex = retained.map((message) => message.role).lastIndexOf("user")

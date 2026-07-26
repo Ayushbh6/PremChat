@@ -67,6 +67,13 @@ export {
   type FailCompactionSnapshotInput,
   type StartCompactionSnapshotInput,
 } from "./context/contextCompression"
+export {
+  BOUNDED_GOAL_HISTORY_MAX_CHARS,
+  BOUNDED_GOAL_HISTORY_MAX_RECENT_MESSAGES,
+  BOUNDED_GOAL_HISTORY_MAX_RETRIEVED_ITEMS,
+  selectBoundedGoalHistory,
+  type RetrievedGoalHistoryItem,
+} from "./context/boundedGoalHistory"
 export { buildSocratesDynamicContext, buildSocratesSystemPrompt, socratesBasePrompt, type SocratesPromptContext } from "./prompts/socratesPrompt"
 export { buildMemoryAgentSystemPrompt, memoryAgentBasePrompt, type MemoryAgentPromptContext } from "./prompts/memoryPrompt"
 export { buildSkillWriterSystemPrompt, skillWriterBasePrompt, type SkillWriterPromptContext } from "./prompts/skillWriterPrompt"

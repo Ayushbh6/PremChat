@@ -11,7 +11,7 @@ import {
 } from "@socrates/core"
 import type { ClientCommand, ProjectResource, RuntimeConfig, SocratesFinalAnswer, TraceRetrieveMainToolInput } from "@socrates/contracts"
 import type { McpRuntime } from "@socrates/mcp"
-import type { ModelProvider, ModelUsage } from "@socrates/providers"
+import type { ModelMessage, ModelProvider, ModelUsage } from "@socrates/providers"
 import { normalizeError, nowIso, SocratesError } from "@socrates/shared"
 import {
   applyPatchWorkspace,
@@ -230,7 +230,7 @@ export const handleChatMessageSend = async (
   const history = store.getConversationModelMessages(projectId, conversationId, { includeImageParts })
   const workspacePath = store.getPrimaryWorkspacePath(projectId)
   const terminalContext = store.terminalContextBrief(conversationId)
-  const modelHistory = withLateDeveloperContext(history, terminalContext, continuation?.wakeContext)
+  let modelHistory: ModelMessage[] = withLateDeveloperContext(history, terminalContext, continuation?.wakeContext)
   const stableCachePreludeSnapshot = store.loadStableCachePreludeSnapshot(projectId, workspacePath)
   const promptContext = {
     ...store.getAgentContext(projectId),
@@ -273,6 +273,14 @@ export const handleChatMessageSend = async (
     }
     if (continuation && flowStore && !activeGoal) {
       throw new SocratesError("classic_goal_link_missing", "The continued task no longer has a goal link.", { recoverable: true })
+    }
+    if (activeGoal) {
+      modelHistory = await store.prepareBoundedGoalHistory({
+        projectId,
+        goalId: activeGoal.goalId,
+        query: activeGoal.taskRequest ?? activeGoal.title,
+        messages: modelHistory,
+      })
     }
     for await (const agentEvent of agent.streamTurn({
       projectId,
