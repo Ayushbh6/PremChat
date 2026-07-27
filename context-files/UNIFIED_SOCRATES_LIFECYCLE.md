@@ -1,279 +1,302 @@
 # Unified Socrates Lifecycle
 
-This document is the detailed architecture authority for the convergence of Classic and Flow. Read it together with `REPO_RULES.md` and `FLOW_NORTH_STAR.md` before planning, implementing, or reviewing any Socrates turn lifecycle, goal routing, memory routing, history assembly, trace retrieval, finalization, ledger, or cross-view work.
+Status: detailed technical target for the global goal-centric Socrates lifecycle.
 
-If a phase report, current implementation document, test, prompt, or released compatibility path conflicts with this target, that conflict is technical debt to remove. Historical phase files remain evidence of what was implemented; they do not override this contract.
+FLOW_NORTH_STAR.md defines the product experience. AGENT_REFACTOR_MANIFESTO.md defines the replacement agent architecture. AGENT_CAPABILITY_WORKFLOW.md defines the mandatory change procedure. Current Classic, project, V2, router, and compaction implementations are migration evidence when they conflict with this target.
 
 ## One Product Model
 
-Classic and Flow are two projections of one Socrates:
+The target product has one global Socrates, one canonical goal/task history, one shared agent runtime, and one finalization path.
 
-```text
-one canonical work state
-one main Socrates runtime and tool policy
-one goal and task identity model
-one retrieval foundation
-one finalization contract
-two bounded history projections
-```
+    one global Socrates
+      -> one current-goal pointer
+      -> many durable goals
+      -> many tasks inside each goal
+      -> exact exchanges and evidence linked to those tasks
 
-Changing views never creates a second semantic copy of a goal, task, turn, message, tool run, evidence item, approval, Terminal, wait, usage record, error, artifact, or final result.
+A released project or conversation id may remain as a migration, access, audit, or presentation coordinate. It is not a separate Socrates mind, memory universe, or required user-facing entry boundary.
 
-## Canonical Turn Lifecycle
+## Exact Content And Consent
 
-Every new user request in Classic and Flow follows the same lifecycle:
+Exact user messages, visible assistant answers, explicit constraints, approvals, blockers, attachments, and selected relevant history are immutable canonical sources. The runtime must never clip, token-slice, rewrite, summarize, compact, or silently omit selected relevant text.
 
-```text
-1. prepareTurnContext
-   1a. Goal Router binds one exact canonical goal and current task
-   1b. Pre-turn Memory Router retrieves memory for that resolved scope
+Use precise language:
 
-2. Main Socrates receives the resolved goal, current task, bounded history,
-   retrieved memory, and the shared tool/runtime surface
+- exact scoped selection means complete canonical items selected for one goal or task;
+- exact pagination means complete recoverable pages with continuation metadata;
+- lossless derived index means chunks, embeddings, lexical indexes, entities, or metadata pointing back to exact sources;
+- lossy user-approved compaction means one specifically described transformation approved before provider dispatch.
 
-3. Main Socrates performs the work and tools
+The phrase bounded context is forbidden as a standalone description because it hides whether information was lost.
 
-4. The same Socrates turn receives conditional progress reconciliation
-   checkpoints during genuinely long or milestone-heavy work
+If the relevant exact working set cannot fit a provider request, the runtime pauses before dispatch. It identifies the affected content, provider limit, and proposed lossy operation, then asks for explicit permission for that exact scope. Refusal prevents the lossy request. Any approved derivative retains provenance and never overwrites canonical content.
 
-5. The same Socrates turn receives one mandatory hard pre-final checkpoint,
-   decides whether `.socrates` reconciliation is required, performs the
-   required reads/writes, re-reads every changed section, and does not answer
+A goal capsule is not automatic conversation compaction. It is structured live state derived from validated goal outcomes and source anchors. It may guide selection but cannot replace relevant exact wording or evidence.
 
-6. The same Socrates returns one no-tool structured result:
-   finalAnswer
-   goalFinalization.state
-   goalFinalization.note
+## Canonical Records
 
-7. Runtime validates the structured result and answer integrity
+The target persistence model has one canonical identity for each user message, assistant answer, task, goal, capsule version, tool call/result, approval, credential request, Terminal, wait, artifact, attachment, usage event, error, and final result.
 
-8. One transaction saves the assistant answer, completes the current task,
-   applies state/note only to the goal already bound to the task, and refreshes
-   the goal capsule
+No view, sidebar, path, or compatibility adapter creates replacement copies to present the same semantic work.
 
-9. Only after that commit is the answer published
-```
+## Global Turn Sequence
 
-There is no post-evidence or post-turn Memory Router in the target lifecycle. The pre-turn Memory Router is read-only. It cannot select, create, reopen, update, block, complete, discard, or finalize a goal. It cannot plan post-turn writes. Reconciliation judgment and execution belong to the same main Socrates that performed the work.
+Every user-authored message follows this order:
 
-There is no model re-routing during finalization. The final model call does not receive candidate goals and does not choose a goal id. The runtime applies its state and note only to the goal already bound at the beginning of the task.
+    1. persist exact user message immediately
+    2. retrieve goal candidates and memory candidates in parallel
+    3. same-Socrates semantic goal resolution
+    4. bind the canonical goal and create the task
+    5. deterministically select exact memory for that goal
+    6. run the shared Socrates agent loop
+    7. perform required same-Socrates reconciliation
+    8. produce and validate the structured final result
+    9. atomically save answer, task outcome, goal capsule, and current-goal state
+    10. publish the answer
+    11. run asynchronous memory enrichment
 
-## One Prepared Turn Context
+Immediate message persistence and later goal binding operate on the same canonical message row. The system may hold a typed pending-association state, but it must not create a routing copy and later mirror it.
 
-The orchestration boundary is one provider-neutral `prepareTurnContext()` operation. Internally, goal routing completes before memory routing because memory selection depends on the resolved goal. The two decisions should remain separate initially for correctness, scoped tools, failure isolation, and measurement; the rest of Socrates receives one immutable result.
+## Parallel Candidate Retrieval
 
-The runtime-owned shape is conceptually:
+Before semantic resolution, the backend starts two mechanical retrievals concurrently.
 
-```text
-presentation
-  Classic with selected-conversation aperture, or Flow with selected-goal aperture
+### Goal candidates
 
-project
-  internal id, name, workspace
+The goal candidate path searches capsule/index metadata using the exact latest query plus lexical, semantic, entity, alias, recency, lifecycle, and prior-use signals. The current goal is included independently of its retrieval score. Older results are deduplicated and returned as a small numbered list of human-readable capsules.
 
-goal
-  internal id, human title, objective, state, latest progress note
+### Memory candidates
 
-task
-  internal id, human ordinal, exact current request, active state
+The memory candidate path searches authorized exact sources and lossless derived indexes across goal history, global user memory, identity, workspace doctrine, paths, connected resources, and canonical trace evidence. Each candidate carries scope, provenance, and an exact retrieval handle.
 
-transition
-  optional prior-goal title, relationship, short verified outcome
+Retrieval ranks possibilities. It does not choose a goal, create a goal, interpret user intent, rewrite memory, or decide that a low score means new work.
 
-history
-  bounded view projection plus bounded goal continuity
+Memory candidates may be gathered broadly while the goal decision is pending. After binding, deterministic policy filters and reranks them using the resolved goal, active resource scope, source permissions, current task, and duplication rules.
 
-memory
-  bounded pre-turn retrieved sections
-```
+## Same-Socrates Goal Resolution
 
-Opaque project, flow, conversation, goal, task, message, tool, Terminal, process, provider, vector, chunk, and database ids remain runtime/storage coordinates. They must not be used as the normal model-facing statement of what Socrates is doing.
+Goal resolution is one minimal semantic setup step executed through the same provider-neutral runtime and Socrates prompt core as the main assistant. It is not a separate Goal Router agent, persona, provider loop, model setting, tool loop, or independent prompt harness.
 
-The model receives a concise human form such as:
+The resolver receives only:
 
-```text
-CURRENT GOAL
-Improve trace retrieval
+1. the exact latest user message;
+2. the current goal capsule when one exists;
+3. the latest exact exchange in the current goal;
+4. a small numbered list of retrieved older goal capsules; and
+5. any explicit user correction or selected-goal instruction.
 
-GOAL OBJECTIVE
-Make one trace contract behave identically in Classic and Flow.
+The decision has only four semantic outcomes:
 
-GOAL PROGRESS
-Canonical indexing is verified; Flow mode parity remains open.
+    current
+    retrieved older goal N
+    new
+    clarify
 
-CURRENT TASK - 4
-Unify the Classic and Flow trace scopes.
+There is no semantic resume-versus-continue distinction. When an older goal is selected, deterministic backend code changes the current pointer and records the lifecycle transition.
 
-LATEST USER REQUEST
-<exact request>
-```
+For new, Socrates supplies only the short human goal title required to create the goal. For clarify, Socrates supplies one natural user-facing question. The model selects numbered candidates and never authors opaque goal ids.
 
-The active goal and task remain stable for the full task lifecycle, including approvals, Terminal waits, automatic resumptions, context compression, progress checkpoints, and finalization.
+The resolver uses no tools. Candidate retrieval happens before the call. A malformed decision receives shared typed validation treatment; fallback code may preserve an explicitly selected current goal or ask for clarification, but may not use keywords, guessed ids, or retrieval score thresholds as semantic substitutes.
 
-## Goal And Task Finalization
+## Goal Continuity Rule
 
-A validated final answer completes the current task. It does not automatically complete the overarching goal.
+Every user message creates a task. Only a genuinely independent outcome creates a goal.
 
-`goalFinalization.state` is restricted to the already-bound goal:
+Continue using the current goal when the new task:
 
-```text
-active     useful work remains in the coherent goal
-completed  the coherent requested outcome is genuinely achieved
-blocked    a real external dependency prevents progress
-discarded  the user abandoned or replaced the goal
-```
+- directly follows the latest exchange;
+- acts on something discovered during the current goal;
+- implements, tests, verifies, sends, purchases, or otherwise follows through on the current outcome;
+- changes the verb or named entity while remaining causally dependent on the same work; or
+- completes another phase of the same deliverable.
 
-`goalFinalization.note` is one or two human-facing lines. The atomic commit stores the validated note as both the completed task outcome and the goal's latest progress note/capsule input. That makes older task outcomes available without a later detached summarizer.
+Use a retrieved older goal when the request returns to that earlier outcome. Create a new goal only when neither the current outcome nor a retrieved earlier outcome coherently owns the work. Clarify only when choosing between plausible goals would materially change the result.
 
-No valid persisted assistant answer means no task completion and no goal-state mutation. Completion does not archive, deselect, or replace the displayed goal with General Conversation.
+Example:
 
-## Bounded Goal History
+    User: Hey Soc, what is up? Check what is happening with my mail today.
+      -> new goal: Handle today's email
+      -> task 1: Review today's inbox
 
-Goal membership defines the eligible history corpus; it never means every task is inserted into the prompt.
+    User: Okay, let us reply to Gary then.
+      -> current goal: Handle today's email
+      -> task 2: Reply to Gary
 
-History selection is deterministic before it becomes retrieval-based:
+The greeting prefix does not route concrete work to General Conversation. General Conversation is reserved for user messages with no concrete outcome.
 
-1. Include the current task and its wait/resume continuation chain exactly.
-2. Include the goal title, objective, latest capsule, active blockers, open decisions, and dependencies.
-3. Include a small fixed number of the most recent tasks, with exact Q&A only while within budget.
-4. Include an explicit preceding-goal transition only when routing stored that relationship.
-5. Search older tasks within the already-bound goal when the latest request needs them.
-6. Use `trace_retrieve` to inspect exact older Q&A or audit evidence.
+## Goal Capsule Contract
 
-The prompt projection must enforce both item and token/character budgets. A suitable target is no more than 8-10 history items, 3-5 recent exact Q&A pairs, and 4-6 retrieved older outcomes. Exact constants belong in one shared context policy and require tests; no caller may silently raise them to dump an entire goal.
+Each goal has one latest capsule plus append-only historical capsule versions. The capsule is compact structured working state, not a transcript.
 
-For a goal with hundreds of tasks, older tasks are indexed using compact searchable fields: human task request/title, validated outcome, state, timestamps, important component/path labels, and blocker/decision labels. Full answers, tools, patches, files, Terminal output, and immutable evidence remain in canonical message/trace/audit storage.
+It contains:
 
-Large-goal recall should use the shared hybrid lexical and embedding retrieval foundation, merge and deduplicate a bounded candidate set, and return only a few supporting outcomes. An optional local reranker may later rerank only the bounded candidate set after measured quality evidence. It is never a correctness dependency, never searches the full ledger directly, degrades cleanly when unavailable, and must never download/install a model without explicit user approval and clear size/runtime disclosure.
+    human goal title
+    goal objective
+    verified progress
+    current task and latest validated outcome
+    important decisions and constraints
+    active blockers and open items
+    next useful state when known
+    exact source anchors
 
-## Classic And Flow Context Projections
+Capsules update only from authoritative lifecycle facts and validated results. They never claim unverified work, contain raw evidence dumps, or erase the exact history they reference.
 
-The shared lifecycle, base prompt, and tools are identical. Only the presentation clause and history aperture differ. The typed prepared context tells main Socrates whether the current turn came from Classic's selected conversation or Flow's selected goal so it can interpret missing history and retrieve proportionately without becoming a separate view-specific agent.
+The current capsule and latest exact exchange are always supplied to goal resolution and normal context preparation. This guarantee does not depend on semantic retrieval ranking.
 
-Classic normally projects:
+## Goal Ledger Contract
 
-- the selected conversation's recent exact Q&A;
-- its older bounded conversation compaction;
-- the resolved goal/current task and bounded goal continuity;
-- retrieved memory.
+The goal ledger is a backend deterministic authority containing goal identity, title, lifecycle state, latest capsule reference, current-goal pointer, and task counts/timestamps needed for navigation.
 
-Flow normally projects:
+It does not contain transcripts, tool output, files, patches, Terminal streams, or evidence bodies. Those remain in canonical message and trace storage.
 
-- the selected goal's current task and exact recent goal Q&A;
-- the goal capsule and older bounded task outcomes;
-- an explicit bounded transition bridge when needed;
-- retrieved memory.
+The main model does not receive or mutate the ledger. User lifecycle actions such as select, rename, archive, restore, split, or move an exchange use typed backend commands. Model-facing goal selection uses numbered current/retrieved capsules and backend id resolution.
 
-Flow does not require a Classic conversation. A technical transport/session/cache key is not semantic conversation state.
+When focus changes:
 
-## Bounded Agent Working Space
+    save current capsule version
+      -> move current-goal pointer
+      -> load selected capsule
+      -> attach selected goal's latest exact exchange
+      -> select exact relevant memory/evidence
 
-For a non-trivial implementation or build, main Socrates creates or refreshes `.socrates/PLAN.md` before source mutation and maintains `.socrates/TASKS.md` while work proceeds. Disposable one-off scripts, probes, diagnostics, and temporary test artifacts belong under `.socrates/work/`. These are transient task-working artifacts, not new durable memory surfaces or replacements for `project_docs` and `repo_docs`; production code, deliverables, migrations, and permanent tests remain in their proper repository locations. Trivial answers and tiny edits should not create planning noise.
+## Deterministic Memory Selection
 
-### Switching Views During A Running Task
+There is no model-driven Memory Router in the critical path.
 
-View navigation never migrates or restarts a running task. The context projection is fixed when the task starts.
+After goal binding, deterministic memory selection applies one shared policy over the already retrieved candidates:
 
-If a Classic-origin task is running when the user opens Flow:
+- authorization and path/account scope;
+- current goal and task ownership;
+- exact current/latest exchange anchors;
+- lexical, semantic, entity, recency, and source-diversity signals;
+- always-apply user rules and identity sections;
+- duplication and provenance checks; and
+- exact-page availability.
 
-1. The task continues with the Classic-prepared context and original bound goal.
-2. Flow immediately subscribes to and projects the same canonical live task, tools, approvals, Terminal, waits, and answer.
-3. Completion persists one canonical result visible from both views.
-4. If Flow remains selected, the next user-authored task uses the Flow goal projection.
+The main Socrates receives selected exact sources and human-readable provenance. It may use the shared retrieval capability to search or inspect deeper exact history while working. It never sees vectors, embedding ids, raw similarity scores, database ids, or a whole goal ledger.
 
-Flow-to-Classic is symmetrical. Opening another goal while work is running may change what the UI displays, but it cannot rebind the running task.
+## Prepared Main Context
 
-## Shared Trace Retrieval
+Normal main-agent preparation includes:
 
-Main Socrates uses one high-level trace tool and one backend executor in both views. The main model does not supply view-specific ids. The runtime already knows the project, bound goal, current task, and presented context.
+    stable Socrates identity and operating rules
+    authorized capability and resource-scope facts
+    exact latest user message
+    resolved current goal capsule
+    latest exact exchange in that goal
+    selected exact memory and evidence
+    active Terminal, approval, wait, and continuation state
 
-The model-facing scopes are semantic:
+Older exact goal exchanges are attached when selected as relevant or inspected through shared retrieval. Page sizes limit one response, not the canonical source. No message selected for context may be character- or token-sliced.
 
-```text
-presented_context  canonical tasks/messages in the current prompt projection
-current_goal       every canonical task bound to the active goal
-project            all visible canonical Classic and Flow work in the project
-```
+The model receives no view-specific persona, project-first prompt, mutable focus-ledger tool, Memory Router output grammar, or duplicate Classic/Flow history policy.
 
-Project is the default. Search supports the same lexical, semantic, combined, and audit modes in both views; bounded date/time, role/evidence-type, and result-limit filters; numbered results; and exact follow-up inspection by result number. Search results use human labels and timestamps. Opaque ids remain backend coordinates except where a tightly scoped inspect/audit compatibility contract temporarily requires one during migration.
+## Main Socrates Loop
 
-Flow is focused, not blind. Its directly attached history is goal-scoped, while trace retrieval may deliberately search the current goal or entire project. Classic may similarly narrow to its presented context or current goal without giving the model a raw conversation id.
+One AgentDefinition, one AgentRuntime, one capability manifest, and one provider/tool lifecycle execute every foreground task. Paths, connections, current access mode, and the bound goal are typed runtime inputs rather than different agents.
 
-The retrieval index is a disposable projection over canonical SQLite sources. It must index both Classic and Flow turns and must not fork search behavior by view. In particular, a Flow adapter must never silently convert semantic or combined retrieval into lexical retrieval.
+The same loop owns investigation, planning, tool calls, recovery, approvals, credentials, Terminal/wait continuation, long-task progress reconciliation, mandatory pre-final reconciliation when applicable, and the substantive final answer.
 
-## Scalable Focus Ledger
+The goal resolver cannot perform task tools. The main loop cannot rebind the task to another goal after work begins.
 
-The canonical work ledger stores compact structure, not transcripts or evidence dumps.
+## Finalization And Atomic Commit
 
-Goal records contain identity, title, objective, state, latest progress note, current-task pointer, pin state, and activity timestamps. Task records contain goal binding, ordinal, human request/title, state, validated outcome, source/runtime coordinates, and timestamps. Transition records contain source/destination goal, relationship, and a short verified reason/outcome.
+The normal final call returns one strict result containing the visible answer plus the already-bound task/goal outcome required by the backend. It does not choose a goal again.
 
-The ledger must not store full conversations, raw tool calls, full files, patches, Terminal streams, every evidence item, or repeated append-only summaries. Those belong to canonical messages and trace/audit storage.
+One transaction:
 
-Persistence may contain many goals and tasks, but every consumer is bounded:
+1. saves the validated assistant answer;
+2. completes or records the task outcome;
+3. applies verified goal progress/state;
+4. writes the next capsule version;
+5. moves or retains the current-goal pointer as already resolved; and
+6. writes usage, errors, evidence links, and retrieval receipts required for audit.
 
-- UI lists are paginated or virtualized, normally 25 items per page.
-- Goal Router receives selected/previous goals plus a small recent, pinned, and retrieved candidate set.
-- Goal Router search may use at most three calls and accumulate at most 25 model-facing candidates.
-- Main Socrates receives only the resolved goal/task context, not a bulk ledger list.
-- Capsules are bounded replacement projections; only the latest is normal context.
-- Historical capsule versions are audit/compaction material and are never bulk injected.
+Only after commit does the UI publish the completed answer. No valid persisted answer means no task completion or goal/capsule mutation.
 
-The target main-agent surface has no mutable `focus_ledger` completion/update authority. Goal binding is pre-turn runtime authority; final goal state/note comes from the validated main result. UI navigation and explicit user lifecycle controls operate through typed backend commands. If older goal work is needed, main Socrates uses shared trace retrieval instead of listing the project ledger.
+Task completion does not imply goal fragmentation. The next causally dependent user request becomes another task in the same goal.
 
-## Reconciliation During Long Tasks
+## Asynchronous Memory Enrichment
 
-Reconciliation must not happen after every large read/write, and it must not be deferred exclusively to the end of a multi-hour task.
+After publication, asynchronous enrichment may:
 
-The same main Socrates receives a conditional progress checkpoint after semantic milestones such as:
+- update lossless lexical, semantic, entity, alias, and goal indexes;
+- create retrieval links between exact sources;
+- queue durable user-profile or identity curation;
+- refresh derived goal navigation metadata from the validated result; and
+- propose learned skills through the existing approval workflow.
 
-- a substantial verified mutation batch;
-- a meaningful subtask/milestone completion;
-- suspension for approval, Terminal input, or an external dependency;
-- an impending context-compaction boundary;
-- a bounded long-task activity threshold;
-- verified evidence contradicting current `.socrates` notes or repo docs.
+Enrichment uses the same shared utilities, capability catalog, provider abstraction, and agent runtime when model judgment is genuinely required. It is not on the foreground latency path and cannot alter the already published answer or become a second finalization authority.
 
-Tool output size or lines changed may contribute a signal but cannot decide that durable knowledge changed. Large reads often require only context disposition; small changes may require important documentation reconciliation.
+Explicit user memory opt-outs apply before indexing or enrichment. Deletion removes or tombstones canonical data and reconciles its derivatives through one owned lifecycle.
 
-At a progress checkpoint, Socrates reviews only verified work since the previous reconciliation watermark. When durable project state, architectural decisions, blockers, workflows, or documented behavior changed, it reads the relevant project notes/memory/repo docs, applies the smallest canonical replacement, and re-reads the changed sections. Otherwise it continues without writing and does not answer.
+## Global Access And Resource Scope
 
-Every task still receives one mandatory final checkpoint covering everything since the last watermark. The runtime decides when to inject checkpoints; Socrates alone decides and performs the bounded reconciliation. No separate router, summarizer, or writer judges the main work.
+The target UI begins in the seamless goal view. Paths, access mode, and Settings control resource availability globally.
+
+- Selected-path mode limits filesystem tools and indexes to explicitly added roots.
+- Full-access mode expands filesystem scope only after explicit user choice and remains visibly active and revocable.
+- Full access does not waive approval or external-side-effect policy.
+- Connected mail, calendar, browser, cloud, or communication accounts remain separately permissioned resources.
+- A turn receives an immutable authorization snapshot; changing access during a running task affects the next safe operation or next turn according to policy and never rewrites evidence.
+
+Released projects may map to resource scopes during migration, but new agent logic must not require a user-visible project before conversation begins.
+
+## Shared Trace And Exact Inspection
+
+One retrieval foundation serves goal candidates, memory candidates, main-agent recall, global memory curation, and exact audit inspection. Typed corpus adapters preserve source ownership and permission filters without creating separate retrieval engines.
+
+Search results are numbered human evidence cards. Exact inspection resolves result numbers or human filters through the backend. Opaque message, turn, goal, project, chunk, or vector ids are not normal model inputs.
 
 ## Shared Runtime And Code Shape
 
-Classic and Flow call one main Socrates turn API with one prepared-context contract, one tool registry, one executor contract, one context-compression policy, one provider loop, one approval/Terminal/wait lifecycle, and one structured-final contract.
+The target public boundary is one provider-neutral AgentRuntime. Agent roles are thin declarative definitions. Deterministic services do not become fake agents merely to satisfy a uniform class hierarchy.
 
-View adapters may assemble their bounded history projection and transport typed events. They may not fork main-agent policy, tools, trace semantics, reconciliation, or finalization.
+The same runtime may execute foreground Socrates and genuinely model-driven asynchronous curators, skill writers, or user-approved compactors. The goal-resolution phase is configuration of the same Socrates definition and prompt core, not an independently configurable agent role.
 
-The implementation must remain modular. `AgentRuntime` is the one provider-neutral execution boundary, not a god class. Context preparation, routing adapters, history selection, tool execution, reconciliation checkpoints, final validation, persistence, and UI projection must live in focused modules. Files materially touched during convergence should be split before or while they remain above approximately 1,000 lines where responsibilities can be separated.
+The capability catalog includes model tools, dynamic tools, automatic retrieval, deterministic goal/memory selection, typed user commands, finalization, and background enrichment. One canonical schema drives provider projection, validation, execution, telemetry, tests, and generated documentation.
 
 ## Required Cleanup Before Merge
 
-The convergence branch is not merge-ready until it:
+The replacement is incomplete while any production path still depends on:
 
-1. Removes post-evidence/post-turn Memory Router prompts, contracts, tools, calls, telemetry phases, settings language, and tests.
-2. Removes Memory Router goal-finalization fields completely; the remaining pre-turn result is read-only recall selection.
-3. Removes mutable `focus_ledger` completion/update/blocker authority and `pendingFocusCompletion` fallback.
-4. Makes the structured final result mandatory for normal Classic and Flow turns.
-5. Injects exact human-readable goal, objective, progress, task ordinal/request, and bounded history into main Socrates and the final checkpoint.
-6. Removes normal model-facing opaque work ids.
-7. Uses one main tool registry/executor contract and one trace-retrieval implementation in both views.
-8. Fixes Flow lexical/semantic/combined/audit/inspect parity without requiring a Classic conversation.
-9. Bounds and paginates goal/task/capsule access; removes bulk ledger output such as 100-goal model contracts.
-10. Splits oversized orchestration/store modules by ownership without creating shadow workflows.
-11. Updates every active architecture, provider, frontend/backend, and repository-structure document that describes the retired workflow.
-12. Adds architectural absence tests and persisted multi-turn Classic-to-Flow-to-Classic verification against isolated test state.
+- a separately configurable Goal Router agent or its tool loop;
+- a model-driven pre-turn or post-turn Memory Router;
+- separate Classic and Flow main-agent prompts, registries, provider loops, or context policies;
+- required project or conversation creation before entering Socrates;
+- Projects to Goals to Queries as the target sidebar authority;
+- automatic lossy conversation compaction without specific prior consent;
+- character/token slicing of selected user or assistant messages;
+- a mutable model-facing focus ledger;
+- duplicate semantic Q&A mirrors or hidden conversation shims;
+- a second goal/title/finalization authority; or
+- uncatalogued retrieval, provider, or lifecycle entrypoints.
 
-Absence gates must fail if production reintroduces a post-turn Memory Router, mutable main-agent goal ledger, pending completion fallback, optional normal finalization, view-specific main tools, Flow retrieval mode downgrades, normal model-facing opaque work ids, unbounded goal/task injection, duplicate provider runners, copied cross-view Q&A authority, or non-atomic answer/goal persistence.
+Historical files may describe those systems but must remain visibly historical and unreachable from production authority.
+
+## Verification Gates
+
+Tests use isolated SOCRATES_HOME, databases, workspaces, paths, credentials, ports, Terminal state, mail/calendar fixtures, and browser state. They never mutate normal user state.
+
+Required scenarios include:
+
+1. A first concrete request after a greeting creates a work goal rather than General Conversation.
+2. Email review followed by replying to a discovered sender stays one goal with two tasks.
+3. Inspect, implement, and test phases stay one coherent engineering goal.
+4. A genuinely unrelated request creates a new goal.
+5. A return to older work selects the retrieved older capsule.
+6. Genuine ambiguity asks one clarification question.
+7. The current capsule and latest exact exchange are present regardless of retrieval score.
+8. Goal and memory candidate retrieval run concurrently and the critical path contains no Memory Router model call.
+9. Selected messages remain byte-exact; refusal at the consent gate prevents lossy dispatch.
+10. Capsule updates never overwrite exact history and exact source inspection succeeds.
+11. Answer, task outcome, capsule, and current-goal state commit atomically before publication.
+12. The global UI opens without project selection and path/full-access enforcement is real.
+13. The goal sidebar shows exact Q&A grouped by goal with no required project hierarchy.
+14. Capability-manifest and absence tests prove old routers and shadow paths are unreachable.
 
 ## Documentation Authority And Change Discipline
 
-Use this authority order:
+Any material change to goal resolution, capsule shape, ledger ownership, candidate retrieval, exact-history policy, memory selection, access scope, main-agent context, finalization, or global UI navigation must update this file, FLOW_NORTH_STAR.md, AGENT_REFACTOR_MANIFESTO.md, AGENT_CAPABILITY_WORKFLOW.md, REPO_RULES.md, root AGENTS.md, root MEMORY.md, contracts, inventories, and tests together.
 
-1. `REPO_RULES.md` for non-negotiable repository invariants.
-2. `FLOW_NORTH_STAR.md` for user/product behavior.
-3. `UNIFIED_SOCRATES_LIFECYCLE.md` for the detailed target lifecycle and cleanup boundary.
-4. `V2_FLOW_ARCHITECTURE.md` and active contracts for honest current implementation/migration mechanics.
-5. `FLOW_CONVERGENCE_PHASE_*.md` for historical phase evidence only.
-
-Do not copy the complete lifecycle into new planning files, skills, or memory. Link to this document and record only the specific delta under discussion. Any implementation that changes this contract must update this file, the North Star, repo rules when an invariant changes, tests, and the current-implementation docs in the same change.
+Do not recreate this lifecycle in a skill, generated summary, historical phase report, or second architecture document. Durable memory points future agents to these authorities; it does not duplicate them.

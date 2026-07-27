@@ -134,32 +134,21 @@ Server routes must not become a dumping ground for:
 
 If a route grows complex, move the logic into the correct package.
 
-## 7. Projects Are The Primary App Boundary
+## 7. Global Resource Scope Is The App Boundary
 
-All V1 conversations must belong to a project.
+The target product opens one global seamless Socrates without requiring a project or conversation selection. Paths, connected accounts, apps, credentials, and the visible Selected/Full access mode define what the current turn may use.
 
-Required shape:
-
-```text
-user -> project -> conversation -> session -> turn
-```
-
-Project resources, project instructions, conversations, sessions, artifacts, and events must remain traceable back to the owning project.
-
-Do not create global unscoped chats in V1.
-
-Every active V1 project must have exactly one primary local workspace folder.
-
-Project rows are Socrates metadata and history. Workspace folders are the real local project surface on the user's laptop.
-
-When a project is created from scratch or attached to an existing folder, Socrates must create:
+Required target shape:
 
 ```text
-<workspace>/.socrates/
-<workspace>/.socrates/resources/
+user -> authorized resource scopes -> goal -> task -> exact exchange/evidence
 ```
 
-Do not edit the workspace root `.gitignore` automatically in V1.
+Released project and conversation rows remain traceable migration, audit, presentation, and rollback data. They may map to internal resource/index scopes while compatibility is required, but new semantic authority must not depend on a user-visible project hierarchy.
+
+Selected-path mode limits filesystem operations and indexing to explicit roots. Full-access mode expands filesystem scope only after explicit user choice, remains visible and revocable, and never bypasses approval, credential, destructive-action, message-send, purchase, or external-side-effect policy.
+
+Workspace folders remain real local surfaces and may contain `.socrates/` state during migration. Resource-scope creation and verification belong to `packages/workspace`. Do not edit a workspace root `.gitignore` automatically.
 
 ## 8. The Agent Core Must Be Provider-Agnostic
 
@@ -294,11 +283,11 @@ Generated plotting/data scripts should save charts or artifacts to files and pri
 
 `repo_docs` owns the runtime `.socrates/repo_docs/*.md` doctrine files. They are structured markdown with stable section ids; prefer `read_index`, `read_section`, and `patch_section` for focused doctrine changes. `repo_docs` outputs include system runtime date/time metadata, and successful edits stamp frontmatter with backend-owned `updated_at`, `updated_by`, and `last_edited_section`. Root maintainer documentation lives in `context-files/*.md`, not `.socrates/repo_docs/`, so do not confuse it with Socrates runtime-owned docs.
 
-Memory routing must stay centralized, pre-turn, read-only, and surface-aware. `MemoryRouterAgent` is a provider-neutral structured tool agent with only `memory_search`, may make at most three targeted calls after backend-owned automatic prefetch, and returns at most eight exact `readTargets`. It never finalizes goals, inspects task evidence, writes, or authors patches. The same main Socrates that performed the work owns the mandatory pre-final reconciliation judgment and verifies exact project/repo doc mutations; the Global Memory Agent owns profile/identity curation. Backend-owned `runtime_context` and `state_ledger` sections are never reconciliation targets.
+Memory candidate retrieval must stay centralized, automatic, read-only, surface-aware, and concurrent with goal-candidate retrieval. After the same-Socrates goal decision, deterministic selection filters exact candidates by authorization, resource scope, bound goal/task, provenance, relevance, and duplication. There is no model-driven Memory Router in the target critical path. The same main Socrates that performed the work owns mandatory pre-final reconciliation and verifies exact project/repo doc mutations; asynchronous Global Memory work owns profile/identity curation. Backend-owned `runtime_context` and `state_ledger` sections are never reconciliation targets.
 
 The structured main-Socrates reconciliation/finalization contract is implemented and mandatory. Do not reintroduce a detached final router or a semantic classifier shortcut around the checkpoint. The July 2026 `skip_candidate` evaluation remains historical evidence that probabilistic skipping was unsafe; its fixtures/reports are not runtime authority.
 
-Memory Router structured failure must remain bounded and non-blocking. After one validation-feedback repair, persist the pre-turn phase/error even when no usage exists, persist every already-observed usage row with failed status and error linkage, continue the ordinary task, and never imply that failed recall succeeded. Do not add a retry queue or pending-reconciliation ledger without new production evidence and an explicit design decision.
+Candidate-retrieval or deterministic-selection failure must be typed, observable, non-blocking when safe, and honest. Persist the failed phase/error and any observed usage, continue with the guaranteed current capsule/latest exact exchange when authorized, and never imply that failed recall succeeded. Do not add another model router, retry queue, or pending-reconciliation ledger as a workaround.
 
 Frontier is a one-way same-task model handover, not consultation or multi-agent dialogue. The default Socrates model is the primary worker and must make a real, substantive effort before requesting Frontier; task length, difficulty, high consequence, code, ordinary uncertainty, multiple normal tools, or one recoverable error are not sufficient reasons by themselves. Expose `handover_to_frontier` only while a distinct configured Frontier target is available; accept only optional compact `focus`; and always require explicit user approval, including in approve-all/full-access mode. Approval transfers the complete conversation/tool history, discards provisional driver answer text on the transfer step, removes the tool, keeps the Frontier runtime across automatic wait/resume, and returns to the selected main model only on the next user-authored turn. Rejection returns a clear rejected-tool result, removes the tool for the rest of the turn, and deterministically instructs Socrates to continue and complete the task itself.
 
@@ -335,6 +324,8 @@ Terminal commands already start in the active workspace. Commands that begin by 
 The agent should prefer `read` for file/document/image inspection, `search` for file discovery or content search, and `url_fetch` for exact remote URL reads because those tools provide bounded structured output. This is a preference, not a hard restriction. If those tools fail or give poor output, an approved Terminal fallback such as a local extractor, `cat`, `find`, `grep`, `pdftotext`, a small parser, or a document-render/OCR script may still run. Do not deny a legitimate approved Terminal command solely because a more specialized Socrates tool exists.
 
 Tool outputs must be bounded. `read` uses an estimated `tokenLimit` default of 4,000 tokens and a hard model-requested max of 6,000 estimated tokens across normal files, PDFs, documents, presentations, spreadsheets, SVG text, and other readable formats. `charLimit` remains available for character paging and has a hard cap of 80,000 characters, but effective read output is bounded by both `charLimit` and `tokenLimit`; truncation metadata must make cuts explicit. `search` defaults to at most 20 results and has a hard runtime cap of 50 results; generated/vendor directories such as `.git`, `node_modules`, `dist`, `build`, `.next`, `.turbo`, and `coverage` are skipped by default and warnings must tell the model to narrow noisy searches. Large files, PDFs, documents, slides, command outputs, and trace retrieval results must be paged or summarized instead of dumped wholesale into model context.
+
+Conversation and history text follow a stricter rule than ordinary paged tool reads. Exact user messages, visible assistant answers, explicit constraints, approvals, blockers, and any relevant history selected for a provider request must never be clipped, token-sliced, summarized, compacted, or silently omitted. Here `bounded` means exact goal/view scoping, finite candidate selection, or pagination with continuation; it never means truncated selected text. Never write `bounded context` alone in architecture, product copy, logs, or handoffs; name the exact operation and whether it is lossless or lossy. If relevant exact context cannot fit a provider request, runtime must pause before dispatch and obtain the user's explicit approval for one specifically described lossy summary, compaction, omission, or replacement. Approval is scoped to that operation only. Refusal prevents lossy dispatch. Any approved derivative retains provenance and never overwrites exact canonical content. Automatic context compaction over relevant exact conversation history is forbidden without this consent gate.
 
 ## 11. Dangerous Actions Require Approval
 
@@ -539,7 +530,7 @@ If a one-off is unavoidable, leave a short comment explaining why it is intentio
 
 ## 23. Model-Driven Capabilities Must Be Real Agents
 
-Any serious model-driven capability must follow the shared agent pattern instead of becoming a one-off provider call hidden inside a route, store, or UI handler.
+Any serious model-driven capability must follow the shared agent pattern instead of becoming a one-off provider call hidden inside a route, store, or UI handler. `context-files/AGENT_REFACTOR_MANIFESTO.md` defines the mandatory replacement architecture and `context-files/AGENT_CAPABILITY_WORKFLOW.md` defines the mandatory change procedure; both must be read completely and followed for every agent, capability, tool, shared utility, prompt, retrieval, context, provider, or generated tool-documentation change.
 
 Required pattern:
 
@@ -554,11 +545,11 @@ prompt
 
 The target public execution boundary is one provider-neutral `AgentRuntime` entrypoint reused by the interactive main agent and every structured worker. It accepts a typed configuration object rather than positional arguments or boolean combinations: prompt/messages, scoped `ToolRegistry` and executors, multimodal message parts, model/runtime settings, limits, hooks, and a discriminated completion mode (`text`, `structured`, or `streaming_tools_structured_final`). It returns one typed event stream plus one final typed result.
 
-`AgentRuntime` is the single released provider-execution abstraction. `SocratesAgent` owns interactive turn policy while focused internal lifecycle modules own memory, tools, ledgers, approvals, and recovery; routers and bounded workers configure the same runtime with scoped registries and strict completion contracts. Do not reintroduce a second runner, direct provider orchestration, or divergent behavior behind similarly named wrappers.
+`AgentRuntime` is the single released provider-execution abstraction. `SocratesAgent` owns interactive turn policy while focused internal lifecycle modules own retrieval, deterministic memory selection, tools, ledgers, approvals, and recovery. The same-Socrates goal-resolution phase configures the same definition and prompt core; it is not another agent role. Do not reintroduce a second runner, direct provider orchestration, or divergent behavior behind similarly named wrappers.
 
 The public runtime may remain internally modular. Context assembly, provider iteration, tool execution, approvals, recovery, final validation, and telemetry should stay focused components; one entrypoint does not justify a god class.
 
-This applies to Socrates, the Global Memory Agent, the Skill Writer Agent, the Title Generator Agent, both modes of the Compressor Agent, and future reusable subagents. Backend stores may coordinate, persist, validate, and apply approved effects, but they must not own private model orchestration for agent-like work.
+This applies to foreground Socrates, model-driven asynchronous Global Memory work, the Skill Writer Agent, user-approved compactors, and future reusable model-driven roles. Deterministic retrieval, memory selection, permission checks, ledger transitions, transactions, and validation remain ordinary catalogued services rather than fake agents. Backend stores may coordinate, persist, validate, and apply approved effects, but they must not own private model orchestration for agent-like work.
 
 This is a non-negotiable creation invariant for every new model-driven agent, router, or worker. Before implementation or review can be considered complete, all of the following must be true:
 
@@ -587,50 +578,34 @@ Skill writing follows the same rule. The Memory Agent may decide that an approve
 
 Pre-made skill import is not skill writing and must not invoke the Skill Writer. Accept one portable ZIP only through staged preview and explicit user commit; parse standards-compatible YAML, preserve package files, never execute during inspection/install, never honor `allowed-tools` as approval, cap archive/extracted/file counts and sizes, reject traversal/symlinks/encryption/multiple roots/reserved provenance files, and install through atomic same-root replacement with rollback. Disabled skills must be excluded from model discovery while remaining visible to management UI.
 
-## 24. Classic And Flow Are Two Views Of One Socrates
+## 24. One Global Goal-Centric Socrates
 
-`context-files/FLOW_NORTH_STAR.md` is the product-intent authority. `context-files/UNIFIED_SOCRATES_LIFECYCLE.md` is the detailed lifecycle and convergence-cleanup authority. `context-files/V2_FLOW_ARCHITECTURE.md` records the current implementation and migration constraints. Historical phase reports do not override the target. Classic and Flow are not different Socrates agents or separate semantic work universes.
+`context-files/FLOW_NORTH_STAR.md` is the product-intent authority. `context-files/UNIFIED_SOCRATES_LIFECYCLE.md` is the detailed lifecycle and cleanup authority. `context-files/AGENT_REFACTOR_MANIFESTO.md` is the normative authority for rebuilding the agent/runtime/capability boundary, and `context-files/AGENT_CAPABILITY_WORKFLOW.md` is its mandatory operational workflow. Read them completely before related work. `context-files/V2_FLOW_ARCHITECTURE.md` and historical phase reports record released implementation and migration constraints; they do not override the global goal-centric target.
 
 Required boundary:
 
-- Preserve existing Classic data and compatibility; do not destructively migrate or silently reinterpret released records. The current namespaced V2 rows and bridge are migration reality, not permission to expand duplicate semantic state.
-- The target has one canonical identity and state for each turn, message, task, goal, tool history, evidence item, artifact, approval, Terminal, wait, continuation, usage record, error, and finalization. Classic and Flow render projections over that work. Do not create replacement copies merely to change views.
-- Do not create hidden Classic conversations as Flow foreign-key shims. A Flow-origin goal receives a Classic home lazily only when the user explicitly opens it in Classic. When Flow is entered from Classic, retain that originating conversation association and return to it.
-- A Classic conversation is a user-selected grouping that may contain many goals. Flow is a goal/task-focused project presentation, not a conversation and not a browser-session boundary. One project Flow must not automatically become one enormous Classic conversation.
-- Keep V2 contracts, transport handlers, services, persistence, events, UI modules, and tests namespaced. A directly started source server is off unless `SOCRATES_V2_FLOW_ENABLED=true`; the ordinary NPM/runtime launcher defaults the packaged web/backend product to enabled and preserves an explicit environment rollback override.
-- Add V1 regression coverage with every V2 vertical slice so V2-off reads, writes, events, and behavior remain identical to current V1.
-- Reuse the same workspace `.socrates/`, global `~/.Socrates/`, Socrates agent, global Memory Agent, providers, embeddings, tools, ZIP skill import, MCP registry, Terminal, artifacts, runner, validation, usage, errors, speech-engine plumbing, task lifecycle, and final-answer contract.
-- Never fork the core Socrates turn policy merely because the UI is Flow. After either view selects a goal, it must invoke the same context foundation, `SocratesAgent`, tool registry, approvals, Terminal behavior, provider loop, context compressor, recovery rules, and finalization contract.
-- Routing policy may differ only at the view-input boundary. Classic associates a task in the already-selected conversation with a canonical goal. Flow selects or creates the canonical goal without requiring the user to manage conversations. Both resolve to the same goal/task state.
-- Every turn enters one `prepareTurnContext` orchestration boundary: the Goal Router first binds the exact canonical goal/task, then the read-only pre-turn Memory Router retrieves for that resolved scope. The rest of the lifecycle receives one immutable human-readable goal/task context. Do not expose normal model-facing opaque work ids or let finalization re-route the task.
-- The target has no post-evidence/post-turn Memory Router. The same main Socrates that performed the work owns conditional long-task progress reconciliation, the mandatory pre-final `.socrates` reconciliation, every required write/re-read/verification, and the final no-tool structured result. Do not retain a detached reconciliation planner under another name.
-- Normal Classic and Flow turns require the validated structured final result. One transaction saves the answer, completes the current task, applies state/note only to the already-bound goal, and refreshes its capsule before publication. Do not retain pending-completion or optional-finalization fallback authority.
-- Main Socrates has no mutable `focus_ledger` goal completion/update authority. The canonical ledger is compact structured metadata; it is not conversation, tool, Terminal, file, patch, or evidence storage. UI and router list/search paths must paginate and cap model-facing results at 25, never 100 or an unbounded project dump.
-- Goal membership defines an eligible history corpus, not prompt inclusion. Always attach the current task/continuations and bounded goal state; select only a small recent/retrieved older task set under one shared item and token budget. Exact older work stays retrievable through the canonical trace foundation.
-- Main trace retrieval uses one contract and executor in both views. Runtime supplies project/bound-goal/presented-context coordinates; the model uses semantic scopes rather than raw view ids. Lexical, semantic, combined, audit, and inspect behavior must not change by view or silently downgrade.
-- A running task keeps the context projection and goal binding fixed at start. Switching views only changes the live UI projection; the next user-authored task uses the newly selected view's history aperture. Never migrate, restart, duplicate, or rebind an in-flight task because of navigation.
-- Long tasks receive same-Socrates reconciliation checkpoints at durable milestones plus one mandatory final checkpoint. Tool-output size or lines changed may trigger review but cannot independently assert that durable docs need mutation. Checkpoints use a reconciliation watermark so already-reviewed evidence is not repeatedly rewritten.
-- A task is one user-request lifecycle inside a goal. Completing a task does not fragment a coherent workstream. A meaningful continuation reopens and may retitle the same goal instead of creating a disconnected goal.
-- Goal status and view selection are separate. Completing a goal must not automatically select General Conversation, and historical turns must continue to display their own goal association.
-- Flow context must include the current goal history plus a bounded immediate transition bridge and explicit dependency anchors. The main model should retrieve exact older evidence when necessary; it should not need retrieval merely to understand an ordinary adjacent follow-up.
-- Goal finalization must be derived from the validated main Socrates answer. No valid persisted assistant answer means no goal-state mutation. Do not let a detached post-turn model complete a goal from a provisional draft.
-- Context compression is one hard shared invariant: compact at 170,000 estimated model-visible input tokens, accept no compacted request above 120,000, and enforce the 180,000 pre-provider ceiling. Flow must not calculate a separate trigger from the selected model's context window, usable-window percentages, or a V2-only recent-message tail. Model window metadata is compatibility/telemetry data only.
-- During convergence, keep released V2 transport and persistence compatibility explicitly namespaced where required, but do not confuse storage adapters with separate Socrates state. New cross-view behavior should use canonical identities and references rather than bidirectional Q&A mirroring.
-- Reuse one retrieval foundation. Runtime/source coordinates may remain for audit, compatibility, and safe migration, but they must not cause Classic and Flow to return different semantic history for the same canonical work.
-- Do not invoke the Classic conversation-title rewriter or add a capsule-writing LLM for V2. V2 navigation/resume state comes from deterministic goal titles and materiality-gated rich capsule versions built from authoritative V2 state. The Goal Router has its own `goal_router` worker model and thinking selection, and it must run the strict V2 routing contract through the shared structured-agent pattern.
-- Call the first V2 speech slice `V2 Voice V1`; never shorten it to V1 in code or docs where it could be confused with V1 Classic.
-- Keep V2 Voice V1 STT limited to local Whisper (`small.en`, with optional `base.en`) and the accepted OpenRouter ids `nvidia/parakeet-tdt-0.6b-v3`, `microsoft/mai-transcribe-1.5`, and `mistralai/voxtral-mini-transcribe`.
-- Keep V2 Voice V1 TTS local through Kokoro-82M and `sherpa-onnx`. Do not add Granite Speech, Ollama speech, hosted TTS, or a separate speech-writing agent to the first slice.
-- Never convert a local speech failure into an implicit cloud upload. OpenRouter transcription requires an explicit user-selected cloud route.
-- The shared Classic/Flow voice preference defaults to **Not configured**. Selecting an offline engine does not install it: model packs must show their size and status and download only after an explicit Install action, with checksum verification and an explicit Remove action. Pressing the microphone must never trigger a download. Classic temporary WAV input must be removed after the attempt; its response is draft text, not a persisted voice message or Flow event.
+- Preserve existing Classic, project, and V2 data non-destructively. Compatibility records are migration reality, not target user concepts or permission to expand duplicate semantic state.
+- The landing page opens one seamless Socrates. The target header exposes Paths, visible Selected/Full access, and Settings. The collapsible sidebar groups exact Q&A by goals and has no required project hierarchy.
+- Paths and connected resources define authorization. Goals define coherent outcomes. Tasks are individual user requests inside goals. Every message creates a task; only a genuinely independent outcome creates a goal.
+- Every turn persists the exact message, retrieves goal and memory candidates concurrently, performs one same-Socrates decision (`current`, retrieved older goal, `new`, or `clarify`), deterministically selects exact memory, runs the shared loop, commits answer/task/goal/capsule state atomically, then enriches memory asynchronously.
+- The current goal capsule and latest exact exchange are always supplied independently of retrieval score. Older candidate capsules are numbered, human-readable, and backend-resolved.
+- Do not retain a separate Goal Router agent, `goal_search` tool loop, model-driven pre-turn/post-turn Memory Router, independent title agent, or another finalization authority.
+- Hybrid retrieval ranks candidates and exact sources. It never decides intent. Deterministic post-binding memory selection owns authorization, scope, provenance, relevance, and duplication filters.
+- The goal capsule is versioned structured live state with exact source anchors. It does not replace exact goal history. The backend ledger stores the current pointer and capsule references, not transcript/evidence bodies, and is not a model tool.
+- Selected messages remain exact. Lossy conversation compaction requires the specific pre-dispatch consent defined in Section 10. Fixed automatic compaction thresholds are migration behavior to remove, not target authority.
+- The same main Socrates owns task tools, approvals, Terminal/wait continuation, reconciliation, and the validated substantive answer. It cannot rebind the task after work begins.
+- One transaction persists the validated answer, task outcome, verified goal progress/state, capsule version, current-goal pointer, usage, and evidence links before publication.
+- Reuse one agent runtime, capability catalog, provider layer, retrieval foundation, tool contract, permission system, Terminal lifecycle, validation path, and asynchronous enrichment architecture.
+- Full filesystem access remains visible, explicit, and revocable and never waives destructive-action or external-side-effect approvals. Connected mail, calendar, browser, cloud, and communication accounts remain separately permissioned.
+- Keep released transport, speech, provider, and persistence compatibility safe while migrating, but do not let those adapters define new semantic authority.
 
 The shorthand is:
 
 ```text
-one Socrates agent and execution policy
-two presentation/navigation projections
-one canonical semantic work state
-non-destructive migration from released bridge mechanics
+one global Socrates
+one goal-centric exact memory
+one shared execution and retrieval architecture
+non-destructive migration from released surfaces
 ```
 
 ## 25. Viewport Shells Stay Fixed And Lists Scroll Independently
@@ -640,13 +615,12 @@ This is a hard design invariant for every Socrates page, drawer, sidebar, inspec
 - Persistent page chrome must not be placed inside the document or list scroll region. Headers, titles, primary controls, composers, and footers stay fixed within their viewport shell; only the intended middle content region scrolls.
 - Important state and navigation controls must never disappear merely because their associated content scrolls. Keep them outside the scroll region or make them sticky within that region; examples include historical/current-state indicators, return/back controls, active status, and required actions.
 - Sidebars have an explicit fixed width and `overflow: hidden` outer shell. Their section title and navigation controls are non-scrolling. The active names/items list owns the bounded `overflow-y: auto` region.
-- Do not concatenate independent navigation levels into one long scroll surface. If a sidebar contains projects and queries/conversations, present one level at a time with an explicit back/drill-in transition.
-- Flow opens its shared sidebar on the selected goal's Queries level. A small back control opens Goals for the current project; another opens Projects. Choosing a project opens its Goals, and choosing a goal opens its Queries. Project, goal, and query names never share one scroll container.
-- Classic may keep its nested project/conversation hierarchy, but the shared sidebar heading and whole-sidebar controls remain outside the scrolling names region. Long child lists must be bounded rather than stretching the page.
+- The target collapsible sidebar is one goal hierarchy: current goal first, then searchable earlier goals, with exact Q&A pairs nested beneath the selected goal. It contains no required Projects or Conversations level.
+- Paths, access mode, and Settings remain fixed header controls rather than sidebar navigation levels. Their panels may scroll internally without moving the main composer or goal history.
+- Released Classic/project navigation may remain inside an explicit compatibility surface during migration, but it must not constrain the target global shell or reintroduce a second semantic history.
 - Browser verification for any shell/sidebar change must prove that scrolling the active list does not move the shell heading, fixed controls, main workspace, or composer, at both desktop and narrow responsive widths.
-- Flow navigation drills through Projects, then Goals, then Queries/tasks for the selected goal. Each is a separate list level with an explicit back transition; project, goal, and query names must not be concatenated into one scroll surface.
-- During a live Flow turn, exactly one fixed-height human-facing activity sentence appears beneath the prominent orb. Each new phase/tool status replaces that sentence in place; statuses never accumulate into a vertical list, tag collection, or mini trace.
-- The backend/runtime owns the bounded activity label from typed execution state. The frontend must not derive agent meaning from arbitrary text or render raw ids, malformed tool syntax, `undefined`, secrets, or unbounded reasoning as the label. Parallel work is summarized into the same one-line slot.
+- During a live seamless turn, exactly one fixed-height human-facing activity sentence appears beneath the prominent orb. Each new phase/tool status replaces that sentence in place; statuses never accumulate into a vertical list, tag collection, or mini trace.
+- The backend/runtime owns the concise activity label from typed execution state. The frontend must not derive agent meaning from arbitrary text or render raw ids, malformed tool syntax, `undefined`, secrets, or unrestricted reasoning as the label. Parallel work is summarized into the same one-line slot.
 - Approval, credential, Terminal-input, and other user-action states retain their full interactive components. They must not be hidden behind the one-line activity slot.
 - After the validated final answer is durably saved, the answer becomes the foreground reading layer, the orb recedes to its subtle background state, the live sentence disappears, and persisted reasoning/tool history is represented by one collapsed expandable disclosure. Historical turns do not replay live activity.
 - Orb/status/answer transitions must preserve layout stability, keep the composer fixed, and honor reduced-motion preferences.

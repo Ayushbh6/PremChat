@@ -1,307 +1,254 @@
 # Socrates Flow North Star
 
-This document is the product-intent authority for how Classic and Flow must feel and behave as Socrates converges on one underlying runtime state. It defines the durable user model and invariants. `UNIFIED_SOCRATES_LIFECYCLE.md` is the detailed technical target and required cleanup boundary. `V2_FLOW_ARCHITECTURE.md` records current implementation and migration mechanics; `FLOW_CONVERGENCE_PHASE_*.md` files are historical evidence only. When current mechanics or phase reports conflict with this North Star or the unified lifecycle, they are migration debt rather than product precedent.
+This document is the product-intent authority for the target Socrates experience. `UNIFIED_SOCRATES_LIFECYCLE.md` defines the detailed technical lifecycle, `AGENT_REFACTOR_MANIFESTO.md` defines the agent-core replacement architecture, and `AGENT_CAPABILITY_WORKFLOW.md` defines the mandatory change procedure. `V2_FLOW_ARCHITECTURE.md`, `FLOW_CONVERGENCE_PHASE_*.md`, and the released Classic/project-first implementation remain migration evidence; they do not override this target.
 
 ## User Promise
 
-Flow exists for a user who has a task and wants to start doing it without first managing chats, context windows, or topic boundaries.
+The user opens one Socrates and starts talking. They do not first create a project, choose a conversation, manage a context window, or decide whether a request belongs to an old thread.
 
-The user should be able to say:
+The product should feel like:
 
-> I need this done.
+> Hey Soc, what is happening with my mail today, and then let us catch up on AI DPA.
 
-Socrates must determine where that work belongs, preserve the relevant continuity, suppress unrelated material, and begin useful work. Entering Flow must reduce context-management work for the user rather than transfer that work to the main model through repeated retrieval.
+Socrates remembers the user, resolves the authorized resources and earlier work, preserves the right goal continuity, and begins useful work. The user may inspect and correct the organization, but does not have to operate it.
 
-## One Socrates, Two Views
+`Socrates remembers everything` means everything the user entrusts to it remains exact, attributable, searchable, retrievable across authorized scopes, and deletable by the user. A model context is only a temporary projection over that memory; it is never the canonical memory itself.
 
-Classic and Flow are two presentations of the same Socrates. They must converge on one canonical work state:
+## One Global Socrates
 
-- The same projects, workspace, `.socrates` surfaces, global memory, identity, skills, MCPs, providers, and model settings.
-- The same user and assistant turns, tool history, evidence, artifacts, approvals, Terminal state, waits, continuations, usage, errors, and task lifecycle.
-- The same goals, goal notes, task state, retrieval foundation, context compressor, main-agent loop, permissions, and finalization semantics.
-- The same canonical identity for a piece of work regardless of which view displays or continues it.
-
-The views may differ only in presentation and in how the next active scope is selected:
+The target product has one primary seamless experience rather than separate project and conversation entry points.
 
 ```text
-Classic UI -- user-selected conversation scope --+
-                                                +--> one Socrates runtime state
-Flow UI ------- Socrates-selected goal scope -----+
+Landing page
+  -> Open
+  -> Seamless Socrates
 ```
 
-The shared prepared context must tell the main model which presentation produced the turn and what history aperture it received: Classic means the selected conversation; Flow means the selected goal. This is one small typed context clause inside the same Socrates prompt and runtime, not separate Classic and Flow personas or prompt harnesses.
+The header contains only the minimal global controls:
 
-Cross-view navigation must use references and projections over canonical work. Copying visible Q&A into replacement turns or messages is not the target architecture because duplicated semantic state can drift.
+```text
+Paths | Access: Selected or Full | Settings
+```
+
+- `Paths` manages the folders Socrates may use.
+- `Access` visibly switches between selected paths and explicit full-laptop filesystem access, with one-click revocation.
+- `Settings` opens models, providers, memory, connections, voice, appearance, privacy, and other user-level preferences.
+- Full filesystem access does not bypass approval, credential, destructive-action, purchase, message-send, or external-side-effect policies.
+
+Projects may remain as migration metadata or internal resource/index scopes while released data is preserved. They are not a required user-facing navigation concept in the target product. A path, account, app connection, or other resource is an authorized capability scope; a goal is the unit of meaningful work.
+
+## Goal-Centric Sidebar
+
+The left sidebar is collapsible and organized by goals, not projects or conversations.
+
+```text
+Current goal
+  exact Q&A pair
+  exact Q&A pair
+
+Earlier goal
+  exact Q&A pair
+```
+
+The current goal opens first. Earlier goals remain searchable and expandable. Expanding a goal shows its exact user/assistant exchanges; a generated capsule never replaces the visible history.
+
+The sidebar may group, search, pin, rename, or archive goals without changing the canonical messages inside them. The user may correct a mistaken grouping, but Socrates must normally organize work correctly without requiring that intervention.
 
 ## Canonical Product Concepts
 
-### Conversation
-
-A Classic conversation is a user-selected presentation and grouping boundary. It can contain several goals. Selecting a Classic conversation gives Socrates strong initial scope, but it does not create a separate memory, tool, task, or execution universe.
-
 ### Goal
 
-A goal is a coherent workstream or desired outcome. It can contain several tasks, survive view changes, remain selected after completion, and be reopened when the user meaningfully continues it.
+A goal is one coherent user outcome or work episode. It is broader than one user message and narrower than a permanent topic category.
 
-A goal must not be fragmented merely because one answer completed one task. Its title may evolve when the same workstream expands, for example:
+Examples:
 
 ```text
-Review the focus ledger
-  -> Review and improve the focus ledger
+Handle today's email
+Improve the AI DPA backend
+Plan the Vienna trip
+Prepare the statistics presentation
 ```
 
 ### Task
 
-A task is one user-request lifecycle inside a goal. It begins with a user request and includes the model work, tools, approvals, Terminal waits, automatic continuations, and final answer required to handle that request.
-
-Tasks complete frequently. Goals complete only when the coherent workstream's currently requested outcome has been achieved.
-
-### Flow
-
-Flow is the project-level focus experience. It presents one selected goal and, within it, one current task. A Flow is not a Classic conversation, a browser visit, or a new persistence universe. One project Flow must not automatically become one enormous Classic conversation.
-
-## Central Goal-Continuity Rule
-
-Suppose the user asks:
-
-> Check how the focus ledger is built and tell me what you find.
-
-Socrates may create:
+Every user-authored request creates one task inside a goal. Many tasks normally belong to one goal.
 
 ```text
-Goal: Review the focus ledger
-Task 1: Inspect how it is built
+Goal: Handle today's email
+  Task 1: Review today's inbox
+  Task 2: Reply to Gary
+  Task 3: Send the requested attachment
 ```
 
-When Socrates gives a correct, substantive answer, Task 1 may complete. If that answer fully handled the current requested outcome, the goal may also be marked completed.
+A changed verb, person, implementation step, test, or follow-up does not create a new goal when it advances the same coherent outcome.
 
-Completion does not delete, archive, deselect, or replace the goal with General Conversation. The UI may remain focused on:
+### Exact Goal History
+
+Every goal owns the canonical exact exchanges, tool evidence, approvals, artifacts, waits, and outcomes produced while working on it. Exact history is never overwritten by a capsule, index, or compaction.
+
+### Goal Capsule
+
+The current goal capsule is a small structured checkpoint of the goal's live working state. It contains the human goal title, objective, verified progress, current task, important decisions, blockers, open items, and exact source anchors needed to inspect the supporting record.
+
+The capsule is not a transcript and is not a replacement for exact history. Capsule versions are saved as the goal changes. When exact older wording or evidence matters, Socrates retrieves the canonical source.
+
+### Goal Ledger
+
+The goal ledger is compact backend-owned structured state containing the goal list, current-goal pointer, titles, lifecycle state, and latest capsules. It does not store or duplicate transcripts, tool output, Terminal streams, files, patches, or other evidence.
+
+The model never receives the whole ledger. It receives the current goal capsule automatically plus a small set of older goal capsules selected by hybrid retrieval for the latest query.
+
+### Resource Scope
+
+Paths, connected accounts, apps, and credentials define what Socrates is authorized to access. Resource scope and goal organization are independent: one goal may use several paths or connections, and one path may support many goals.
+
+## The Simple Goal Decision
+
+The semantic decision for a new user message has only four possible outcomes:
 
 ```text
-Review the focus ledger
-Completed
+current
+retrieved older goal
+new
+clarify
 ```
 
-If the user then says:
+There is no separate semantic distinction between `continue` and `resume`; selecting a goal is enough, and deterministic backend state knows whether its current pointer must change.
 
-> Now update the focus ledger by adding this information.
-
-the router should reopen and expand the same coherent goal:
+Socrates always sees the current goal capsule and latest exact exchange even when hybrid retrieval gives them a weak score. Retrieved older goal capsules appear afterward as numbered alternatives. The simple decision is:
 
 ```text
-Goal: Review and improve the focus ledger
-State: active
-
-Task 1: Inspect how it is built       completed
-Task 2: Add the requested information active
+Does the new request belong to the current goal?
+  yes -> current
+  no  -> does it belong to a retrieved older goal?
+           yes -> that goal
+           no  -> new
+           unclear -> clarify
 ```
 
-It must not create a disconnected goal merely because the preceding task produced a final answer.
+Goal creation requires affirmative evidence of a genuinely independent outcome. A mediocre retrieval score, a different verb, a different named person, a completed task, or a new implementation phase is not enough.
 
-## Goal Status Is Not View Selection
+## First Message And General Conversation
 
-These are separate facts:
+A greeting prefix never forces a concrete task into General Conversation.
 
 ```text
-goal.status
-  active | completed | blocked | discarded
-
-view.selectedGoal
-  the goal currently displayed to the user
+User: Hey Soc, what is up? Please check what is happening with my mail today.
 ```
 
-Completing a goal must not automatically select General Conversation. General Conversation becomes selected only when a later routing decision genuinely chooses it or the user explicitly navigates there.
+If no work goal exists, Socrates creates `Handle today's email` and places the request there. General Conversation is reserved for conversation that has no concrete outcome, such as a greeting, light social exchange, or casual one-off answer.
 
-Historical turns retain their original goal association permanently. When the user views an earlier query, the UI shows the focus associated with that query even if the project's currently selected goal is different.
-
-## Routing Responsibilities
-
-### Classic
-
-The user has already selected a conversation. The Classic routing policy identifies which canonical goal owns the new task inside that conversation. It should preserve meaningful follow-ups, reopen a completed goal when the user continues the same workstream, and create a new goal only for a genuinely separate outcome.
-
-### Flow
-
-The user supplies a task without managing a conversation. The Flow routing policy chooses or creates the canonical goal that owns it. Flow may use bounded automatic candidates and a narrowly scoped goal-search capability when necessary.
-
-Both policies resolve to the same canonical goal and task state. They do not maintain Classic and Flow versions that later need semantic reconciliation.
-
-## Flow Context Contract
-
-Flow must not send only the isolated latest message. The normal main-agent request includes:
-
-1. The shared stable Socrates context and runtime capabilities.
-2. The selected goal and its current capsule/state.
-3. The current task and latest user request.
-4. Relevant visible Q&A belonging to the selected goal.
-5. A bounded transition bridge from the immediately preceding exchanges, even when the new task begins a related new goal.
-6. Explicit dependency anchors to related goals or source turns when the current request relies on them.
-7. The same tools, evidence access, permissions, workspace, Terminal, waits, and continuation state available through Classic.
-
-For example, after finishing memory-ledger work, the user may say:
-
-> Great, now let's move to trace retrieve.
-
-That can create a new `Review trace retrieval` goal, but the request must also carry enough transition context to explain what “now” and “move to” mean. Socrates should use retrieval for exact older evidence, not merely to understand an ordinary adjacent follow-up.
-
-Operational standard:
-
-> If an ordinary follow-up or view transition requires Socrates to search simply to determine what the user means, context assembly has failed.
-
-Goal membership defines the eligible history corpus; it never authorizes injecting every task belonging to a large goal. The runtime always attaches the current task, its continuation chain, the goal capsule, active blockers/open decisions, and a small recent tail. Older task outcomes are selected through bounded shared retrieval and exact Q&A is inspected only when needed. Prompt projections enforce item and token/character caps even when a goal contains hundreds of tasks.
-
-## Flow Navigation Hierarchy
-
-Flow navigation is a three-level drill-in, not a flat project-wide query list and not a giant nested tree:
+The next message:
 
 ```text
-Projects
-  -> Goals in the selected project
-     -> Queries/tasks in the selected goal
+User: Okay, let us reply to Gary then.
 ```
 
-The shared sidebar opens on the current goal's Queries level. One back action opens Goals for the current project; another opens Projects. Each level has one fixed heading/control region and one independently scrolling list.
+remains inside `Handle today's email` because the current capsule and latest exact exchange show that Gary was discovered during the email review. It creates another task, not another goal.
 
-When a new goal begins, the previous goal remains available with its actual state and the new goal becomes selected. The Queries level then shows only tasks belonging to the selected goal. The user did not create or open a conversation; Socrates created a useful workstream boundary automatically.
+## Canonical Turn Lifecycle
 
-The UI keeps these facts distinct:
+Every user-authored turn follows one global sequence:
 
 ```text
-selectedGoal
-  the goal currently viewed and used as a strong composer scope
-
-runningTask
-  the task currently executing or waiting
+persist the exact user message immediately
+  -> retrieve goal candidates and memory candidates in parallel
+  -> same-Socrates semantic goal resolution
+  -> deterministic exact memory selection for the resolved goal
+  -> one shared Socrates agent loop
+  -> validated final result
+  -> atomic answer, task, goal capsule, and current-goal commit
+  -> publish the answer
+  -> asynchronous memory enrichment
 ```
 
-Clicking a completed goal displays its task history without silently reopening it. Sending a meaningful continuation while viewing it gives the router a strong explicit candidate; the router reopens that goal only when the new request actually continues the workstream.
+Hybrid retrieval is mechanical candidate discovery, not semantic authority. It combines lexical, semantic, entity, recency, source, and goal signals through one shared retrieval foundation. The active goal is always supplied independently of its search score.
 
-## Flow Execution Choreography
+The semantic goal decision belongs to Socrates itself through the shared runtime and shared prompt core. It is one minimal no-tool turn-resolution step, not a separate Goal Router personality, provider loop, tool-using agent, or independently evolving prompt harness.
 
-Visual thesis: one calm cream workspace with the living Socrates orb as the sole active visual anchor.
+Memory selection is deterministic after goal resolution. There is no model-driven Memory Router in the critical path. The main Socrates may use the shared retrieval capability when deeper exact inspection is needed.
 
-Content plan: exact user query, prominent active orb, one live activity sentence, fixed composer, then the validated answer and one collapsed execution disclosure.
+Asynchronous enrichment may index exact sources, refresh lossless derived goal and memory links, and curate durable memory through the shared agent architecture. It cannot update authoritative task/goal/capsule state, delay the visible turn, rewrite canonical messages, or become a second semantic authority over the completed work.
 
-Interaction thesis: the orb gains presence while work is live; one fixed-height activity sentence crossfades in place as the current phase changes; the validated answer enters the foreground while the orb recedes behind it.
+## Goal Switching And Restoration
 
-### Active turn
-
-After send, the current user query remains above the orb. The orb floats and revolves with restrained stateful motion. Immediately beneath it is exactly one ephemeral activity line:
+When Socrates selects another goal:
 
 ```text
-Finding the right focus…
+save the current capsule version
+  -> move the current-goal pointer
+  -> load the selected goal capsule
+  -> attach its latest exact exchange
+  -> select exact relevant memory/evidence
+  -> continue through the same Socrates loop
 ```
 
-That same line is replaced in place as work advances:
+The user experiences continuity because the capsule restores the live working state and exact history remains retrievable. Switching goals does not copy messages, invent a conversation, or start another Socrates.
 
-```text
-Searching the tool registry…
-Reading traceRetrieveTool.ts…
-Comparing four related files…
-Preparing the answer…
-```
+## Exact Context And Consent
 
-These examples describe successive values of one slot. They must never accumulate vertically into a list of thoughts, tool tags, or status rows. Parallel work is summarized into the same sentence. The slot has a stable height so the orb, canvas, notes, and composer do not jump.
+The ordinary model request includes:
 
-The transition between statuses is a restrained crossfade or slight vertical replacement. Raw internal control text, malformed tool envelopes, opaque ids, `undefined`, and unbounded provider reasoning must never become the activity label. The runtime owns a bounded human-facing label derived from typed phase/tool state; the frontend renders it and does not invent agent semantics.
+1. The stable Socrates operating context and currently authorized capabilities.
+2. The exact latest user message.
+3. The resolved current goal capsule.
+4. The latest exact exchange in that goal.
+5. Deterministically selected exact memory and evidence relevant to the request.
+6. The same tool, approval, Terminal, wait, continuation, and finalization behavior on every turn.
 
-Approvals, credentials, Terminal input, and other states requiring user action remain full interactive components. They are not compressed into the ephemeral activity sentence.
+Exact goal history remains canonical even when it is not all attached to one provider request. Selection and exact pagination are lossless. If Socrates believes additional relevant exact content cannot fit a provider request, it must pause before dispatch and ask the user to approve the specifically described lossy operation. No automatic compactor may infer that permission.
 
-### Completed turn
+Goal capsules and lossless indexes may guide retrieval, but they may not be presented as exact quotes or silently substitute for relevant exact source text.
 
-The final answer must not enter the reading layer until its structured result passes schema and integrity validation and is durably saved. Once valid:
+## Execution Choreography
 
-1. The answer enters above the orb as the primary reading layer.
-2. The orb scales/fades into the existing subtle background presence rather than remaining above the answer.
-3. The ephemeral activity sentence disappears.
-4. Execution history becomes one collapsed disclosure such as `Thinking · 11 tool calls`, expandable for the persisted detailed trace.
-5. The composer remains fixed and the answer owns the readable foreground.
+The visual thesis remains one calm workspace with the living Socrates orb as the active visual anchor.
 
-The collapsed disclosure is not the live status slot. It appears only after completion or when the user explicitly opens trace detail. Historical exchanges never replay live activity.
+During a live turn, the exact user query remains visible above the orb. One fixed-height activity sentence changes in place as typed execution state advances. It never accumulates into a vertical list of thoughts or raw tool envelopes. Approvals, credentials, Terminal input, and other user-action states remain full interactive components.
 
-Motion must respect reduced-motion preferences. State changes must remain understandable without animation.
+The final answer enters the reading layer only after its structured result passes validation and the atomic persistence transaction succeeds. The orb then recedes, the activity sentence disappears, and persisted reasoning/tool history becomes one collapsed expandable disclosure. The composer remains fixed.
 
-## Cross-View Navigation
+## Semantic And Mechanical Ownership
 
-### Classic to Flow
+Socrates owns semantic judgment:
 
-When the user enters Flow from a Classic conversation, preserve the same conversation association, selected goal, current task, and canonical execution state. Flow changes the projection to the selected goal/task; it does not import or copy the work.
+- whether the latest request uses the current goal, an older goal, a new goal, or needs clarification;
+- what work to perform;
+- when evidence is sufficient;
+- the substantive visible answer and verified goal progress.
 
-If a Classic-origin task is already running, navigation does not migrate or restart it. The task completes with the Classic context projection fixed at its start while Flow subscribes to the same canonical live events and result. If Flow remains selected, the next user-authored task uses the Flow goal projection. Flow-to-Classic is symmetrical. View navigation never rebinds a running task.
+Deterministic backend code owns mechanics:
 
-Returning to Classic opens the same originating conversation.
+- exact persistence;
+- hybrid candidate retrieval and exact inspection;
+- embeddings, indexes, and source filters;
+- access scope, permissions, approvals, and credentials;
+- candidate numbering and id resolution;
+- validation, transactions, telemetry, and publication.
 
-### Flow to Classic
-
-If Flow-origin work already has a Classic home, open it. If it has no Classic home, create a Classic conversation lazily only when the user explicitly opens the work in Classic, then present the same canonical turns through that conversation.
-
-Do not copy all project goals into the new conversation. Several goals may share one Classic conversation when they genuinely originated there, while unrelated Flow-origin goals may acquire separate Classic homes only when needed.
-
-## Finalization Contract
-
-Goal finalization belongs to the main Socrates turn that owns the answer, not to a detached post-turn model judging a provisional draft.
-
-The target lifecycle is:
-
-```text
-prepareTurnContext
-  -> Goal Router binds the exact goal/task
-  -> read-only pre-turn Memory Router retrieves for that resolved scope
-  -> main Socrates tool loop
-  -> same-Socrates progress checkpoints when a long task reaches a durable milestone
-  -> mandatory same-Socrates pre-final reconciliation checkpoint
-  -> strict structured final result
-  -> validate answer integrity
-  -> persist the answer and its goal state atomically
-  -> publish the completed answer to the UI
-```
-
-There is no post-evidence/post-turn Memory Router. Reconciliation judgment, writes, re-reads, and verification belong to the same main Socrates that performed the work. The remaining Memory Router is pre-turn and read-only.
-
-The structured result contains the visible final answer, goal state, and a short goal note. The final call does not choose or re-guess a goal; runtime applies state/note only to the goal already bound to the current task. No valid persisted assistant answer means no task completion or goal-state mutation. A malformed tool envelope, internal control text, empty answer, or unsupported completion claim fails the integrity gate and must not complete the goal.
-
-The canonical focus ledger stores compact goal/task/transition state, not transcripts, tools, files, patches, Terminal streams, or evidence dumps. Persistence may grow, but model and UI projections are always bounded and paginated. Main Socrates receives the resolved goal/task directly and has no mutable focus-ledger completion/update authority; exact older work comes through shared trace retrieval.
-
-## Agent And Tool Homogeneity
-
-Classic and Flow invoke the same main Socrates behavior after scope selection. A view must not fork the core tool loop, tool schemas, provider behavior, approvals, Terminal handling, memory surfaces, context compression, recovery, or final-answer contract.
-
-View-specific routers are real agents under the repository's shared-agent rule: prompt module, shared runner, scoped tool registry and executors, strict contracts, bounded repair/failure policy, worker settings where independently configurable, and typed telemetry/persistence.
-
-The target has one public `AgentRuntime` entrypoint beneath every main agent, router, compressor, memory worker, and specialized writer. It accepts a typed configuration for prompt/messages, scoped tools and executors, model settings, limits, multimodal message parts, hooks, and one explicit completion mode:
-
-```text
-text
-structured
-streaming tools plus structured final
-```
-
-It returns one event stream plus one final typed result. The full Socrates loop and bounded structured workers must not retain competing provider/tool loops with different normalization, recovery, telemetry, or final-output behavior. Thin agent modules supply different prompts, tools, schemas, budgets, and persistence adapters; the shared runtime owns execution mechanics.
-
-The public API may delegate internally to context preparation, provider, tool, approval, recovery, validation, and telemetry components. One entrypoint is not permission to create one monolithic class or a positional boolean-heavy helper.
+The backend never invents semantic meaning. Socrates never owns persistence ids, raw vector internals, or a mutable ledger tool.
 
 ## Success Criteria
 
-The product is moving toward this North Star only when all of the following are true:
+The product reaches this North Star only when all of the following are true:
 
-- “What?” and similar short follow-ups remain attached to the preceding task and goal.
-- Completing a goal does not visually eject the user to General Conversation.
-- A direct continuation reopens the same goal instead of creating a duplicate.
-- Entering Flow preserves the current conversation, goal, task, tools, and live execution state.
-- Flow-origin work creates a Classic conversation only when the user asks to open it there.
-- Switching views does not copy canonical Q&A, tool history, or execution state.
-- Typical adjacent follow-ups start useful work without a context-reconstruction retrieval loop.
-- Goals with hundreds of tasks still receive a bounded prompt projection and exact older history remains retrievable.
-- The final visible answer is validated before its goal completion is committed.
-- No post-turn Memory Router or mutable main-agent focus ledger can finalize/update the bound goal.
-- Classic and Flow use one semantic trace contract and executor across presented-context, current-goal, and project scope.
-- Flow navigation drills from Projects to Goals to the selected goal's Queries without mixing levels in one scroll surface.
-- A live turn shows exactly one changing activity sentence beneath the orb; it never accumulates into a status list.
-- After completion, the answer takes the foreground, the orb recedes, and detailed execution collapses behind one disclosure.
-- Every model-driven capability enters through the same public Agent Runtime execution boundary.
+- Opening Socrates enters one seamless global workspace without creating or selecting a project.
+- Paths, access mode, and settings are the only persistent header controls needed to begin.
+- Concrete work following a greeting creates or selects a work goal rather than General Conversation.
+- `Review today's email` followed by `reply to Gary` creates two tasks in one goal.
+- `Inspect the Memory Agent`, `improve it`, and `test it` remain one coherent goal.
+- The current goal and latest exact exchange are supplied on every turn regardless of retrieval score.
+- Older goals are retrieved automatically and represented by a small set of human-readable capsules.
+- The goal decision exposes only current, retrieved older goal, new, or clarify.
+- There is no model-driven Memory Router or tool-using Goal Router in the critical path.
+- Exact messages and answers remain canonical, visible, attributable, searchable, and deletable.
+- Goal capsules restore working state without replacing exact goal history.
+- The sidebar groups exact Q&A pairs by goal and contains no required project hierarchy.
+- One agent runtime, capability catalog, tool contract, retrieval foundation, and finalization path serve every turn.
+- The answer, task outcome, capsule update, and current-goal state commit atomically before publication.
 
 ## Migration Principle
 
-The existing namespaced V2 persistence and bidirectional Classic bridge are released implementation reality and must be handled safely. They are not the target product model where they duplicate semantic work state.
+Released Classic, project, V2 transport, namespaced persistence, bridge, and workspace records must remain safe and recoverable during migration. They are not permission to preserve the old user model indefinitely.
 
-Convergence work must preserve user data, existing Classic compatibility, recoverability, and explicit rollback. It must not perform a destructive migration or silently reinterpret existing records. New work should stop expanding duplicate-state assumptions and should move deliberately toward canonical identities with view projections.
+Migration must be non-destructive and explicit. Existing project/workspace metadata can become internal resource scopes; existing conversations and Flow queries can be attached to canonical goals; existing exact messages and evidence remain unchanged. New production authority must converge on one global Socrates, one goal-centric history, and one turn lifecycle. Old routers, project-first navigation authority, view-specific semantic state, and parallel context systems must be removed after the replacement is proven.
