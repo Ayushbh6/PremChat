@@ -4471,7 +4471,7 @@
     },
     {
       "id": "retrieval.memory_candidates",
-      "description": "Retrieve authorized exact-memory candidates in parallel with goal candidates.",
+      "description": "Retrieve authorized exact-memory candidates in parallel with goal candidates and perform one conditional bound-goal refinement through the same service.",
       "kind": "automatic_retrieval",
       "allowedRoles": [
         "socrates"

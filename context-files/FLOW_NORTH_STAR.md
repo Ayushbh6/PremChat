@@ -166,7 +166,7 @@ Hybrid retrieval is mechanical candidate discovery, not semantic authority. It c
 
 The semantic goal decision belongs to Socrates itself through the shared runtime and shared prompt core. It is one minimal no-tool turn-resolution step, not a separate Goal Router personality, provider loop, tool-using agent, or independently evolving prompt harness.
 
-Memory selection is deterministic after goal resolution. There is no model-driven Memory Router in the critical path. The main Socrates may use the shared retrieval capability when deeper exact inspection is needed.
+Memory selection is deterministic after goal resolution. The parallel first-pass memory query includes the current capsule when available. If Socrates binds a different goal, or the first pass contains no eligible exact memory, the same retrieval service may run one targeted bound-goal query before deterministic reranking. There is no model-driven Memory Router in the critical path. The main Socrates may use the shared retrieval capability when deeper exact inspection is needed.
 
 Asynchronous enrichment may index exact sources, refresh lossless derived goal and memory links, and curate durable memory through the shared agent architecture. It cannot update authoritative task/goal/capsule state, delay the visible turn, rewrite canonical messages, or become a second semantic authority over the completed work.
 

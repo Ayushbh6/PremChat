@@ -1,4 +1,5 @@
 export * from "./markdownChunker"
 export * from "./deterministicMemorySelection"
+export * from "./memoryRetrievalQuery"
 export * from "./ranking"
 export * from "./types"

@@ -16,7 +16,19 @@ export const selectExactMemoryCandidates = (input: {
   userMessage: string
   goal: ActiveGoalCard
   limit?: number
-}): ResolvedTurnMemoryItem[] => {
+}): ResolvedTurnMemoryItem[] => rankExactMemoryCandidates(input).map((candidate) => ({
+  surface: candidate.surface,
+  reference: `${candidate.fileName}/${candidate.sectionId}`,
+  scope: candidate.scope,
+  content: candidate.content,
+}))
+
+export const rankExactMemoryCandidates = (input: {
+  candidates: readonly MemoryCandidate[]
+  userMessage: string
+  goal: ActiveGoalCard
+  limit?: number
+}): MemoryCandidate[] => {
   const limit = Math.max(0, Math.min(8, Math.floor(input.limit ?? 8)))
   if (limit === 0) return []
   const queryTerms = lexicalTerms([
@@ -54,12 +66,7 @@ export const selectExactMemoryCandidates = (input: {
     if (selected.includes(item)) continue
     selected.push(item)
   }
-  return selected.map(({ candidate }) => ({
-    surface: candidate.surface,
-    reference: `${candidate.fileName}/${candidate.sectionId}`,
-    scope: candidate.scope,
-    content: candidate.content,
-  }))
+  return selected.map(({ candidate }) => candidate)
 }
 
 const lexicalTerms = (value: string): Set<string> => new Set(

@@ -164,7 +164,7 @@ canonical source rows
 
 The current logical corpora are conversation/task traces, curated memory sections, and goal cards. They share infrastructure but retain typed authority and visibility filters. Do not expose vectors, chunks, scores, fingerprints, index jobs, or database ids as separate model tools.
 
-Parallel goal-candidate retrieval, parallel memory-candidate retrieval, deterministic post-binding memory selection, main-agent retrieval, exact inspection, and background enrichment must all be catalogued even when they share lower-level utilities. The current goal must be supplied independently of retrieval score. Do not recreate `goal_search` or a Memory Router tool loop as a shadow path.
+Parallel goal-candidate retrieval, current-capsule-aware parallel memory-candidate retrieval, single conditional bound-goal refinement, deterministic post-binding memory selection, main-agent retrieval, exact inspection, and background enrichment must all be catalogued even when they share lower-level utilities. The current goal must be supplied independently of retrieval score. Bound-goal refinement may occur only through the same memory retrieval service after a goal change or empty eligible first pass. Do not recreate `goal_search`, a retry loop, a second retrieval engine, or a Memory Router tool loop as a shadow path.
 
 ## 8. Prompt Changes
 
@@ -204,7 +204,7 @@ The goal ledger is a catalogued `deterministic_authority`. It owns the current-g
 
 Goal resolution is a minimal phase of the same main Socrates definition and prompt core, not an independent agent role. It receives the exact latest message, current capsule, latest exact exchange, and a small numbered list of older capsules from hybrid retrieval. It decides only current, retrieved older goal, new, or clarify, uses no tools, and never authors opaque ids. Backend code applies the selected pointer and creates the task.
 
-Goal and memory candidates are retrieved concurrently. Retrieval ranks candidates but never makes semantic decisions. After goal binding, deterministic selection filters exact memory by authorization, resource scope, goal/task ownership, provenance, relevance, and duplication. There is no model-driven Memory Router in the critical path.
+Goal and memory candidates are retrieved concurrently, and the first memory query includes the current capsule when available. Retrieval ranks candidates but never makes semantic decisions. After goal binding, the same retrieval service may perform one targeted query when the goal changed or the first pass has no eligible memory; deterministic selection then filters and reranks exact memory by authorization, resource scope, goal/task ownership, provenance, relevance, and duplication. There is no model-driven Memory Router in the critical path.
 
 Main Socrates then receives the bound capsule, latest exact exchange, exact selected memory/evidence, authorized resource state, and active Terminal/approval/wait state. It does not receive a bulk goal ledger. Goal capsules are structured live state with exact source anchors; they do not replace canonical goal history.
 

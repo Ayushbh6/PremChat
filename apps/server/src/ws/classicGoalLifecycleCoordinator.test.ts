@@ -95,6 +95,11 @@ describe("Classic shared goal resolution", () => {
       user: "Inspect the ledger exactly.",
       assistant: "The exact inspection found coupled lifecycle state.",
     })
+    expect(sharedStore.retrieveMemoryCandidates).toHaveBeenCalledWith(
+      "project_1",
+      expect.objectContaining({ query: expect.stringContaining("Goal: Review the focus ledger") }),
+      true,
+    )
     expect(flowStore.applyClassicGoalResolution).toHaveBeenCalledOnce()
   })
 })

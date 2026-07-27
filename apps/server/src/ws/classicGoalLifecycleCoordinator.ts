@@ -7,7 +7,12 @@ import {
 import type { CandidateRetrievalStatus, MemoryCandidate, RuntimeConfig } from "@socrates/contracts"
 import type { SocratesStore } from "../services/store"
 import type { V2FlowStore } from "../services/v2/flowStore"
-import { retrieveTurnCandidates } from "../services/turn/turnCandidateRetrieval"
+import {
+  memoryCandidateQueryForTurn,
+  memoryGoalContextFromSnapshot,
+  refineTurnMemoryCandidates,
+  retrieveTurnCandidates,
+} from "../services/turn/turnCandidateRetrieval"
 
 type RouteClassicGoalInput = {
   projectId: string
@@ -40,17 +45,25 @@ export type RoutedClassicGoal =
     }
 
 export const resolveClassicGoal = async (input: RouteClassicGoalInput): Promise<RoutedClassicGoal> => {
+  const initialContext = input.flowStore.prepareClassicGoalResolution(input.projectId, input.conversationId)
+  const initialSnapshot = input.flowStore.getSnapshot(input.projectId, initialContext.flowId)
+  const initialMemoryGoal = memoryGoalContextFromSnapshot({
+    ...(initialContext.currentGoalId ? { goalId: initialContext.currentGoalId } : {}),
+    goals: initialSnapshot.goals,
+    capsules: initialSnapshot.latestCapsules,
+  })
   const retrieved = await retrieveTurnCandidates({
     retrieveGoals: () => input.sharedStore.retrieveGoalCandidates(input.projectId, input.userMessage, 12),
-    retrieveMemory: () => input.sharedStore.retrieveMemoryCandidates(input.projectId, {
-      query: input.userMessage,
-      mode: "combined",
-      scope: "all",
-      limit: 8,
-    }, true),
+    retrieveMemory: () => input.sharedStore.retrieveMemoryCandidates(input.projectId, memoryCandidateQueryForTurn({
+      userMessage: input.userMessage,
+      ...(initialMemoryGoal ? { goal: initialMemoryGoal } : {}),
+      phase: "broad",
+    }), true),
   })
   const retrievedGoalIds = retrieved.goalCandidates.map((candidate) => candidate.goalId)
-  const context = input.flowStore.prepareClassicGoalResolution(input.projectId, input.conversationId, retrievedGoalIds)
+  const context = retrievedGoalIds.length > 0
+    ? input.flowStore.prepareClassicGoalResolution(input.projectId, input.conversationId, retrievedGoalIds)
+    : initialContext
   const snapshot = input.flowStore.getSnapshot(input.projectId, context.flowId)
   const previousGoalId = input.flowStore.previousClassicGoalId(input.conversationId, context.currentGoalId)
   const result = await resolveSocratesGoal({
@@ -113,11 +126,19 @@ export const resolveClassicGoal = async (input: RouteClassicGoalInput): Promise<
     context: appliedContext,
     route,
   })
+  const refinedMemory = await refineTurnMemoryCandidates({
+    userMessage: input.userMessage,
+    ...(initialContext.currentGoalId ? { previousGoalId: initialContext.currentGoalId } : {}),
+    boundGoal: goal,
+    memoryCandidates: retrieved.memoryCandidates,
+    status: retrieved.status,
+    retrieveMemory: (query) => input.sharedStore.retrieveMemoryCandidates(input.projectId, query, true),
+  })
   return {
     status: "resolved",
     goal,
-    memoryCandidates: retrieved.memoryCandidates,
-    retrieval: retrieved.status,
+    memoryCandidates: refinedMemory.memoryCandidates,
+    retrieval: refinedMemory.status,
   }
 }
 

@@ -4,7 +4,7 @@ Status: detailed technical target for the global goal-centric Socrates lifecycle
 
 FLOW_NORTH_STAR.md defines the product experience. AGENT_REFACTOR_MANIFESTO.md defines the replacement agent architecture. AGENT_CAPABILITY_WORKFLOW.md defines the mandatory change procedure. Current Classic, project, V2, router, and compaction implementations are migration evidence when they conflict with this target.
 
-Implementation checkpoint (2026-07-27): Phase 3 converges the released Classic and Flow pre-turn path through concurrent typed goal/memory retrieval, same-main-Socrates no-tool four-way resolution, deterministic exact-memory selection, and one view-neutral exact prepared context. The former Goal Router, Memory Router, their model tools/settings/prompts, sliced goal-history helper, and view-specific context policy are deleted. The global no-project UI and the consent-gated replacement for released automatic lossy compaction remain later migration work.
+Implementation checkpoint (2026-07-28): Phase 3 converges the released Classic and Flow pre-turn path through concurrent typed goal/memory retrieval, current-capsule-aware first-pass memory queries, same-main-Socrates no-tool four-way resolution, one conditional bound-goal memory refinement, deterministic exact-memory selection, and one view-neutral exact prepared context. The former Goal Router, Memory Router, their model tools/settings/prompts, sliced goal-history helper, and view-specific context policy are deleted. The global no-project UI and the consent-gated replacement for released automatic lossy compaction remain later migration work.
 
 ## One Product Model
 
@@ -73,7 +73,7 @@ The memory candidate path searches authorized exact sources and lossless derived
 
 Retrieval ranks possibilities. It does not choose a goal, create a goal, interpret user intent, rewrite memory, or decide that a low score means new work.
 
-Memory candidates may be gathered broadly while the goal decision is pending. After binding, deterministic policy filters and reranks them using the resolved goal, active resource scope, source permissions, current task, and duplication rules.
+Memory candidates are gathered broadly while the goal decision is pending, using a disposable search projection derived from the canonical task plus the current capsule when available. Canonical source text remains unchanged and independently attached where required. After binding, a changed goal or an empty eligible first pass permits one targeted query through the same retrieval service. Deterministic policy then merges, filters, and reranks exact candidates using the resolved goal, active resource scope, source permissions, current task, and duplication rules. This is not a model call, retry loop, or second retrieval authority.
 
 ## Same-Socrates Goal Resolution
 
@@ -165,7 +165,7 @@ When focus changes:
 
 There is no model-driven Memory Router in the critical path.
 
-After goal binding, deterministic memory selection applies one shared policy over the already retrieved candidates:
+After goal binding and any single permitted bound-goal refinement, deterministic memory selection applies one shared policy over the retrieved candidates:
 
 - authorization and path/account scope;
 - current goal and task ownership;

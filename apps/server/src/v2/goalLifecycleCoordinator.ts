@@ -10,7 +10,12 @@ import type {
 import type { ModelUsage } from "@socrates/providers"
 import type { SocratesStore } from "../services/store"
 import type { V2FlowStore } from "../services/v2/flowStore"
-import { retrieveTurnCandidates } from "../services/turn/turnCandidateRetrieval"
+import {
+  memoryCandidateQueryForTurn,
+  memoryGoalContextFromSnapshot,
+  refineTurnMemoryCandidates,
+  retrieveTurnCandidates,
+} from "../services/turn/turnCandidateRetrieval"
 
 type ResolveFlowGoalInput = {
   projectId: string
@@ -44,14 +49,19 @@ export const resolveFlowGoal = async (input: ResolveFlowGoalInput): Promise<Reso
     ? input.preferredGoalId
     : snapshot.flow.foregroundGoalId
   const previousGoalId = input.store.previousRoutingGoalId(input.flowId, selectedGoalId)
+  const snapshotGoals = snapshot.goals
+  const initialMemoryGoal = memoryGoalContextFromSnapshot({
+    ...(selectedGoalId ? { goalId: selectedGoalId } : {}),
+    goals: snapshotGoals,
+    capsules: snapshot.latestCapsules,
+  })
   const retrieved = await retrieveTurnCandidates({
     retrieveGoals: () => input.sharedStore.retrieveGoalCandidates(input.projectId, input.messageContent, 12),
-    retrieveMemory: () => input.sharedStore.retrieveMemoryCandidates(input.projectId, {
-      query: input.messageContent,
-      mode: "combined",
-      scope: "all",
-      limit: 8,
-    }, true),
+    retrieveMemory: () => input.sharedStore.retrieveMemoryCandidates(input.projectId, memoryCandidateQueryForTurn({
+      userMessage: input.messageContent,
+      ...(initialMemoryGoal ? { goal: initialMemoryGoal } : {}),
+      phase: "broad",
+    }), true),
   })
   const retrievedGoalIds = retrieved.goalCandidates.map((candidate) => candidate.goalId)
   const resolutionGoals = input.store.listGoalsForResolution(input.flowId, [
@@ -119,13 +129,28 @@ export const resolveFlowGoal = async (input: ResolveFlowGoalInput): Promise<Reso
     providerId: input.runtimeConfig.providerId,
     modelId: input.runtimeConfig.modelId,
   })
+  const boundGoal = input.store.getActiveGoalCard({
+    flowId: input.flowId,
+    goalId: applied.goal.id,
+    sourceRuntime: "v2_flow",
+    sourceTurnId: input.turnId,
+    taskRequest: input.messageContent,
+  })
+  const refinedMemory = await refineTurnMemoryCandidates({
+    userMessage: input.messageContent,
+    ...(selectedGoalId ? { previousGoalId: selectedGoalId } : {}),
+    boundGoal,
+    memoryCandidates: retrieved.memoryCandidates,
+    status: retrieved.status,
+    retrieveMemory: (query) => input.sharedStore.retrieveMemoryCandidates(input.projectId, query, true),
+  })
   return {
     status: "resolved",
     goalId: applied.goal.id,
     applied,
     result: effective,
-    memoryCandidates: retrieved.memoryCandidates,
-    retrieval: retrieved.status,
+    memoryCandidates: refinedMemory.memoryCandidates,
+    retrieval: refinedMemory.status,
   }
 }
 

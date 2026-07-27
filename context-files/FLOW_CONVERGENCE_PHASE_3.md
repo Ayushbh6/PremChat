@@ -35,6 +35,8 @@ The only new corpus contracts are:
 
 `apps/server/src/services/turn/turnCandidateRetrieval.ts` starts the two retrieval promises before awaiting either one and uses `Promise.allSettled`. One failure cannot be reported as successful recall and does not prevent the safe independent path from continuing. Goal retrieval never semantically decides whether work is current, older, or new.
 
+The parallel memory query now uses a disposable search projection derived from the canonical task and current capsule when available; it never replaces either exact source. Once the same Socrates binds the goal, the shared service performs one targeted bound-goal query only if focus changed or the first pass contains no eligible memory, then uses the same deterministic ranker to merge at most eight candidates. Classic and Flow call this identical path; no provider call, router, retry queue, or second index was added.
+
 ## Same-Socrates Goal Resolution
 
 `SocratesAgent.resolveGoal` uses the selected main provider, model, runtime settings, shared `AgentRuntime`, main Socrates definition, and main prompt core. It adds one short phase instruction, exposes zero tools, validates one strict four-way schema, and permits one shared structured-output repair.
@@ -97,6 +99,8 @@ Final isolated verification on 2026-07-27 passed:
 - the generated architecture check: 8 agent definitions, 69 capabilities, 28 static tools, and 24 typed commands;
 - `pnpm runtime:build`, native Whisper/Kokoro smoke, and LanceDB runtime smoke; and
 - the final disposable OpenRouter DeepSeek V4 Pro acceptance, including leading/trailing task whitespace and exact multi-line exchange/memory bytes.
+
+The 2026-07-28 goal-aware memory follow-up passed the generated architecture check, full workspace typecheck/build, and the complete test matrix: CLI 9, contracts 43, web 26, MCP 14, providers 94 with one deliberate skip, workspace 105, core 128, and server 250. Focused coverage proves current-capsule first-pass queries, one targeted older-goal refinement in Flow, shared Classic wiring, no redundant refinement for an eligible current-goal result, deterministic merged reranking, and honest fallback when refinement fails. This follow-up used no provider call or normal Socrates state.
 
 ## Remaining Product Migration
 
