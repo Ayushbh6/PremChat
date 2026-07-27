@@ -45,6 +45,19 @@ The refactor must converge on these ownership boundaries:
 
 Exact paths may be finalized during the architecture phase, but each concern must have exactly one code owner before production cutover.
 
+### Implemented Agent-Core Owners
+
+Phase 1 of the agent-core rebuild establishes these concrete owners:
+
+- `packages/core/src/agent/AgentDefinition.ts` owns the declarative agent, role-manifest, context-profile, limits, and inventory contracts.
+- `packages/core/src/agent/AgentInstance.ts` binds a definition to the shared runtime and enforces prompt, tool, context, repair, and timeout boundaries.
+- `packages/core/src/agent/AgentRuntime.ts` is the sole provider-neutral model execution implementation.
+- `packages/core/src/agent/ContextPipeline.ts` is the one injectable context-preparation boundary.
+- `packages/core/src/agent/agentDefinitions.ts` owns the production definition records.
+- `architecture/agent-definitions.generated.json` is generated evidence, not a hand-edited authority. Run `pnpm generate:agent-architecture` after intentional definition changes and `pnpm check:agent-architecture` in verification.
+
+The architecture check inventories the released Goal Router and Memory Router as explicit legacy removal debt. Do not migrate them into new definitions: remove them with the owning goal-resolution and deterministic-memory-selection cutovers.
+
 ## 3. Complete Capability Classification
 
 Before changing behavior, classify it as exactly one catalogued capability kind:

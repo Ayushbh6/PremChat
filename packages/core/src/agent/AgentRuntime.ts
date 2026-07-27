@@ -9,15 +9,11 @@ import type {
   ModelUsage,
 } from "@socrates/providers"
 import { createId, SocratesError } from "@socrates/shared"
-import { prepareContextForModelCall, type ContextCompressionRuntime } from "../context/contextCompression"
+import type { ContextCompressionRuntime } from "../context/contextCompression"
 import { ToolRegistry } from "../tools/registry"
 import type { ToolExecutors } from "../tools/types"
-
-type StructuredOutputSchema<TOutput> = {
-  safeParse(value: unknown):
-    | { success: true; data: TOutput }
-    | { success: false; error: { flatten(): unknown } }
-}
+import type { AgentStructuredOutputSchema } from "./AgentDefinition"
+import { ContextPipeline, type AgentContextPipeline } from "./ContextPipeline"
 
 type AgentRuntimeBaseInput = {
   provider: ModelProvider
@@ -53,8 +49,8 @@ type AgentRuntimeBaseInput = {
 
 export type AgentRuntimeStructuredInput<TOutput> = AgentRuntimeBaseInput & {
   completion: {
-    mode: "structured"
-    schema: StructuredOutputSchema<TOutput>
+    mode: "structured" | "streaming_tools_structured_final"
+    schema: AgentStructuredOutputSchema<TOutput>
     maxOutputRepairAttempts?: number
   }
 }
@@ -82,7 +78,7 @@ export type AgentRuntimeModelStepInput = {
 }
 
 export type AgentRuntimeStructuredResult<TOutput> = {
-  mode: "structured"
+  mode: "structured" | "streaming_tools_structured_final"
   output: TOutput
   toolCalls: number
   usages: ModelUsage[]
@@ -94,6 +90,8 @@ export type AgentRuntimeTextResult = {
   toolCalls: number
   usages: ModelUsage[]
 }
+
+export type AgentRuntimeResult<TOutput> = AgentRuntimeTextResult | AgentRuntimeStructuredResult<TOutput>
 
 type NativeToolCall = {
   toolCallId: string
@@ -109,6 +107,8 @@ type RuntimeLoopState = {
 }
 
 export class AgentRuntime {
+  constructor(private readonly contextPipeline: AgentContextPipeline = new ContextPipeline()) {}
+
   run(input: AgentRuntimeModelStepInput): AsyncIterable<ModelEvent>
   async run(input: AgentRuntimeTextInput): Promise<AgentRuntimeTextResult>
   async run<TOutput>(input: AgentRuntimeStructuredInput<TOutput>): Promise<AgentRuntimeStructuredResult<TOutput>>
@@ -122,13 +122,14 @@ export class AgentRuntime {
   private async runCompletion<TOutput>(
     input: AgentRuntimeTextInput | AgentRuntimeStructuredInput<TOutput>,
   ): Promise<AgentRuntimeTextResult | AgentRuntimeStructuredResult<TOutput>> {
-    const state = await runToolLoop(input)
+    const state = await runToolLoop(input, this.contextPipeline)
     if (input.completion.mode === "text") {
-      const output = await generateTextFinal(input as AgentRuntimeTextInput, state)
+      const output = await generateTextFinal(input as AgentRuntimeTextInput, state, this.contextPipeline)
       return { mode: "text", output, toolCalls: state.usedToolCalls, usages: state.usages }
     }
-    const output = await generateStructuredFinal(input as AgentRuntimeStructuredInput<TOutput>, state)
-    return { mode: "structured", output, toolCalls: state.usedToolCalls, usages: state.usages }
+    const structuredInput = input as AgentRuntimeStructuredInput<TOutput>
+    const output = await generateStructuredFinal(structuredInput, state, this.contextPipeline)
+    return { mode: structuredInput.completion.mode, output, toolCalls: state.usedToolCalls, usages: state.usages }
   }
 }
 
@@ -153,6 +154,7 @@ const runModelStep = async function* (input: AgentRuntimeModelStepInput): AsyncI
 
 const runToolLoop = async <TOutput>(
   input: AgentRuntimeTextInput | AgentRuntimeStructuredInput<TOutput>,
+  contextPipeline: AgentContextPipeline,
 ): Promise<RuntimeLoopState> => {
   let messages: ModelMessage[] = input.messages
     ? [...input.messages]
@@ -165,7 +167,7 @@ const runToolLoop = async <TOutput>(
     const toolCalls: NativeToolCall[] = []
     let answerText = ""
     const tools = input.toolRegistry.modelDefinitions()
-    const prepared = await prepareContextForModelCall({
+    const prepared = await contextPipeline.prepare({
       provider: input.provider,
       providerId: input.providerId,
       modelId: input.modelId,
@@ -240,12 +242,16 @@ const runToolLoop = async <TOutput>(
   }
 }
 
-const generateTextFinal = async (input: AgentRuntimeTextInput, state: RuntimeLoopState): Promise<string> => {
+const generateTextFinal = async (
+  input: AgentRuntimeTextInput,
+  state: RuntimeLoopState,
+  contextPipeline: AgentContextPipeline,
+): Promise<string> => {
   const messages = [...state.messages, {
     role: "developer" as const,
     content: "Finish now. Return only the final text requested by the system contract. Do not call tools.",
   }]
-  const prepared = await prepareContextForModelCall({
+  const prepared = await contextPipeline.prepare({
     provider: input.provider,
     providerId: input.providerId,
     modelId: input.modelId,
@@ -284,6 +290,7 @@ const generateTextFinal = async (input: AgentRuntimeTextInput, state: RuntimeLoo
 const generateStructuredFinal = async <TOutput>(
   input: AgentRuntimeStructuredInput<TOutput>,
   state: RuntimeLoopState,
+  contextPipeline: AgentContextPipeline,
 ): Promise<TOutput> => {
   if (!input.provider.generateStructured) {
     throw new SocratesError("structured_generation_unavailable", "This agent requires provider structured generation.", { recoverable: true })
@@ -296,7 +303,7 @@ const generateStructuredFinal = async <TOutput>(
   let lastOutput: unknown
   const maxOutputRepairAttempts = input.completion.maxOutputRepairAttempts ?? 1
   for (let attempt = 0; attempt <= maxOutputRepairAttempts; attempt += 1) {
-    const prepared = await prepareContextForModelCall({
+    const prepared = await contextPipeline.prepare({
       provider: input.provider,
       providerId: input.providerId,
       modelId: input.modelId,

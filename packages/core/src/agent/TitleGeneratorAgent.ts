@@ -1,5 +1,4 @@
 import {
-  conversationTitleAgentOutputSchema,
   type ConversationTitleAgentOutput,
   type ProviderAuthMode,
   type ProviderId,
@@ -7,9 +6,10 @@ import {
   type ThinkingEffort,
 } from "@socrates/contracts"
 import type { ModelMessageContent, ModelProvider, ModelUsage } from "@socrates/providers"
-import { TITLE_GENERATOR_SYSTEM_PROMPT } from "../prompts/titleGeneratorPrompt"
+import { SocratesError } from "@socrates/shared"
 import { createTitleGeneratorToolRegistry } from "../tools/registry"
-import { AgentRuntime } from "./AgentRuntime"
+import { AgentInstance } from "./AgentInstance"
+import { titleGeneratorAgentDefinition } from "./agentDefinitions"
 
 export type TitleGeneratorAgentModelSettings = {
   providerId: ProviderId
@@ -37,18 +37,18 @@ export type TitleGeneratorAgentResult = {
 }
 
 export class TitleGeneratorAgent {
+  private readonly agent = new AgentInstance(titleGeneratorAgentDefinition)
+
   async run(input: TitleGeneratorAgentInput): Promise<TitleGeneratorAgentResult> {
-    const result = await new AgentRuntime().run({
+    const result = await this.agent.run({
       provider: input.provider,
       providerId: input.modelSettings.providerId,
       modelId: input.modelSettings.modelId,
       runtimeConfig: titleGeneratorRuntimeConfig(input.modelSettings),
-      system: TITLE_GENERATOR_SYSTEM_PROMPT,
+      promptContext: undefined,
       userContent: input.userContent,
-      completion: { mode: "structured", schema: conversationTitleAgentOutputSchema },
       toolRegistry: createTitleGeneratorToolRegistry(),
       toolExecutors: {},
-      maxToolCalls: 0,
       projectId: input.projectId,
       conversationId: input.conversationId,
       sessionId: input.sessionId,
@@ -58,6 +58,9 @@ export class TitleGeneratorAgent {
       providerRouting: { omitReasoning: true },
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
     })
+    if (result.mode === "text") {
+      throw new SocratesError("agent_completion_mode_mismatch", "Title Generator returned text instead of its structured contract.")
+    }
     return { output: result.output, usages: result.usages }
   }
 }

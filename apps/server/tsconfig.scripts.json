@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "scripts/run-agent-core-provider-acceptance.ts",
+    "scripts/run-flow-phase6-provider-acceptance.ts"
+  ]
+}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { z } from "zod"
 import { SocratesAgent, createDefaultToolRegistry, type SocratesAgentEvent, type ToolExecutors } from "../index"
 import type { ModelEvent, ModelMessage, ModelProvider } from "@socrates/providers"
 import { bashTool } from "../tools/bashTool"
@@ -75,6 +76,43 @@ describe("SocratesAgent", () => {
     expect(requestJson).toContain("Treat long read/search/Terminal/MCP/retrieval outputs as temporary evidence")
     expect(requestJson).toContain("Prefer distill when only a compact set of findings")
     expect(requestJson).toContain("Long reads and large tool outputs should normally be distilled or released")
+  })
+
+  it("rejects dynamic tools outside the main role manifest before model execution", async () => {
+    let providerCalled = false
+    const provider: ModelProvider = {
+      countTokens: fakeCountTokens,
+      async *stream() {
+        providerCalled = true
+        yield { type: "model.completed" }
+      },
+    }
+    const run = async () => {
+      for await (const _event of new SocratesAgent(provider).streamTurn({
+        completionMode: "worker_text",
+        providerId: "openai",
+        modelId: "gpt-5.4-mini",
+        runtimeConfig: {
+          providerId: "openai",
+          modelId: "gpt-5.4-mini",
+          thinkingEnabled: false,
+          thinkingEffort: "none",
+          approvalMode: "manual",
+          sandboxMode: "read_only",
+        },
+        messages: [{ role: "user", content: "Hi" }],
+        dynamicTools: [{
+          name: "shadow_tool",
+          description: "This must not be exposed.",
+          inputSchema: z.object({}).strict(),
+        }],
+      })) {
+        // The manifest violation must fail before the provider can emit an event.
+      }
+    }
+
+    await expect(run()).rejects.toMatchObject({ code: "agent_role_manifest_mismatch" })
+    expect(providerCalled).toBe(false)
   })
 
   it("passes the already-resolved goal into the goal-scoped Memory Router", async () => {

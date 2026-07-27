@@ -1,0 +1,262 @@
+{
+  "schemaVersion": 1,
+  "generatedFrom": "packages/core/src/agent/agentDefinitions.ts",
+  "phase": "phase-1-shared-agent-core",
+  "definitions": [
+    {
+      "id": "socrates-main",
+      "role": "socrates",
+      "modelRole": "main",
+      "promptId": "socrates-main-v1",
+      "completionMode": "streaming_tools_structured_final",
+      "roleManifestId": "socrates-main-tools-v1",
+      "modelTools": [
+        "read",
+        "search",
+        "url_fetch",
+        "edit",
+        "apply_patch",
+        "bash",
+        "wait",
+        "handover_to_frontier",
+        "current_time",
+        "trace_retrieve",
+        "tool_docs",
+        "skills",
+        "skill_manager",
+        "project_docs",
+        "repo_docs",
+        "soul",
+        "user_profile",
+        "list_project_resources",
+        "mcp_registry",
+        "memory_note",
+        "context_disposition"
+      ],
+      "dynamicToolPrefixes": [
+        "mcp__"
+      ],
+      "contextProfileId": "interactive-agent-context-v1",
+      "contextStages": [
+        "stable_prompt",
+        "exact_messages",
+        "runtime_context",
+        "tool_definitions",
+        "consent_gated_compaction"
+      ],
+      "maxToolCalls": 80,
+      "maxOutputRepairAttempts": 1,
+      "persistenceScope": "goal"
+    },
+    {
+      "id": "skill-writer",
+      "role": "skill_writer",
+      "modelRole": "skill_writer",
+      "promptId": "skill-writer-v1",
+      "completionMode": "text",
+      "roleManifestId": "skill-writer-tools-v1",
+      "modelTools": [
+        "current_time",
+        "trace_retrieve",
+        "skills",
+        "user_profile",
+        "soul",
+        "project_docs",
+        "repo_docs",
+        "skill_write"
+      ],
+      "dynamicToolPrefixes": [],
+      "contextProfileId": "interactive-agent-context-v1",
+      "contextStages": [
+        "stable_prompt",
+        "exact_messages",
+        "runtime_context",
+        "tool_definitions",
+        "consent_gated_compaction"
+      ],
+      "maxToolCalls": 20,
+      "persistenceScope": "project"
+    },
+    {
+      "id": "title-generator",
+      "role": "title_generator",
+      "modelRole": "title_generator",
+      "promptId": "title-generator-v1",
+      "completionMode": "structured",
+      "roleManifestId": "title-generator-tools-v1",
+      "modelTools": [],
+      "dynamicToolPrefixes": [],
+      "contextProfileId": "structured-worker-context-v1",
+      "contextStages": [
+        "stable_prompt",
+        "exact_messages",
+        "tool_definitions",
+        "consent_gated_compaction"
+      ],
+      "maxToolCalls": 0,
+      "maxOutputRepairAttempts": 1,
+      "persistenceScope": "conversation"
+    },
+    {
+      "id": "soul-confirmation",
+      "role": "soul_confirmation",
+      "modelRole": "global_memory",
+      "promptId": "soul-confirmation-v1",
+      "completionMode": "structured",
+      "roleManifestId": "soul-confirmation-tools-v1",
+      "modelTools": [],
+      "dynamicToolPrefixes": [],
+      "contextProfileId": "structured-worker-context-v1",
+      "contextStages": [
+        "stable_prompt",
+        "exact_messages",
+        "tool_definitions",
+        "consent_gated_compaction"
+      ],
+      "maxToolCalls": 0,
+      "maxOutputRepairAttempts": 1,
+      "persistenceScope": "global"
+    },
+    {
+      "id": "global-memory",
+      "role": "global_memory",
+      "modelRole": "global_memory",
+      "promptId": "global-memory-v1",
+      "completionMode": "streaming_tools_structured_final",
+      "roleManifestId": "global-memory-tools-v1",
+      "modelTools": [
+        "current_time",
+        "trace_retrieve",
+        "projects",
+        "tool_docs",
+        "skills",
+        "memory_notes",
+        "read_memory_journal",
+        "soul",
+        "user_profile",
+        "edit_files"
+      ],
+      "dynamicToolPrefixes": [],
+      "contextProfileId": "structured-worker-context-v1",
+      "contextStages": [
+        "stable_prompt",
+        "exact_messages",
+        "tool_definitions",
+        "consent_gated_compaction"
+      ],
+      "maxToolCalls": 60,
+      "maxOutputRepairAttempts": 1,
+      "persistenceScope": "global"
+    },
+    {
+      "id": "socrates-context-compactor",
+      "role": "socrates_context_compactor",
+      "modelRole": "socrates_context_compactor",
+      "promptId": "socrates-context-compactor-v1",
+      "completionMode": "structured",
+      "roleManifestId": "socrates-context-compactor-tools-v1",
+      "modelTools": [],
+      "dynamicToolPrefixes": [],
+      "contextProfileId": "structured-worker-context-v1",
+      "contextStages": [
+        "stable_prompt",
+        "exact_messages",
+        "tool_definitions",
+        "consent_gated_compaction"
+      ],
+      "maxToolCalls": 0,
+      "maxOutputRepairAttempts": 1,
+      "persistenceScope": "conversation"
+    },
+    {
+      "id": "memory-context-compactor",
+      "role": "memory_context_compactor",
+      "modelRole": "memory_context_compactor",
+      "promptId": "memory-context-compactor-v1",
+      "completionMode": "structured",
+      "roleManifestId": "memory-context-compactor-tools-v1",
+      "modelTools": [],
+      "dynamicToolPrefixes": [],
+      "contextProfileId": "structured-worker-context-v1",
+      "contextStages": [
+        "stable_prompt",
+        "exact_messages",
+        "tool_definitions",
+        "consent_gated_compaction"
+      ],
+      "maxToolCalls": 0,
+      "maxOutputRepairAttempts": 1,
+      "persistenceScope": "global"
+    },
+    {
+      "id": "context-anchor-repair",
+      "role": "context_anchor_repair",
+      "modelRole": "context_anchor_repair",
+      "promptId": "context-anchor-repair-v1",
+      "completionMode": "structured",
+      "roleManifestId": "context-anchor-repair-tools-v1",
+      "modelTools": [],
+      "dynamicToolPrefixes": [],
+      "contextProfileId": "structured-worker-context-v1",
+      "contextStages": [
+        "stable_prompt",
+        "exact_messages",
+        "tool_definitions",
+        "consent_gated_compaction"
+      ],
+      "maxToolCalls": 0,
+      "maxOutputRepairAttempts": 1,
+      "persistenceScope": "none"
+    }
+  ],
+  "executionOwners": [
+    {
+      "id": "socrates-main",
+      "path": "packages/core/src/agent/SocratesAgent.ts",
+      "definitionId": "socrates-main",
+      "status": "canonical"
+    },
+    {
+      "id": "skill-writer",
+      "path": "apps/server/src/services/store/skillWriterAgentRunner.ts",
+      "definitionId": "skill-writer",
+      "status": "canonical"
+    },
+    {
+      "id": "global-memory",
+      "path": "apps/server/src/services/store/memoryAgentRunner.ts",
+      "definitionId": "global-memory",
+      "status": "canonical"
+    },
+    {
+      "id": "context-compressor",
+      "path": "packages/core/src/agent/CompressorAgent.ts",
+      "definitionId": "socrates-context-compactor,memory-context-compactor,context-anchor-repair",
+      "status": "canonical"
+    },
+    {
+      "id": "title-generator",
+      "path": "packages/core/src/agent/TitleGeneratorAgent.ts",
+      "definitionId": "title-generator",
+      "status": "canonical"
+    },
+    {
+      "id": "soul-confirmation",
+      "path": "packages/core/src/agent/SoulConfirmationAgent.ts",
+      "definitionId": "soul-confirmation",
+      "status": "canonical"
+    },
+    {
+      "id": "legacy-goal-router",
+      "path": "packages/core/src/agent/GoalRouterAgent.ts",
+      "definitionId": null,
+      "status": "legacy_remove_with_goal_lifecycle"
+    },
+    {
+      "id": "legacy-memory-router",
+      "path": "packages/core/src/agent/MemoryRouterAgent.ts",
+      "definitionId": null,
+      "status": "legacy_remove_with_memory_selection"
+    }
+  ]
+}

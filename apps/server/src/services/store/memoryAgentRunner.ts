@@ -1,13 +1,18 @@
 import {
-  memoryAgentJournalOutputSchema,
   type MemoryAgentJournalOutput,
   type ProviderId,
   type RuntimeConfig,
   type ThinkingEffort,
   type WorkerModelSettings,
 } from "@socrates/contracts"
-import { AgentRuntime, buildMemoryAgentSystemPrompt, createMemoryToolRegistry } from "@socrates/core"
+import {
+  AgentInstance,
+  buildMemoryAgentSystemPrompt,
+  createMemoryToolRegistry,
+  globalMemoryAgentDefinition,
+} from "@socrates/core"
 import type { ModelEvent, ModelProvider, ModelUsage } from "@socrates/providers"
+import { SocratesError } from "@socrates/shared"
 import { createMemoryAgentToolExecutors, type MemoryAgentToolCallbacks } from "./memoryAgentToolExecutors"
 
 const MEMORY_AGENT_RUNTIME_CONFIG = (input: MemoryAgentModelSettings): RuntimeConfig => ({
@@ -52,17 +57,15 @@ export type MemoryAgentRunResult = {
 
 export const runMemoryAgentTurn = async (input: MemoryAgentRunInput): Promise<MemoryAgentRunResult> => {
   const runtimeConfig = MEMORY_AGENT_RUNTIME_CONFIG(input.modelSettings)
-  return new AgentRuntime().run({
+  const result = await new AgentInstance(globalMemoryAgentDefinition).run({
     provider: input.provider,
     providerId: input.modelSettings.providerId,
     modelId: input.modelSettings.modelId,
     runtimeConfig,
-    system: buildMemoryAgentSystemPrompt({ socratesHome: input.socratesHome }),
+    promptContext: { system: buildMemoryAgentSystemPrompt({ socratesHome: input.socratesHome }) },
     userContent: input.evidence,
-    completion: { mode: "structured", schema: memoryAgentJournalOutputSchema },
     toolRegistry: createMemoryToolRegistry(),
     toolExecutors: createMemoryAgentToolExecutors(input.tools),
-    maxToolCalls: 60,
     projectId: input.projectId,
     conversationId: input.conversationId,
     sessionId: input.sessionId,
@@ -91,4 +94,8 @@ export const runMemoryAgentTurn = async (input: MemoryAgentRunInput): Promise<Me
     ...(input.onModelEvent ? { onModelEvent: input.onModelEvent } : {}),
     ...(input.onToolResult ? { onToolResult: input.onToolResult } : {}),
   })
+  if (result.mode === "text") {
+    throw new SocratesError("agent_completion_mode_mismatch", "Global Memory Agent returned text instead of its structured contract.")
+  }
+  return { output: result.output, toolCalls: result.toolCalls, usages: result.usages }
 }

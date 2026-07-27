@@ -34,6 +34,8 @@ jobs:
           pnpm --filter @socrates/workspace typecheck
           pnpm --filter @socrates/core typecheck
           pnpm --filter @socrates/server typecheck
+      - name: Enforce shared agent architecture
+        run: pnpm check:agent-architecture
       - name: Test shell contracts
         run: |
           pnpm --filter @socrates/contracts test

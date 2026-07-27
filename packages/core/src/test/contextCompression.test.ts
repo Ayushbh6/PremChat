@@ -4,11 +4,10 @@ import {
   SOCRATES_COMPRESSOR_SYSTEM_PROMPT,
   buildCompressorUserMessageContent,
   type CompleteCompactionSnapshotInput,
-  precomputeContextSnapshot,
-  prepareContextForModelCall,
   type ContextCompactionSummary,
   type StartCompactionSnapshotInput,
 } from "../index"
+import { precomputeContextSnapshot, prepareContextForModelCall } from "../context/contextCompression"
 import type { ChatCompaction, MemoryCompaction } from "@socrates/contracts"
 import type { ModelProvider, ModelRequest, StructuredModelRequest, StructuredModelResult } from "@socrates/providers"
 

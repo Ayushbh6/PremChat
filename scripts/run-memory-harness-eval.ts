@@ -10,6 +10,7 @@ import {
   ToolRegistry,
   buildSocratesSystemPrompt,
   buildSocratesCompressorUserContent,
+  defineAgent,
   renderChatCompactionMarkdown,
   type CompressorAgentModel,
   type CompressorTurnInput,
@@ -43,6 +44,24 @@ type EvalConfig = {
   rounds: number
 }
 type DownstreamSeed = { finalSummary: string; rounds: unknown[] }
+
+const memoryHarnessAgentDefinition = defineAgent<{ system: string }, string>({
+  id: "memory-harness-evaluation",
+  role: "memory_harness_evaluation",
+  modelRole: "evaluation",
+  prompt: { id: "memory-harness-evaluation-v1", buildSystem: (context) => context.system },
+  completion: { mode: "text" },
+  roleManifest: {
+    id: "memory-harness-evaluation-tools-v1",
+    modelTools: ["trace_retrieve", "read", "project_docs"],
+  },
+  contextProfile: {
+    id: "memory-harness-evaluation-context-v1",
+    stages: ["stable_prompt", "exact_messages", "tool_definitions", "consent_gated_compaction"],
+  },
+  limits: { maxToolCalls: 8 },
+  persistenceScope: "none",
+})
 
 const args = new Set(process.argv.slice(1))
 const live = args.has("--live")
@@ -170,7 +189,8 @@ async function runConfiguration(baseProvider: ModelProvider, evalConfig: EvalCon
 
 async function runDownstreamHarness(provider: ModelProvider, evalConfig: EvalConfig, summary: string, golden: GoldenDataset) {
   const registry = new ToolRegistry([traceRetrieveTool, readTool, projectDocsTool])
-  const agent = new SocratesAgent(provider, registry)
+  const promptContext = { system: buildSocratesSystemPrompt() }
+  const agent = new SocratesAgent(provider, registry, memoryHarnessAgentDefinition, promptContext)
   let answer = ""
   const tools: string[] = []
   const attachmentPath = ".socrates/attachments/pasted-text-eval.txt"
@@ -250,7 +270,6 @@ async function runDownstreamHarness(provider: ModelProvider, evalConfig: EvalCon
     providerId: evalConfig.model.providerId,
     modelId: evalConfig.model.modelId,
     runtimeConfig,
-    systemPromptOverride: buildSocratesSystemPrompt(),
     messages: [
       { role: "developer", content: `<socrates_internal_context_compaction>\n${summary}\n</socrates_internal_context_compaction>` },
       {
@@ -268,12 +287,11 @@ async function runDownstreamHarness(provider: ModelProvider, evalConfig: EvalCon
   }
   let freshAnswer = ""
   const freshTools: string[] = []
-  const freshAgent = new SocratesAgent(provider, registry)
+  const freshAgent = new SocratesAgent(provider, registry, memoryHarnessAgentDefinition, promptContext)
   for await (const event of freshAgent.streamTurn({
     providerId: evalConfig.model.providerId,
     modelId: evalConfig.model.modelId,
     runtimeConfig,
-    systemPromptOverride: buildSocratesSystemPrompt(),
     messages: [{ role: "user", content: `This is a fresh conversation. Read project memory and report the exact ${completionMarker} marker if the previous work finished.` }],
     workspacePath: os.tmpdir(),
     toolExecutors,

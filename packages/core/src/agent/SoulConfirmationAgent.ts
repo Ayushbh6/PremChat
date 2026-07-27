@@ -1,5 +1,4 @@
 import {
-  soulConfirmationAgentOutputSchema,
   type ProviderAuthMode,
   type ProviderId,
   type RuntimeConfig,
@@ -7,9 +6,11 @@ import {
   type ThinkingEffort,
 } from "@socrates/contracts"
 import type { ModelProvider, ModelUsage } from "@socrates/providers"
-import { buildSoulConfirmationUserContent, SOUL_CONFIRMATION_AGENT_SYSTEM_PROMPT } from "../prompts/soulConfirmationPrompt"
+import { SocratesError } from "@socrates/shared"
+import { buildSoulConfirmationUserContent } from "../prompts/soulConfirmationPrompt"
 import { createSoulConfirmationToolRegistry } from "../tools/registry"
-import { AgentRuntime } from "./AgentRuntime"
+import { AgentInstance } from "./AgentInstance"
+import { soulConfirmationAgentDefinition } from "./agentDefinitions"
 
 export type SoulConfirmationAgentModelSettings = {
   providerId: ProviderId
@@ -40,20 +41,18 @@ export type SoulConfirmationAgentResult = {
 }
 
 export class SoulConfirmationAgent {
-  private readonly runtime = new AgentRuntime()
+  private readonly agent = new AgentInstance(soulConfirmationAgentDefinition)
 
   async run(input: SoulConfirmationAgentInput): Promise<SoulConfirmationAgentResult> {
-    const result = await this.runtime.run({
+    const result = await this.agent.run({
       provider: input.provider,
       providerId: input.modelSettings.providerId,
       modelId: input.modelSettings.modelId,
       runtimeConfig: runtimeConfigFor(input.modelSettings),
-      system: SOUL_CONFIRMATION_AGENT_SYSTEM_PROMPT,
+      promptContext: undefined,
       userContent: buildSoulConfirmationUserContent(input),
-      completion: { mode: "structured", schema: soulConfirmationAgentOutputSchema },
       toolRegistry: createSoulConfirmationToolRegistry(),
       toolExecutors: {},
-      maxToolCalls: 0,
       projectId: input.projectId,
       conversationId: input.conversationId,
       sessionId: input.sessionId,
@@ -63,6 +62,9 @@ export class SoulConfirmationAgent {
       providerRouting: { omitReasoning: true },
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
     })
+    if (result.mode === "text") {
+      throw new SocratesError("agent_completion_mode_mismatch", "Soul Confirmation returned text instead of its structured contract.")
+    }
     return { output: result.output, usages: result.usages }
   }
 }

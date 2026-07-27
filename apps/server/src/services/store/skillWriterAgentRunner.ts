@@ -5,7 +5,13 @@ import type {
   ThinkingEffort,
   WorkerModelSettings,
 } from "@socrates/contracts"
-import { buildSkillWriterSystemPrompt, createSkillWriterToolRegistry, SocratesAgent, type SocratesAgentEvent } from "@socrates/core"
+import {
+  buildSkillWriterSystemPrompt,
+  createSkillWriterToolRegistry,
+  skillWriterAgentDefinition,
+  SocratesAgent,
+  type SocratesAgentEvent,
+} from "@socrates/core"
 import type { ModelProvider } from "@socrates/providers"
 import { createSkillWriterToolExecutors, type SkillWriterToolCallbacks } from "./skillWriterToolExecutors"
 
@@ -47,12 +53,17 @@ export type SkillWriterRunInput = {
 }
 
 export const runSkillWriterTurn = async (input: SkillWriterRunInput): Promise<string> => {
-  const agent = new SocratesAgent(input.provider, createSkillWriterToolRegistry())
   const runtimeConfig = SKILL_WRITER_RUNTIME_CONFIG(input.modelSettings)
   const systemPrompt = buildSkillWriterSystemPrompt({
     socratesHome: input.socratesHome,
     ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
   })
+  const agent = new SocratesAgent(
+    input.provider,
+    createSkillWriterToolRegistry(),
+    skillWriterAgentDefinition,
+    { system: systemPrompt },
+  )
   const task = [
     "# Approved Skill Writer Task",
     `scope: ${input.scope}`,
@@ -80,7 +91,6 @@ export const runSkillWriterTurn = async (input: SkillWriterRunInput): Promise<st
     runtimeConfig,
     completionMode: "worker_text",
     messages: [{ role: "user", content: task }],
-    systemPromptOverride: systemPrompt,
     workspacePath: input.workspacePath ?? input.socratesHome,
     toolExecutors: createSkillWriterToolExecutors(input.tools),
     requestApproval: async () => ({

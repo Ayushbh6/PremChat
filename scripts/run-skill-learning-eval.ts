@@ -10,7 +10,14 @@ import type {
   ThinkingEffort,
   TraceRetrieveGlobalToolInput,
 } from "@socrates/contracts"
-import { buildSocratesSystemPrompt, SocratesAgent, type SocratesAgentEvent, type ToolExecutors } from "@socrates/core"
+import {
+  buildSocratesSystemPrompt,
+  createDefaultToolRegistry,
+  socratesMainAgentDefinition,
+  SocratesAgent,
+  type SocratesAgentEvent,
+  type ToolExecutors,
+} from "@socrates/core"
 import {
   DeepSeekChatProvider,
   type EmbeddingProvider,
@@ -528,7 +535,18 @@ const evaluationJournalSnapshots = (handle: DatabaseHandle): Array<Record<string
   }))
 
 const runHeldoutUse = async (sandbox: Sandbox, candidate: EvalConfig, prompt: string, modelProvider: ModelProvider, signalWords?: string[]) => {
-  const agent = new SocratesAgent(modelProvider)
+  const agent = new SocratesAgent(
+    modelProvider,
+    createDefaultToolRegistry(),
+    socratesMainAgentDefinition,
+    {
+      system: buildSocratesSystemPrompt({
+        userDisplayName: "Evaluation User",
+        projectName: "Skill Learning Evaluation",
+        projectDescription: "Isolated behavioral-learning validation.",
+      }),
+    },
+  )
   const operations: string[] = []
   let answer = ""
   const unavailable = async (): Promise<never> => { throw new SocratesError("eval_tool_unavailable", "This tool is intentionally unavailable in the held-out read-only evaluation.", { recoverable: true }) }
@@ -563,7 +581,6 @@ const runHeldoutUse = async (sandbox: Sandbox, candidate: EvalConfig, prompt: st
     modelId: candidate.modelId,
     runtimeConfig: runtimeConfig(candidate),
     messages: [{ role: "user", content: prompt }],
-    systemPromptOverride: buildSocratesSystemPrompt({ userDisplayName: "Evaluation User", projectName: "Skill Learning Evaluation", projectDescription: "Isolated behavioral-learning validation." }),
     workspacePath: sandbox.workspacePath,
     toolExecutors: executors,
     requestApproval: async () => ({ decision: "rejected", reason: "Held-out evaluation is read-only." }),

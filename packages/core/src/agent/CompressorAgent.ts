@@ -1,5 +1,4 @@
 import {
-  anchorRepairSchema,
   chatCompactionDraftSchema,
   chatCompactionSchema,
   memoryCompactionDraftSchema,
@@ -13,7 +12,15 @@ import type { ProviderAuthMode, ProviderId, ThinkingEffort } from "@socrates/con
 import { SocratesError } from "@socrates/shared"
 import { SOCRATES_ANCHOR_REPAIR_SYSTEM_PROMPT } from "../prompts/socratesCompressorPrompt"
 import { createCompressorToolRegistry } from "../tools/registry"
-import { AgentRuntime } from "./AgentRuntime"
+import { AgentInstance } from "./AgentInstance"
+import type { AgentDefinition } from "./AgentDefinition"
+import type { AgentRuntimeStructuredResult } from "./AgentRuntime"
+import {
+  anchorRepairAgentDefinition,
+  chatCompressorAgentDefinition,
+  memoryCompressorAgentDefinition,
+  type DynamicSystemPromptContext,
+} from "./agentDefinitions"
 
 export type CompressorAgentMode = "chat" | "memory"
 
@@ -105,7 +112,17 @@ export class CompressorAgent {
     maxOutputRepairAttempts: number,
   ): Promise<CompressorAgentResult> {
     const schemas = schemasForMode(input.mode)
-    const generated = await this.runStructured<unknown>(input, model, input.system, input.userContent, schemas.draft, maxOutputRepairAttempts)
+    const definition = (input.mode === "chat"
+      ? chatCompressorAgentDefinition
+      : memoryCompressorAgentDefinition) as AgentDefinition<DynamicSystemPromptContext, unknown>
+    const generated = await this.runStructured(
+      input,
+      model,
+      definition,
+      input.system,
+      input.userContent,
+      maxOutputRepairAttempts,
+    )
 
     const strict = schemas.strict.safeParse(generated.output)
     if (strict.success) {
@@ -134,6 +151,7 @@ export class CompressorAgent {
     const repaired = await this.runStructured(
       input,
       model,
+      anchorRepairAgentDefinition,
       SOCRATES_ANCHOR_REPAIR_SYSTEM_PROMPT,
       [
         "# Source Text",
@@ -142,7 +160,6 @@ export class CompressorAgent {
         "# Bad Anchors",
         JSON.stringify(anchorValue(generated.output), null, 2),
       ].join("\n"),
-      anchorRepairSchema,
       1,
     )
     const repairedOutput = { ...recordOrEmpty(generated.output), anchors: repaired.output.anchors }
@@ -171,31 +188,31 @@ export class CompressorAgent {
   private runStructured<TOutput>(
     input: CompressorAgentRunInput,
     model: CompressorAgentModel,
+    definition: AgentDefinition<DynamicSystemPromptContext, TOutput>,
     system: string,
     userContent: string,
-    schema: {
-      safeParse(value: unknown):
-        | { success: true; data: TOutput }
-        | { success: false; error: { flatten(): unknown } }
-    },
     maxOutputRepairAttempts: number,
-  ) {
-    return new AgentRuntime().run({
+  ): Promise<AgentRuntimeStructuredResult<TOutput>> {
+    return new AgentInstance(definition).run({
       provider: input.provider,
       providerId: model.providerId,
       modelId: model.modelId,
       runtimeConfig: compressorRuntimeConfig(model),
-      system,
+      promptContext: { system },
       userContent,
-      completion: { mode: "structured", schema, maxOutputRepairAttempts },
       toolRegistry: createCompressorToolRegistry(),
       toolExecutors: {},
-      maxToolCalls: 0,
+      maxOutputRepairAttempts,
       projectId: input.projectId,
       conversationId: input.conversationId,
       sessionId: input.sessionId,
       turnId: input.turnId,
       workspacePath: input.workspacePath,
+    }).then((result) => {
+      if (result.mode === "text") {
+        throw new SocratesError("agent_completion_mode_mismatch", "Compressor returned text instead of its structured contract.")
+      }
+      return result
     })
   }
 }
@@ -321,12 +338,10 @@ const assertAnchorTurnsAllowed = (output: { anchors: string[] }, allowedTurnNumb
 const schemasForMode = (mode: CompressorAgentMode) =>
   mode === "chat"
     ? {
-        draft: chatCompactionDraftSchema,
         strict: chatCompactionSchema,
         rest: chatCompactionDraftSchema,
       }
     : {
-        draft: memoryCompactionDraftSchema,
         strict: memoryCompactionSchema,
         rest: memoryCompactionDraftSchema,
       }

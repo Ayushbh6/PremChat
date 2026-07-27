@@ -15,11 +15,54 @@ export {
 } from "./agent/CompressorAgent"
 export {
   AgentRuntime,
+  type AgentRuntimeResult,
   type AgentRuntimeStructuredInput,
   type AgentRuntimeStructuredResult,
   type AgentRuntimeTextInput,
   type AgentRuntimeTextResult,
 } from "./agent/AgentRuntime"
+export {
+  AgentInstance,
+  type AgentInstanceInput,
+} from "./agent/AgentInstance"
+export {
+  assertRoleManifestMatchesTools,
+  defineAgent,
+  defineContextProfile,
+  defineRoleManifest,
+  describeAgentDefinition,
+  type AgentCompletionDefinition,
+  type AgentContextStage,
+  type AgentDefinition,
+  type AgentDefinitionInventoryEntry,
+  type AgentLimits,
+  type AgentPersistenceScope,
+  type AgentPromptDefinition,
+  type AgentStructuredOutputSchema,
+  type ContextProfile,
+  type RoleManifest,
+} from "./agent/AgentDefinition"
+export {
+  ContextPipeline,
+  type AgentContextPipeline,
+  type ContextPipelinePrecomputeInput,
+  type ContextPipelinePrecomputeResult,
+  type ContextPipelinePrepareInput,
+  type ContextPipelinePrepareResult,
+} from "./agent/ContextPipeline"
+export {
+  anchorRepairAgentDefinition,
+  chatCompressorAgentDefinition,
+  globalMemoryAgentDefinition,
+  memoryCompressorAgentDefinition,
+  phaseOneAgentDefinitionInventory,
+  phaseOneAgentDefinitions,
+  skillWriterAgentDefinition,
+  socratesMainAgentDefinition,
+  soulConfirmationAgentDefinition,
+  titleGeneratorAgentDefinition,
+  type DynamicSystemPromptContext,
+} from "./agent/agentDefinitions"
 export {
   MemoryRouterAgent,
   type MemoryRouterAgentModelSettings,
@@ -57,8 +100,6 @@ export {
   buildCompressorUserMessageContent,
   estimateModelContextTokens,
   estimateTokens,
-  prepareContextForModelCall,
-  precomputeContextSnapshot,
   type CompleteCompactionSnapshotInput,
   type ContextCompactionLifecycleEvent,
   type ContextCompactionSummary,

@@ -84,11 +84,6 @@ for await (const event of agent.streamTurn({
     role: "user",
     content: `Return the exact integrity marker ${integrityMarker} and mark this acceptance task completed.`,
   }],
-  systemPromptOverride: [
-    "You are Socrates running a final-answer integrity acceptance check.",
-    `The substantive answer must preserve the exact marker ${integrityMarker}.`,
-    "Follow every reconciliation and strict-final checkpoint. Do not add tools or invent evidence.",
-  ].join(" "),
   activeGoal: {
     goalId: "phase6_goal",
     title: "Verify final-answer integrity",

@@ -20,8 +20,6 @@ import {
 import { createId, SocratesError } from "@socrates/shared"
 import type { ModelEvent, ModelMessage, ModelMessagePart, ModelProvider, TokenCountResult } from "@socrates/providers"
 import {
-  prepareContextForModelCall,
-  precomputeContextSnapshot,
   type ContextCompactionLifecycleEvent,
   type ContextCompressionRuntime,
 } from "../context/contextCompression"
@@ -36,6 +34,13 @@ import {
   type MemoryRouterRunRecord,
 } from "./MemoryRouterAgent"
 import { AgentRuntime } from "./AgentRuntime"
+import {
+  assertRoleManifestAllowsDynamicTools,
+  assertRoleManifestMatchesTools,
+  type AgentDefinition,
+} from "./AgentDefinition"
+import { ContextPipeline } from "./ContextPipeline"
+import { socratesMainAgentDefinition, type DynamicSystemPromptContext } from "./agentDefinitions"
 import { buildSocratesFinalAnswerCheckpoint, buildSocratesReconciliationCheckpoint } from "../prompts/socratesFinalAnswerPrompt"
 import { prepareTurnContext, renderResolvedTurnContext } from "./prepareTurnContext"
 import { SocratesTurnLifecycle } from "./SocratesTurnLifecycle"
@@ -83,7 +88,6 @@ export type SocratesAgentTurnInput = {
   frontierModelSettings?: FrontierModelSettings
   messages: ModelMessage[]
   promptContext?: SocratesPromptContext
-  systemPromptOverride?: string
   workspacePath?: string
   toolExecutors?: ToolExecutors
   createModelCall?: (input: {
@@ -155,22 +159,40 @@ export type SocratesAgentEvent =
 
 export class SocratesAgent {
   private readonly memoryRouterAgent: MemoryRouterAgent
-  private readonly runtime = new AgentRuntime()
+  private readonly contextPipeline = new ContextPipeline()
+  private readonly runtime = new AgentRuntime(this.contextPipeline)
   private readonly turnLifecycle: SocratesTurnLifecycle
+  private readonly definition: AgentDefinition<DynamicSystemPromptContext, unknown>
+  private readonly definitionPromptContext: DynamicSystemPromptContext
 
   constructor(
     private readonly provider: ModelProvider,
     private readonly toolRegistry: ToolRegistry = createDefaultToolRegistry(),
+    definition?: AgentDefinition<DynamicSystemPromptContext, unknown>,
+    definitionPromptContext?: DynamicSystemPromptContext,
   ) {
+    this.definition = definition ?? socratesMainAgentDefinition
+    this.definitionPromptContext = definitionPromptContext ?? { system: buildSocratesSystemPrompt() }
+    try {
+      assertRoleManifestMatchesTools(
+        this.definition,
+        toolRegistry.list().map((tool) => tool.name),
+      )
+    } catch (error) {
+      throw new SocratesError(
+        "agent_role_manifest_mismatch",
+        error instanceof Error ? error.message : String(error),
+      )
+    }
     this.memoryRouterAgent = new MemoryRouterAgent(provider)
     this.turnLifecycle = new SocratesTurnLifecycle(provider, toolRegistry, this.memoryRouterAgent)
   }
 
   async precomputeContext(input: SocratesAgentContextPrecomputeInput): Promise<ContextCompactionLifecycleEvent[]> {
-    const system = buildSocratesSystemPrompt()
+    const system = this.definition.prompt.buildSystem(this.definitionPromptContext)
     const messages = [...input.messages]
     insertDynamicPromptContext(messages, input.promptContext)
-    return precomputeContextSnapshot({
+    return this.contextPipeline.precompute({
       provider: this.provider,
       providerId: input.providerId,
       modelId: input.modelId,
@@ -182,10 +204,21 @@ export class SocratesAgent {
   }
 
   async *streamTurn(input: SocratesAgentTurnInput): AsyncIterable<SocratesAgentEvent> {
-    const system = input.systemPromptOverride ?? buildSocratesSystemPrompt()
+    const system = this.definition.prompt.buildSystem(this.definitionPromptContext)
     const messages: ModelMessage[] = [...input.messages]
     const toolOutputDispositions = new ToolOutputDispositionLedger(messages)
-    const maxToolCallsPerTurn = input.maxToolCallsPerTurn ?? 80
+    if (
+      input.maxToolCallsPerTurn !== undefined
+      && (!Number.isInteger(input.maxToolCallsPerTurn)
+        || input.maxToolCallsPerTurn < 0
+        || input.maxToolCallsPerTurn > this.definition.limits.maxToolCalls)
+    ) {
+      throw new SocratesError(
+        "agent_tool_budget_invalid",
+        `Agent ${this.definition.id} tool budget must be between 0 and ${this.definition.limits.maxToolCalls}.`,
+      )
+    }
+    const maxToolCallsPerTurn = input.maxToolCallsPerTurn ?? this.definition.limits.maxToolCalls
     const maxConfirmedToolErrorsPerTurn = input.maxConfirmedToolErrorsPerTurn ?? 10
     const maxParallelToolCalls = input.maxParallelToolCalls ?? 5
     let usedToolCalls = 0
@@ -271,6 +304,17 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
         await persistReconciliationWatermark()
       }
       const dynamicTools = typeof input.dynamicTools === "function" ? input.dynamicTools() : input.dynamicTools
+      try {
+        assertRoleManifestAllowsDynamicTools(
+          this.definition,
+          (dynamicTools ?? []).map((tool) => tool.name),
+        )
+      } catch (error) {
+        throw new SocratesError(
+          "agent_role_manifest_mismatch",
+          error instanceof Error ? error.message : String(error),
+        )
+      }
       const handoverAvailable = Boolean(
         input.completionMode === "main_structured" &&
           !finalCheckpointSent &&
@@ -340,7 +384,7 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
       const compactionStartedEvents = new AsyncEventQueue<ContextCompactionLifecycleEvent>()
       const preparedContextPromise = (async () => {
         try {
-          return await prepareContextForModelCall({
+          return await this.contextPipeline.prepare({
             provider: this.provider,
             providerId: currentProviderId,
             modelId: currentModelId,
