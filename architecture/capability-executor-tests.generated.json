@@ -421,69 +421,43 @@
       "status": "canonical"
     },
     {
-      "id": "legacy.tool.goal_search",
-      "kind": "model_tool",
-      "executorBinding": "goal_search",
-      "implementationPath": "apps/server/src/services/v2/flowStore.ts",
-      "callers": [
-        "packages/core/src/agent/GoalRouterAgent.ts"
-      ],
-      "tests": [
-        "packages/core/src/test/v2FlowCore.test.ts"
-      ],
-      "status": "legacy_remove_with_goal_lifecycle"
-    },
-    {
-      "id": "legacy.tool.memory_search",
-      "kind": "model_tool",
-      "executorBinding": "memory_search",
-      "implementationPath": "apps/server/src/services/store/memoryStore.ts",
-      "callers": [
-        "packages/core/src/agent/MemoryRouterAgent.ts"
-      ],
-      "tests": [
-        "packages/core/src/test/MemoryRouterAgent.test.ts"
-      ],
-      "status": "legacy_remove_with_memory_selection"
-    },
-    {
       "id": "retrieval.goal_candidates",
       "kind": "automatic_retrieval",
       "executorBinding": "retrieval.goal_candidates",
-      "implementationPath": "apps/server/src/v2/goalRoutingCoordinator.ts",
+      "implementationPath": "apps/server/src/services/turn/turnCandidateRetrieval.ts",
       "callers": [
-        "apps/server/src/v2/goalRoutingCoordinator.ts"
+        "apps/server/src/services/turn/turnCandidateRetrieval.ts"
       ],
       "tests": [
         "apps/server/src/test/v2FlowRuntime.test.ts"
       ],
-      "status": "migration_compatibility"
+      "status": "canonical"
     },
     {
       "id": "retrieval.memory_candidates",
       "kind": "automatic_retrieval",
       "executorBinding": "retrieval.memory_candidates",
-      "implementationPath": "apps/server/src/services/retrieval/retrievalStore.ts",
+      "implementationPath": "apps/server/src/services/turn/turnCandidateRetrieval.ts",
       "callers": [
-        "apps/server/src/services/retrieval/retrievalStore.ts"
+        "apps/server/src/services/turn/turnCandidateRetrieval.ts"
       ],
       "tests": [
         "apps/server/src/test/v2FlowRuntime.test.ts"
       ],
-      "status": "migration_compatibility"
+      "status": "canonical"
     },
     {
       "id": "authority.memory_selection",
       "kind": "deterministic_authority",
       "executorBinding": "memory.select_exact",
-      "implementationPath": "packages/core/src/agent/prepareTurnContext.ts",
+      "implementationPath": "packages/core/src/retrieval/deterministicMemorySelection.ts",
       "callers": [
-        "packages/core/src/agent/prepareTurnContext.ts"
+        "packages/core/src/retrieval/deterministicMemorySelection.ts"
       ],
       "tests": [
         "apps/server/src/test/v2FlowRuntime.test.ts"
       ],
-      "status": "legacy_remove_with_memory_selection"
+      "status": "canonical"
     },
     {
       "id": "authority.goal_ledger",

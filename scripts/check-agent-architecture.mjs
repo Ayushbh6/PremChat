@@ -28,8 +28,6 @@ const executionOwners = [
   { id: "context-compressor", path: "packages/core/src/agent/CompressorAgent.ts", definitionId: "socrates-context-compactor,memory-context-compactor,context-anchor-repair", status: "canonical" },
   { id: "title-generator", path: "packages/core/src/agent/TitleGeneratorAgent.ts", definitionId: "title-generator", status: "canonical" },
   { id: "soul-confirmation", path: "packages/core/src/agent/SoulConfirmationAgent.ts", definitionId: "soul-confirmation", status: "canonical" },
-  { id: "legacy-goal-router", path: "packages/core/src/agent/GoalRouterAgent.ts", definitionId: null, status: "legacy_remove_with_goal_lifecycle" },
-  { id: "legacy-memory-router", path: "packages/core/src/agent/MemoryRouterAgent.ts", definitionId: null, status: "legacy_remove_with_memory_selection" },
 ]
 
 const roleMatrix = definitions.map((definition) => {
@@ -101,7 +99,7 @@ for (const [path, content] of generatedFiles) await writeOrCheck(path, content)
 assertUnique(definitions.map((definition) => definition.id), "Agent definition ids")
 assertUnique(capabilities.map((capability) => capability.id), "Capability ids")
 assertUnique(commands.map((command) => command.executorBinding), "Typed user command bindings")
-if (modelTools.length !== 30) throw new Error(`Expected 30 static model-tool capabilities, found ${modelTools.length}.`)
+if (modelTools.length !== 28) throw new Error(`Expected 28 static model-tool capabilities, found ${modelTools.length}.`)
 if (commands.length !== 24) throw new Error(`Expected 24 typed user-command capabilities, found ${commands.length}.`)
 for (const kind of ["model_tool", "automatic_retrieval", "structured_worker", "context_stage", "deterministic_authority", "typed_user_command"]) {
   if (!capabilities.some((capability) => capability.kind === kind)) throw new Error(`Capability kind ${kind} is missing.`)

@@ -767,8 +767,6 @@
                             "mcp_registry",
                             "memory_note",
                             "memory_notes",
-                            "memory_search",
-                            "goal_search",
                             "read_memory_journal",
                             "skill_write",
                             "skill_manager",
@@ -1170,8 +1168,6 @@
                             "mcp_registry",
                             "memory_note",
                             "memory_notes",
-                            "memory_search",
-                            "goal_search",
                             "read_memory_journal",
                             "skill_write",
                             "skill_manager",
@@ -3089,83 +3085,6 @@
         },
         "required": [
           "decisions"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "capabilityId": "legacy.tool.goal_search",
-      "name": "goal_search",
-      "schema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 500
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "lexical",
-              "semantic",
-              "combined"
-            ],
-            "default": "combined"
-          },
-          "limit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 3,
-            "default": 3
-          }
-        },
-        "required": [
-          "query"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "capabilityId": "legacy.tool.memory_search",
-      "name": "memory_search",
-      "schema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 1000
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "lexical",
-              "semantic",
-              "combined"
-            ],
-            "default": "combined"
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "global",
-              "project",
-              "all"
-            ],
-            "default": "all"
-          },
-          "limit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 8,
-            "default": 8
-          }
-        },
-        "required": [
-          "query"
         ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"

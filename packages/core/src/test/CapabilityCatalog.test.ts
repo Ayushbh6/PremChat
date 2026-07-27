@@ -38,7 +38,7 @@ describe("CapabilityCatalog", () => {
       (capability): capability is ModelToolCapabilityDefinition => capability.kind === "model_tool",
     )
 
-    expect(tools).toHaveLength(30)
+    expect(tools).toHaveLength(28)
     for (const capability of tools) {
       expect(capability.providerProjection.inputSchema).toBe(capability.tool.inputSchema)
       expect(capability.providerProjection.resultSchema).toBe(capability.tool.resultSchema)

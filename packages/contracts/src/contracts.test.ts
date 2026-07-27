@@ -147,8 +147,8 @@ import {
   memoryNoteToolOutputSchema,
   memoryNotesToolInputSchema,
   memoryNotesToolOutputSchema,
-  memoryRouterPreTurnResultSchema,
-  memorySearchOutputSchema,
+  memoryCandidateRetrievalSchema,
+  goalCandidateRetrievalSchema,
   baseToolNameSchema,
   mcpRegistryToolInputSchema,
   mcpRegistryToolOutputSchema,
@@ -1777,7 +1777,7 @@ describe("tool contracts", () => {
       }).success,
     ).toBe(true)
     expect(workerModelSettingsParamsSchema.safeParse({ workerId: "skill_writer" }).success).toBe(true)
-    expect(workerModelSettingsParamsSchema.safeParse({ workerId: "memory_router" }).success).toBe(true)
+    expect(workerModelSettingsParamsSchema.safeParse({ workerId: "memory_router" }).success).toBe(false)
     expect(workerModelSettingsParamsSchema.safeParse({ workerId: "frontier" }).success).toBe(true)
     expect(workerModelSettingsParamsSchema.safeParse({ workerId: "unknown" }).success).toBe(false)
     expect(frontierHandoverToolInputSchema.safeParse({}).success).toBe(true)
@@ -1817,7 +1817,7 @@ describe("tool contracts", () => {
     }
     expect(listWorkerModelSettingsResponseSchema.safeParse({ settings: [workerSetting] }).success).toBe(true)
     expect(updateWorkerModelSettingsResponseSchema.safeParse({ settings: workerSetting }).success).toBe(true)
-    expect(workerModelRoleSchema.safeParse("goal_router").success).toBe(true)
+    expect(workerModelRoleSchema.safeParse("goal_router").success).toBe(false)
     expect(workerModelRoleSchema.safeParse("socrates_context_compactor").success).toBe(true)
     expect(workerModelRoleSchema.safeParse("memory_context_compactor").success).toBe(true)
     expect(workerModelRoleSchema.safeParse("context_compactor").success).toBe(false)
@@ -2013,7 +2013,7 @@ describe("tool contracts", () => {
     ).toBe(true)
   })
 
-  it("validates the clean project trace and exact memory-routing contracts", () => {
+  it("validates the clean project trace and typed exact-memory candidate contracts", () => {
     expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "lexical", query: "slow mode" }).success).toBe(true)
     expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "lexical", query: "slow mode", scope: "presented_context" }).success).toBe(true)
     expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "combined", query: "slow mode", scope: "current_goal" }).success).toBe(true)
@@ -2029,27 +2029,32 @@ describe("tool contracts", () => {
         totalMatches: 1,
       }).success,
     ).toBe(true)
-    expect(
-      memoryRouterPreTurnResultSchema.safeParse({
-        readTargets: [{ surface: "user_profile", fileName: "user_profile.md", sectionId: "collaboration_style", reason: "Slow mode is a collaboration preference." }],
-        reason: "Read the precise preference and preserve the contract.",
-      }).success,
-    ).toBe(true)
-    expect(
-      memoryRouterPreTurnResultSchema.safeParse({
-        readTargets: [{ surface: "identity", fileName: "user_profile.md", sectionId: "collaboration_style", reason: "wrong owner" }],
-        reason: "invalid",
-      }).success,
-    ).toBe(false)
-    expect(memoryRouterPreTurnResultSchema.safeParse({ readTargets: [], memoryWrites: [], reason: "writes are forbidden" }).success).toBe(false)
     expect(baseToolNameSchema.safeParse("turn_evidence").success).toBe(false)
     expect(baseToolNameSchema.safeParse("focus_ledger").success).toBe(false)
     expect(
-      memorySearchOutputSchema.safeParse({
+      memoryCandidateRetrievalSchema.safeParse({
         results: [{ resultNumber: 1, content: "Slow Mode", surface: "user_profile", fileName: "user_profile.md", sectionId: "collaboration_style", sectionHeading: "Collaboration Style", scope: "global" }],
         totalMatches: 1,
       }).success,
     ).toBe(true)
+    expect(
+      memoryCandidateRetrievalSchema.safeParse({
+        results: [{ resultNumber: 1, content: "Wrong owner", surface: "identity", fileName: "user_profile.md", sectionId: "collaboration_style", sectionHeading: "Collaboration Style", scope: "global" }],
+        totalMatches: 1,
+      }).success,
+    ).toBe(false)
+    expect(
+      goalCandidateRetrievalSchema.safeParse({
+        results: [{ resultNumber: 1, goalId: "goal_1", title: "Ship Phase 3", content: "Goal: Ship Phase 3", occurredAt: timestamp }],
+        totalMatches: 1,
+      }).success,
+    ).toBe(true)
+    expect(
+      goalCandidateRetrievalSchema.safeParse({
+        results: [{ resultNumber: 1, goalId: "", title: "Ship Phase 3", content: "Goal: Ship Phase 3", occurredAt: timestamp }],
+        totalMatches: 1,
+      }).success,
+    ).toBe(false)
     expect(
       socratesFinalAnswerSchema.safeParse({
         finalAnswer: "The verified result is ready.",
@@ -2238,7 +2243,7 @@ describe("V2 Flow standalone contracts", () => {
     expect(v2Flow.v2DeleteGoalResponseSchema.safeParse({ deletedGoalId: "v2goal_2", fallbackGoalId: "v2goal_1", records: 14 }).success).toBe(false)
   })
 
-  it("namespaces Flow worker telemetry and compaction lifecycle events", () => {
+  it("keeps historical router telemetry readable while namespacing current Flow events", () => {
     expect(v2Flow.v2ModelCallRoleSchema.safeParse("memory_router").success).toBe(true)
     expect(v2Flow.v2ModelCallRoleSchema.safeParse("frontier_agent").success).toBe(true)
     const envelope = {

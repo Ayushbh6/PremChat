@@ -87,7 +87,6 @@ export const createMainToolExecutors = (input: MainToolExecutorsInput): ToolExec
         request: toolInput as TraceRetrieveMainToolInput,
       })
     },
-    memory_search: (toolInput) => input.store.searchMemory(input.projectId, toolInput, false),
     tool_docs: async (toolInput) => input.store.runToolDocsTool(input.projectId, toolInput),
     skills: async (toolInput, context) => {
       const output = await input.runtime.runSkills(toolInput, context)

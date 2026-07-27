@@ -225,6 +225,13 @@
       "when": 1785016300010,
       "tag": "0031_shocking_alex_power",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1785157200000,
+      "tag": "0032_remove_router_settings",
+      "breakpoints": true
     }
   ]
 }

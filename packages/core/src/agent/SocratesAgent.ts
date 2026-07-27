@@ -1,25 +1,26 @@
 import {
   frontierHandoverToolOutputSchema,
   normalizedToolCallSchema,
+  socratesGoalResolutionOutputSchema,
   waitToolOutputSchema,
   socratesFinalAnswerSchema,
   type SocratesFinalAnswer,
   type DynamicToolCapabilityRegistration,
-  type MemorySearchInput,
-  type MemorySearchOutput,
   type ModelToolDefinition,
   type NormalizedToolCall,
   type ProviderId,
   type RuntimeConfig,
+  type SocratesGoalResolutionOutput,
   type ResolvedTurnContext,
   type ResolvedTurnContextSeed,
+  type ResolvedTurnMemoryItem,
   type ToolExecutionResult,
   type ToolName,
   type WaitToolOutput,
   type WorkerModelSettings,
 } from "@socrates/contracts"
-import { createId, SocratesError } from "@socrates/shared"
-import type { ModelEvent, ModelMessage, ModelMessagePart, ModelProvider, TokenCountResult } from "@socrates/providers"
+import { createId, normalizeError, nowIso, SocratesError } from "@socrates/shared"
+import type { ModelEvent, ModelMessage, ModelMessagePart, ModelProvider, ModelUsage, TokenCountResult } from "@socrates/providers"
 import {
   type ContextCompactionLifecycleEvent,
   type ContextCompressionRuntime,
@@ -32,16 +33,21 @@ import {
   type CapabilitySet,
 } from "../capabilities/CapabilityCatalog"
 import { buildSocratesSystemPrompt, type SocratesPromptContext } from "../prompts/socratesPrompt"
-import type { ApprovalDecision, ApprovalRequest, CredentialInputDecision, CredentialInputRequest, ToolExecutors, ToolLifecycleEvent } from "../tools/types"
 import {
-  MemoryRouterAgent,
-  type ActiveGoalCard,
-  type MemoryRouterRunRecord,
-} from "./MemoryRouterAgent"
+  buildSocratesGoalResolutionUserContent,
+  SOCRATES_GOAL_RESOLUTION_PHASE_PROMPT,
+  type SocratesGoalResolutionCandidate,
+} from "../prompts/socratesGoalResolutionPrompt"
+import type { ApprovalDecision, ApprovalRequest, CredentialInputDecision, CredentialInputRequest, ToolExecutors, ToolLifecycleEvent } from "../tools/types"
+import type { ActiveGoalCard } from "./goalContext"
 import { AgentRuntime } from "./AgentRuntime"
 import type { AgentDefinition } from "./AgentDefinition"
 import { ContextPipeline } from "./ContextPipeline"
-import { socratesMainAgentDefinition, type DynamicSystemPromptContext } from "./agentDefinitions"
+import {
+  socratesGoalResolutionPhaseManifest,
+  socratesMainAgentDefinition,
+  type DynamicSystemPromptContext,
+} from "./agentDefinitions"
 import { buildSocratesFinalAnswerCheckpoint, buildSocratesReconciliationCheckpoint } from "../prompts/socratesFinalAnswerPrompt"
 import { prepareTurnContext, renderResolvedTurnContext } from "./prepareTurnContext"
 import { SocratesTurnLifecycle } from "./SocratesTurnLifecycle"
@@ -85,7 +91,6 @@ export type SocratesAgentTurnInput = {
   providerId: ProviderId
   modelId: string
   runtimeConfig: RuntimeConfig
-  memoryRouterModelSettings?: MemoryRouterModelSettings
   frontierModelSettings?: FrontierModelSettings
   messages: ModelMessage[]
   promptContext?: SocratesPromptContext
@@ -104,10 +109,9 @@ export type SocratesAgentTurnInput = {
   requestApproval?: (request: ApprovalRequest) => Promise<ApprovalDecision>
   requestCredentialInput?: (request: CredentialInputRequest) => Promise<CredentialInputDecision>
   stableCachePreludeSnapshot?: StableCachePreludeSnapshot
-  recordMemoryRouterRun?: (input: MemoryRouterRunRecord) => void | Promise<void>
-  automaticMemorySearch?: (input: MemorySearchInput) => Promise<MemorySearchOutput>
   activeGoal?: ActiveGoalCard
   resolvedTurnContextSeed?: ResolvedTurnContextSeed
+  resolvedTurnMemory?: readonly ResolvedTurnMemoryItem[]
   completionMode: "main_structured" | "worker_text"
   contextCompression?: ContextCompressionRuntime
   maxToolCallsPerTurn?: number
@@ -129,7 +133,6 @@ export type StableCachePreludeSnapshot = {
   cacheHit?: boolean
 }
 
-export type MemoryRouterModelSettings = Pick<WorkerModelSettings, "providerId" | "authMode" | "modelId" | "thinkingEnabled" | "thinkingEffort">
 export type FrontierModelSettings = Pick<WorkerModelSettings, "providerId" | "authMode" | "modelId" | "thinkingEnabled" | "thinkingEffort">
 
 export type SocratesAgentContextPrecomputeInput = {
@@ -159,7 +162,6 @@ export type SocratesAgentEvent =
     }
 
 export class SocratesAgent {
-  private readonly memoryRouterAgent: MemoryRouterAgent
   private readonly contextPipeline = new ContextPipeline()
   private readonly runtime = new AgentRuntime(this.contextPipeline)
   private readonly turnLifecycle: SocratesTurnLifecycle
@@ -183,8 +185,7 @@ export class SocratesAgent {
         error instanceof Error ? error.message : String(error),
       )
     }
-    this.memoryRouterAgent = new MemoryRouterAgent(provider)
-    this.turnLifecycle = new SocratesTurnLifecycle(provider, this.baseCapabilities, this.memoryRouterAgent)
+    this.turnLifecycle = new SocratesTurnLifecycle(this.baseCapabilities)
   }
 
   async precomputeContext(input: SocratesAgentContextPrecomputeInput): Promise<ContextCompactionLifecycleEvent[]> {
@@ -200,6 +201,101 @@ export class SocratesAgent {
       messages,
       compression: input.contextCompression,
     })
+  }
+
+  async resolveGoal(input: {
+    projectId: string
+    conversationId: string
+    sessionId: string
+    turnId: string
+    workspacePath: string
+    providerId: ProviderId
+    modelId: string
+    runtimeConfig: RuntimeConfig
+    userMessage: string
+    current?: SocratesGoalResolutionCandidate
+    older: readonly SocratesGoalResolutionCandidate[]
+    latestExchange?: import("@socrates/contracts").ResolvedTurnExactExchange
+    clarificationAnswer?: string
+    cacheKey?: string
+    abortSignal?: AbortSignal
+  }): Promise<{
+    decision: SocratesGoalResolutionOutput
+    source: "model" | "fallback"
+    attempt: {
+      providerId: ProviderId
+      modelId: string
+      status: "completed" | "failed"
+      startedAt: string
+      completedAt: string
+      durationMs: number
+      usages: ModelUsage[]
+      error?: { code: string; message: string; recoverable: boolean }
+    }
+  }> {
+    const olderCandidates = new Set(input.older.map((candidate) => candidate.candidate))
+    const schema = socratesGoalResolutionOutputSchema.superRefine((value, context) => {
+      if (value.decision === "current" && input.current === undefined) {
+        context.addIssue({ code: "custom", path: ["decision"], message: "Current requires an available current goal." })
+      }
+      if (value.decision === "older" && !olderCandidates.has(value.candidate)) {
+        context.addIssue({ code: "custom", path: ["candidate"], message: "Older must select a listed older candidate." })
+      }
+    })
+    const startedAt = nowIso()
+    const startedAtMs = Date.now()
+    try {
+      const result = await this.runtime.run({
+        provider: this.provider,
+        providerId: input.providerId,
+        modelId: input.modelId,
+        runtimeConfig: { ...input.runtimeConfig, approvalMode: "read_only_auto", sandboxMode: "read_only" },
+        system: `${this.definition.prompt.buildSystem(this.definitionPromptContext)}\n\n${SOCRATES_GOAL_RESOLUTION_PHASE_PROMPT}`,
+        userContent: buildSocratesGoalResolutionUserContent(input),
+        completion: { mode: "structured", schema, maxOutputRepairAttempts: 1 },
+        capabilitySet: this.catalog.resolve(socratesGoalResolutionPhaseManifest),
+        toolExecutors: {},
+        maxToolCalls: 0,
+        projectId: input.projectId,
+        conversationId: input.conversationId,
+        sessionId: input.sessionId,
+        turnId: input.turnId,
+        workspacePath: input.workspacePath,
+        ...(input.cacheKey ? { cacheKey: input.cacheKey } : {}),
+        ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+      })
+      return {
+        decision: result.output,
+        source: "model",
+        attempt: {
+          providerId: input.providerId,
+          modelId: input.modelId,
+          status: "completed",
+          startedAt,
+          completedAt: nowIso(),
+          durationMs: Date.now() - startedAtMs,
+          usages: result.usages,
+        },
+      }
+    } catch (error) {
+      const normalized = normalizeError(error)
+      return {
+        decision: input.current
+          ? { decision: "current" }
+          : { decision: "clarify", question: "I could not safely determine the right goal. What outcome should I treat this as?" },
+        source: "fallback",
+        attempt: {
+          providerId: input.providerId,
+          modelId: input.modelId,
+          status: "failed",
+          startedAt,
+          completedAt: nowIso(),
+          durationMs: Date.now() - startedAtMs,
+          usages: [],
+          error: { code: normalized.code, message: normalized.message, recoverable: normalized.recoverable },
+        },
+      }
+    }
   }
 
   async *streamTurn(input: SocratesAgentTurnInput): AsyncIterable<SocratesAgentEvent> {
@@ -259,20 +355,17 @@ export class SocratesAgent {
     let reconciliationReminderCount = 0
     let contextDispositionComplianceReminderCount = 0
 
-    const preTurnMemoryLoop = await this.turnLifecycle.runPreTurnMemoryLoop(input, messages, docsLedger)
-    activeGoal = preTurnMemoryLoop.activeGoal ?? activeGoal
-    for (const event of preTurnMemoryLoop.events) {
+    const stablePrelude = await this.turnLifecycle.loadStablePrelude(input, messages, docsLedger)
+    activeGoal = stablePrelude.activeGoal ?? activeGoal
+    for (const event of stablePrelude.events) {
       yield event
     }
-    if (preTurnMemoryLoop.stableCachePreludeMessage) {
-      insertStableCachePrelude(messages, preTurnMemoryLoop.stableCachePreludeMessage)
+    if (stablePrelude.stableCachePreludeMessage) {
+      insertStableCachePrelude(messages, stablePrelude.stableCachePreludeMessage)
     }
     insertDynamicPromptContext(messages, input.promptContext)
-    if (preTurnMemoryLoop.developerMessage) {
-      messages.push({ role: "developer", content: preTurnMemoryLoop.developerMessage })
-    }
     if (input.resolvedTurnContextSeed) {
-      resolvedTurnContext = prepareTurnContext(input.resolvedTurnContextSeed, preTurnMemoryLoop.records)
+      resolvedTurnContext = prepareTurnContext(input.resolvedTurnContextSeed, input.resolvedTurnMemory)
       messages.push({ role: "developer", content: renderResolvedTurnContext(resolvedTurnContext) })
     }
     if (input.toolExecutors && input.workspacePath) {
@@ -283,7 +376,7 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
 </runtime_terminal_capabilities>`,
       })
     }
-    memorySaveLedger.recordMemoryLoopRecords(preTurnMemoryLoop.records ?? [])
+    memorySaveLedger.recordStablePreludeRecords(stablePrelude.records ?? [])
     const preTurnMemoryLedgerMessage = memorySaveLedger.flushDeveloperMessage()
     if (preTurnMemoryLedgerMessage) {
       messages.push({ role: "developer", content: preTurnMemoryLedgerMessage })

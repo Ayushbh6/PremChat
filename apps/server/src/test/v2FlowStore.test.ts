@@ -5,8 +5,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import {
   assembleV2GoalWorkingContext,
   deriveV2ContextBudget,
-  routeV2Goal,
-  type V2GoalRouterResult,
+  type SocratesGoalResolutionResult,
 } from "@socrates/core"
 import { createId, nowIso } from "@socrates/shared"
 import { openDatabase, runMigrations, type DatabaseHandle } from "../db/client"
@@ -58,8 +57,8 @@ const seedProject = (handle: DatabaseHandle, projectId: string, workspacePath: s
   ).run(`pws_${projectId}`, projectId, workspacePath, now, now)
 }
 
-const forcedCreateResult = (store: V2FlowStore, flowId: string): V2GoalRouterResult => {
-  const goals = store.listGoalsForRouter(flowId)
+const forcedCreateResult = (store: V2FlowStore, flowId: string): SocratesGoalResolutionResult => {
+  const goals = store.listGoalsForResolution(flowId)
   const foregroundGoal = goals.find((goal) => goal.status === "foreground")
   const foreground = foregroundGoal ? { goal: foregroundGoal, candidate: 1 } : undefined
   return {
@@ -183,7 +182,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
     expect(earlierGoals.goals).toHaveLength(25)
     expect(earlierGoals.goals.map((goal) => goal.ordinal)).toEqual(Array.from({ length: 25 }, (_, index) => 451 + index))
     expect(earlierGoals.goalWindow).toEqual({ totalGoals: 500, hasEarlier: true, beforeOrdinal: 451 })
-    expect(store.listGoalsForRouter(initial.flow.id)).toHaveLength(25)
+    expect(store.listGoalsForResolution(initial.flow.id)).toHaveLength(25)
     expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM work_tasks").get()).toEqual({ count: 500 })
   })
 
@@ -319,14 +318,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       turnId: first.turn.id,
       messageId: first.userMessage.id,
       messageContent: first.userMessage.content,
-      result: await routeV2Goal({
-        projectId: "proj_one",
-        flowId: flow.id,
-        turnId: first.turn.id,
-        workspacePath: path.join(root, "one"),
-        userMessage: first.userMessage.content,
-        goals: [],
-      }),
+      result: forcedCreateResult(store, flow.id),
     })
     store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "First response", goalFinalization: { state: "active", note: "The task remains active." } })
 
@@ -664,7 +656,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       content: "Thanks.",
       runtimeConfig,
     })
-    const continueResult: V2GoalRouterResult = {
+    const continueResult: SocratesGoalResolutionResult = {
       decision: {
         action: "continue",
         primaryGoalId: createdGoal.id,
@@ -773,7 +765,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
     store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "Initial authentication work is ready.", goalFinalization: { state: "active", note: "The task remains active." } })
 
     const ambiguous = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "What about the second one?", runtimeConfig })
-    const goals = store.listGoalsForRouter(flow.id)
+    const goals = store.listGoalsForResolution(flow.id)
     const candidates = goals.map((goal) => ({ goal, candidate: 1 }))
     const clarification = store.requestRoutingClarification({
       projectId: "proj_one",
@@ -1014,10 +1006,10 @@ describe("V2FlowStore isolation and lifecycle", () => {
 
     const classic = seedClassicConversation(handle)
     const classicTurn = seedClassicTurn(handle, { ...classic, user: "Continue building the bridge", assistant: "Continuing.", offset: 1 })
-    const context = store.prepareClassicGoalRouting("proj_one", classic.conversationId, [work.id])
+    const context = store.prepareClassicGoalResolution("proj_one", classic.conversationId, [work.id])
     const candidate = context.candidates.find((item) => item.goalId === work.id)
     if (!candidate) throw new Error("Expected the existing Flow focus as a Classic routing candidate")
-    store.applyClassicGoalRoute({
+    store.applyClassicGoalResolution({
       projectId: "proj_one",
       conversationId: classic.conversationId,
       sessionId: classic.sessionId,
@@ -1038,8 +1030,8 @@ describe("V2FlowStore isolation and lifecycle", () => {
     const { handle, store } = setup()
     const { conversationId, sessionId } = seedClassicConversation(handle)
     const first = seedClassicTurn(handle, { conversationId, sessionId, user: "Tell me where the AIDPA report stands.", assistant: "The report has a complete outline.", offset: 1 })
-    const firstContext = store.prepareClassicGoalRouting("proj_one", conversationId)
-    const aidpa = store.applyClassicGoalRoute({
+    const firstContext = store.prepareClassicGoalResolution("proj_one", conversationId)
+    const aidpa = store.applyClassicGoalResolution({
       projectId: "proj_one", conversationId, sessionId, turnId: first.turnId, userMessageId: first.userMessageId,
       userMessage: "Tell me where the AIDPA report stands.", context: firstContext,
       route: { action: "create", candidates: [], title: "Review AIDPA report" },
@@ -1047,8 +1039,8 @@ describe("V2FlowStore isolation and lifecycle", () => {
     store.finalizeClassicGoal(first.turnId, { state: "active", note: "The report review is still active." }, first.assistantMessageId)
 
     const second = seedClassicTurn(handle, { conversationId, sessionId, user: "Can you make me a Socrates release checklist?", assistant: "The checklist is ready.", offset: 2 })
-    const secondContext = store.prepareClassicGoalRouting("proj_one", conversationId)
-    const release = store.applyClassicGoalRoute({
+    const secondContext = store.prepareClassicGoalResolution("proj_one", conversationId)
+    const release = store.applyClassicGoalResolution({
       projectId: "proj_one", conversationId, sessionId, turnId: second.turnId, userMessageId: second.userMessageId,
       userMessage: "Can you make me a Socrates release checklist?", context: secondContext,
       route: { action: "create", candidates: [], title: "Prepare Socrates release" },
@@ -1056,10 +1048,10 @@ describe("V2FlowStore isolation and lifecycle", () => {
     store.finalizeClassicGoal(second.turnId, { state: "completed", note: "The release checklist is complete." }, second.assistantMessageId)
 
     const third = seedClassicTurn(handle, { conversationId, sessionId, user: "Back to the report: what evidence is missing?", assistant: "Two evidence sources remain.", offset: 3 })
-    const thirdContext = store.prepareClassicGoalRouting("proj_one", conversationId, [aidpa.goalId])
+    const thirdContext = store.prepareClassicGoalResolution("proj_one", conversationId, [aidpa.goalId])
     const aidpaCandidate = thirdContext.candidates.find((candidate) => candidate.goalId === aidpa.goalId)
     if (!aidpaCandidate) throw new Error("Expected the AIDPA goal candidate")
-    const resumed = store.applyClassicGoalRoute({
+    const resumed = store.applyClassicGoalResolution({
       projectId: "proj_one", conversationId, sessionId, turnId: third.turnId, userMessageId: third.userMessageId,
       userMessage: "Back to the report: what evidence is missing?", context: thirdContext,
       route: { action: "use", candidates: [aidpaCandidate.candidate], title: null },
@@ -1132,11 +1124,11 @@ describe("V2FlowStore isolation and lifecycle", () => {
       assistant: "Checking again.",
       offset: 20,
     })
-    const context = store.prepareClassicGoalRouting("proj_one", bridge.conversationId, [work.id])
+    const context = store.prepareClassicGoalResolution("proj_one", bridge.conversationId, [work.id])
     const candidate = context.candidates.find((item) => item.goalId === work.id)
     if (!candidate) throw new Error("Expected the selected parked work goal")
 
-    expect(() => store.applyClassicGoalRoute({
+    expect(() => store.applyClassicGoalResolution({
       projectId: "proj_one",
       conversationId: bridge.conversationId,
       sessionId: bridge.sessionId,
@@ -1201,8 +1193,8 @@ describe("V2FlowStore isolation and lifecycle", () => {
     const { handle, root, store } = setup()
     const { conversationId, sessionId } = seedClassicConversation(handle)
     const classicTurn = seedClassicTurn(handle, { conversationId, sessionId, user: "Summarize DBMS", assistant: "Summary ready", offset: 1 })
-    const context = store.prepareClassicGoalRouting("proj_one", conversationId)
-    store.applyClassicGoalRoute({ projectId: "proj_one", conversationId, sessionId, turnId: classicTurn.turnId, userMessageId: classicTurn.userMessageId, userMessage: "Summarize DBMS", context, route: { action: "create", candidates: [], title: "DBMS review" } })
+    const context = store.prepareClassicGoalResolution("proj_one", conversationId)
+    store.applyClassicGoalResolution({ projectId: "proj_one", conversationId, sessionId, turnId: classicTurn.turnId, userMessageId: classicTurn.userMessageId, userMessage: "Summarize DBMS", context, route: { action: "create", candidates: [], title: "DBMS review" } })
     const imported = store.continueClassicConversationInSeamless("proj_one", conversationId)
     expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM v2_turns WHERE metadata_json LIKE '%classic_bridge%'").get()).toMatchObject({ count: 0 })
     expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM work_tasks WHERE source_runtime = 'classic' AND source_turn_id = ?").get(classicTurn.turnId)).toMatchObject({ count: 1 })

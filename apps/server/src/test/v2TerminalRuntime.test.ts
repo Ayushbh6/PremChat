@@ -2,7 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
-import type { ToolExecutorContext, V2GoalRouterResult } from "@socrates/core"
+import type { SocratesGoalResolutionResult, ToolExecutorContext } from "@socrates/core"
 import type { V2RuntimeConfig } from "@socrates/contracts"
 import type { EmbeddingProvider } from "@socrates/providers"
 import { createId, nowIso } from "@socrates/shared"
@@ -151,7 +151,7 @@ const seedProject = (handle: DatabaseHandle, workspace: string): void => {
     .run("pws_terminal", "proj_terminal", workspace, now, now)
 }
 
-const createGoalResult = (): V2GoalRouterResult => ({
+const createGoalResult = (): SocratesGoalResolutionResult => ({
   decision: { action: "create", title: "Test goal" },
   candidates: { parked: [], candidates: [], totalEligibleParked: 0, parkedCandidateLimit: 5 },
   source: "fallback",

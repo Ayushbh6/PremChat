@@ -6,7 +6,7 @@ import {
 } from "@socrates/contracts"
 import { SocratesError } from "@socrates/shared"
 import type { ToolPolicyDecision } from "../tools/types"
-import type { MemoryLoopToolRecord } from "./socratesMemorySupport"
+import type { StablePreludeToolRecord } from "./socratesMemorySupport"
 import {
   mutationTargetFor,
   normalizedToolTargetKey,
@@ -368,7 +368,7 @@ export class TurnMemorySaveLedger {
     }
   }
 
-  recordMemoryLoopRecords(records: MemoryLoopToolRecord[]): void {
+  recordStablePreludeRecords(records: StablePreludeToolRecord[]): void {
     for (const record of records) {
       this.recordResult(record.result, record.input)
     }

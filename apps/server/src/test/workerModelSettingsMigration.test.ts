@@ -67,4 +67,24 @@ describe("worker model settings compactor split migration", () => {
       sqlite.close()
     }
   })
+
+  it("removes obsolete goal and memory router settings only", () => {
+    const sqlite = new Database(":memory:")
+    try {
+      sqlite.exec(`
+        CREATE TABLE worker_model_settings (worker_id text PRIMARY KEY NOT NULL);
+        INSERT INTO worker_model_settings (worker_id) VALUES
+          ('goal_router'),
+          ('memory_router'),
+          ('skill_writer'),
+          ('frontier');
+      `)
+      const migration = fs.readFileSync(new URL("../../drizzle/0032_remove_router_settings.sql", import.meta.url), "utf8")
+      sqlite.exec(migration)
+      const rows = sqlite.prepare("SELECT worker_id AS workerId FROM worker_model_settings ORDER BY worker_id").all()
+      expect(rows).toEqual([{ workerId: "frontier" }, { workerId: "skill_writer" }])
+    } finally {
+      sqlite.close()
+    }
+  })
 })

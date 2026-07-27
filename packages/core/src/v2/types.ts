@@ -26,12 +26,6 @@ export type V2GoalRoutingCandidate = Readonly<{
   latestTask?: string
 }>
 
-export type V2GoalSearchMatch = Readonly<{
-  goal: V2Goal
-  capsule?: V2GoalCapsule
-  latestTask?: string
-}>
-
 export type V2GoalRoutingCandidateSet = Readonly<{
   foreground?: V2GoalRoutingCandidate
   parked: readonly V2GoalRoutingCandidate[]

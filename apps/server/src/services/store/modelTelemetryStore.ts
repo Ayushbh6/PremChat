@@ -444,72 +444,6 @@ export class ModelTelemetryStore extends StoreBase {
     })
   }
 
-  recordMemoryRouterUsage(input: {
-    projectId: string
-    conversationId: string
-    sessionId: string
-    turnId: string
-    sourceId: string
-    providerId: string
-    modelId: string
-    status: string
-    startedAt?: string
-    completedAt?: string
-    usage?: StoredModelUsage
-    metadata?: Record<string, unknown>
-  }): void {
-    if (!input.usage) {
-      return
-    }
-    this.recordAiUsageEvent({
-      projectId: input.projectId,
-      conversationId: input.conversationId,
-      sessionId: input.sessionId,
-      turnId: input.turnId,
-      sourceKind: "memory_router",
-      sourceId: input.sourceId,
-      providerId: input.providerId,
-      modelId: input.modelId,
-      status: input.status,
-      ...(input.startedAt ? { startedAt: input.startedAt } : {}),
-      ...(input.completedAt ? { completedAt: input.completedAt } : {}),
-      usage: input.usage,
-      ...(input.metadata ? { metadata: input.metadata } : {}),
-    })
-  }
-
-  recordGoalRouterUsage(input: {
-    projectId: string
-    conversationId: string
-    sessionId: string
-    turnId: string
-    sourceId: string
-    providerId: string
-    modelId: string
-    status: string
-    startedAt?: string
-    completedAt?: string
-    usage?: StoredModelUsage
-    metadata?: Record<string, unknown>
-  }): void {
-    if (!input.usage) return
-    this.recordAiUsageEvent({
-      projectId: input.projectId,
-      conversationId: input.conversationId,
-      sessionId: input.sessionId,
-      turnId: input.turnId,
-      sourceKind: "goal_router",
-      sourceId: input.sourceId,
-      providerId: input.providerId,
-      modelId: input.modelId,
-      status: input.status,
-      ...(input.startedAt ? { startedAt: input.startedAt } : {}),
-      ...(input.completedAt ? { completedAt: input.completedAt } : {}),
-      usage: input.usage,
-      ...(input.metadata ? { metadata: input.metadata } : {}),
-    })
-  }
-
   buildTurnUsageReport(turnId: string): TurnUsageReport | undefined {
     const rows = this.getAiUsageEventRowsByTurn(turnId)
     if (rows.length === 0) {
@@ -683,6 +617,8 @@ export class ModelTelemetryStore extends StoreBase {
     })
   }
 
+  // The router literals remain in the storage type solely so historical rows can be read.
+  // All current goal-resolution calls reach this store as main_model_call.
   private recordAiUsageEvent(input: {
     projectId: string
     conversationId: string
@@ -778,6 +714,7 @@ const usageMetadataJson = (usage: StoredModelUsage, metadata?: Record<string, un
 
 type CostSource = "provider_reported" | "computed" | "unknown" | "mixed"
 
+// The router literals are historical database compatibility, not current producers.
 type AiUsageEventRow = {
   project_id: string
   conversation_id: string

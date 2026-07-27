@@ -6,7 +6,7 @@ import type {
   StableCachePreludeSnapshot,
   StartCompactionSnapshotInput,
 } from "@socrates/core"
-import { normalizeScores, rankDistinctParents, selectBoundedGoalHistory } from "@socrates/core"
+import { normalizeScores, rankDistinctParents, selectExactGoalHistory } from "@socrates/core"
 import type {
   ChatMessageSendPayload,
   CompleteOnboardingRequest,
@@ -58,7 +58,7 @@ import type {
   MemoryNoteToolInput,
   MemoryNoteToolOutput,
   MemoryDocIndex,
-  MemorySearchInput,
+  MemoryCandidateQuery,
   MemoryNotesToolInput,
   MemoryNotesToolOutput,
   ApproveMemorySkillProposalResponse,
@@ -1038,27 +1038,6 @@ export class SocratesStore {
     this.modelTelemetry.recordConversationTitleUsage(input)
   }
 
-  recordMemoryRouterUsage(input: {
-    projectId: string
-    conversationId: string
-    sessionId: string
-    turnId: string
-    sourceId: string
-    providerId: string
-    modelId: string
-    status: string
-    startedAt?: string
-    completedAt?: string
-    usage?: StoredModelUsage
-    metadata?: Record<string, unknown>
-  }): void {
-    this.modelTelemetry.recordMemoryRouterUsage(input)
-  }
-
-  recordGoalRouterUsage(input: Parameters<ModelTelemetryStore["recordGoalRouterUsage"]>[0]): void {
-    this.modelTelemetry.recordGoalRouterUsage(input)
-  }
-
   getLatestContextCompactionSnapshot(conversationId: string): ContextCompactionSummary | undefined {
     return this.contextCompactions.getLatestActive(conversationId)
   }
@@ -1409,7 +1388,7 @@ export class SocratesStore {
     )
   }
 
-  async prepareBoundedGoalHistory(input: {
+  async prepareExactGoalHistory(input: {
     projectId: string
     goalId: string
     query: string
@@ -1429,7 +1408,7 @@ export class SocratesStore {
       occurredAt: result.metadata.occurredAt,
       content: result.content,
     }))).catch(() => [])
-    return selectBoundedGoalHistory(input.messages, retrieved)
+    return selectExactGoalHistory(input.messages, retrieved)
   }
 
   getTaskReconciliationWatermark(sourceRuntime: "classic" | "v2_flow", sourceTurnId: string) {
@@ -1444,12 +1423,12 @@ export class SocratesStore {
     this.canonicalWork?.saveReconciliationWatermark(sourceRuntime, sourceTurnId, state)
   }
 
-  searchMemory(projectId: string, input: MemorySearchInput, automaticFallback = false) {
-    return this.retrieval.searchMemory(projectId, input, automaticFallback)
+  retrieveMemoryCandidates(projectId: string, input: MemoryCandidateQuery, automaticFallback = false) {
+    return this.retrieval.retrieveMemoryCandidates(projectId, input, automaticFallback)
   }
 
-  searchGoalCards(projectId: string, query: string, limit = 4) {
-    return this.retrieval.searchGoalCards(projectId, query, limit)
+  retrieveGoalCandidates(projectId: string, query: string, limit = 4) {
+    return this.retrieval.retrieveGoalCandidates(projectId, query, limit)
   }
 
   getProjectEmbeddingStatus(projectId: string) {

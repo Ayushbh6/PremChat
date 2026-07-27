@@ -23,7 +23,7 @@ export const socratesFinalAnswerSchema = z
       (normalized.includes("<|dsml|") && normalized.includes("tool_calls")) ||
       (normalized.startsWith("<dsml") && normalized.includes("tool_calls")) ||
       (prefix.startsWith("<") && prefix.includes("dsml") && /tool[_\s|]*calls/.test(prefix) && /invoke\s+name/.test(prefix))
-    const hasInternalControlEnvelope = /^<(?:socrates_|runtime_|memory_router|v2_focus_runtime)/.test(prefix)
+    const hasInternalControlEnvelope = /^<(?:socrates_|runtime_|v2_focus_runtime)/.test(prefix)
     if (hasToolEnvelope || hasInternalControlEnvelope) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

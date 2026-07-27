@@ -25,8 +25,6 @@ export const baseToolNameSchema = z.enum([
   "mcp_registry",
   "memory_note",
   "memory_notes",
-  "memory_search",
-  "goal_search",
   "read_memory_journal",
   "skill_write",
   "skill_manager",
@@ -35,34 +33,6 @@ export const baseToolNameSchema = z.enum([
 export const dynamicMcpToolNameSchema = z.string().regex(/^mcp__[a-z0-9_-]+__[a-zA-Z0-9_-]+$/)
 export const toolNameSchema = z.union([baseToolNameSchema, dynamicMcpToolNameSchema])
 export type ToolName = z.infer<typeof toolNameSchema>
-
-export const goalSearchInputSchema = z
-  .object({
-    query: z.string().trim().min(1).max(500),
-    mode: z.enum(["lexical", "semantic", "combined"]).default("combined"),
-    limit: z.number().int().positive().max(3).default(3),
-  })
-  .strict()
-export type GoalSearchInput = z.infer<typeof goalSearchInputSchema>
-
-export const goalSearchResultSchema = z
-  .object({
-    candidate: z.number().int().positive().max(25),
-    title: z.string().min(1).max(200),
-    status: z.enum(["foreground", "parked", "blocked", "completed", "discarded", "archived"]),
-    note: z.string().max(2_000),
-    latestTask: z.string().max(2_000).optional(),
-  })
-  .strict()
-export type GoalSearchResult = z.infer<typeof goalSearchResultSchema>
-
-export const goalSearchOutputSchema = z
-  .object({
-    results: z.array(goalSearchResultSchema).max(3),
-    summary: z.string().min(1).max(500),
-  })
-  .strict()
-export type GoalSearchOutput = z.infer<typeof goalSearchOutputSchema>
 
 export const frontierHandoverToolInputSchema = z
   .object({

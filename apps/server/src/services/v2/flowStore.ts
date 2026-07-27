@@ -55,8 +55,7 @@ import type {
   V2ContextItem as CoreV2ContextItem,
   V2ContextState,
   V2GoalRoutingDecision,
-  V2GoalRouterResult,
-  V2GoalSearchMatch,
+  SocratesGoalResolutionResult,
 } from "@socrates/core"
 import type { ModelMessage } from "@socrates/providers"
 import { createId, nowIso, SocratesError } from "@socrates/shared"
@@ -200,7 +199,7 @@ type RoutingApplication = {
   transition?: V2GoalTransition
 }
 
-export type ClassicGoalRoutingContext = Readonly<{
+export type ClassicGoalResolutionContext = Readonly<{
   flowId: string
   currentGoalId?: string
   currentGoalCandidate?: number
@@ -756,47 +755,11 @@ export class V2FlowStore {
     }
   }
 
-  listGoalSearchMatches(input: {
-    flowId: string
-    query: string
-    mode: "lexical" | "semantic" | "combined"
-    limit: number
-    semanticGoalIds?: readonly string[]
-    excludeGoalIds?: readonly string[]
-  }): V2GoalSearchMatch[] {
-    const excluded = new Set(input.excludeGoalIds ?? [])
-    const semanticRank = new Map((input.semanticGoalIds ?? []).map((goalId, index) => [goalId, index]))
-    const terms = goalSearchTerms(input.query)
-    const capsules = this.handle.db.select().from(v2GoalCapsules)
-      .where(and(eq(v2GoalCapsules.flowId, input.flowId), eq(v2GoalCapsules.status, "active"))).all()
-    const capsuleByGoal = new Map(capsules.map((capsule) => [capsule.goalId, mapCapsule(capsule)]))
-    const goals = this.handle.db.select().from(v2Goals).where(eq(v2Goals.flowId, input.flowId)).all()
-      .filter((goal) => !excluded.has(goal.id))
-      .map((goal) => {
-        const capsule = capsuleByGoal.get(goal.id)
-        const latestTurn = this.handle.db.select().from(v2Turns)
-          .where(and(eq(v2Turns.flowId, input.flowId), eq(v2Turns.goalId, goal.id), eq(v2Turns.status, "completed")))
-          .orderBy(desc(v2Turns.ordinal)).limit(1).get()
-        const latestUser = latestTurn?.userMessageId
-          ? this.handle.db.select().from(v2Messages).where(eq(v2Messages.id, latestTurn.userMessageId)).limit(1).get()?.content
-          : undefined
-        const searchable = [goal.title, goal.summary ?? "", capsule?.summary ?? "", latestUser ?? ""].join(" ").toLocaleLowerCase()
-        const lexicalScore = terms.reduce((score, term) => score + (searchable.includes(term) ? 1 : 0), 0)
-        const semanticScore = semanticRank.has(goal.id) ? 100 - (semanticRank.get(goal.id) ?? 0) : 0
-        const score = input.mode === "lexical" ? lexicalScore : input.mode === "semantic" ? semanticScore : semanticScore + lexicalScore * 10
-        return { goal: mapGoal(goal), ...(capsule ? { capsule } : {}), ...(latestUser ? { latestTask: latestUser } : {}), score }
-      })
-      .filter((match) => match.score > 0)
-      .sort((left, right) => right.score - left.score || Date.parse(right.goal.lastActiveAt) - Date.parse(left.goal.lastActiveAt))
-      .slice(0, Math.max(1, Math.min(3, input.limit)))
-    return goals.map(({ score: _score, ...match }) => match)
-  }
-
-  prepareClassicGoalRouting(
+  prepareClassicGoalResolution(
     projectId: string,
     conversationId: string,
     retrievedGoalIds: readonly string[] = [],
-  ): ClassicGoalRoutingContext {
+  ): ClassicGoalResolutionContext {
     this.requireProject(projectId)
     const conversation = this.handle.db.select().from(conversations).where(and(
       eq(conversations.id, conversationId),
@@ -847,7 +810,7 @@ export class V2FlowStore {
     }
   }
 
-  listClassicGoalRoutingTurns(conversationId: string, goalId: string, limit = 5): Array<{ goalId: string; user: string; assistant: string }> {
+  listClassicGoalResolutionTurns(conversationId: string, goalId: string, limit = 5): Array<{ goalId: string; user: string; assistant: string }> {
     return this.handle.db.select().from(v2ClassicTurnGoalLinks)
       .where(and(eq(v2ClassicTurnGoalLinks.conversationId, conversationId), eq(v2ClassicTurnGoalLinks.goalId, goalId)))
       .orderBy(desc(v2ClassicTurnGoalLinks.updatedAt))
@@ -871,14 +834,14 @@ export class V2FlowStore {
       .find((goalId) => goalId !== selectedGoalId)
   }
 
-  applyClassicGoalRoute(input: {
+  applyClassicGoalResolution(input: {
     projectId: string
     conversationId: string
     sessionId: string
     turnId: string
     userMessageId: string
     userMessage: string
-    context: ClassicGoalRoutingContext
+    context: ClassicGoalResolutionContext
     route: V2GoalRouterOutput
   }): ActiveGoalCard {
     const candidateByNumber = new Map(input.context.candidates.map((candidate) => [candidate.candidate, candidate]))
@@ -890,7 +853,7 @@ export class V2FlowStore {
       : input.route
     if (effectiveRoute.action === "use") {
       const selected = candidateByNumber.get(effectiveRoute.candidates[0] ?? -1)
-      if (!selected) throw new SocratesError("classic_goal_candidate_invalid", "The Memory Router selected an unavailable goal candidate.", { recoverable: true })
+      if (!selected) throw new SocratesError("classic_goal_candidate_invalid", "Socrates selected an unavailable goal candidate.", { recoverable: true })
       goalId = selected.goalId
     } else {
       const now = nowIso()
@@ -906,7 +869,7 @@ export class V2FlowStore {
           summary: input.userMessage.trim().slice(0, 2_000) || title,
           kind: "work",
           status: "parked",
-          origin: "router",
+          origin: "user",
           priority: 50,
           pinned: false,
           lastActiveAt: now,
@@ -920,7 +883,7 @@ export class V2FlowStore {
           fromStatus: null,
           toStatus: "parked",
           reason: "created",
-          note: "Created by the shared pre-turn Goal Router.",
+          note: "Created by the shared same-Socrates goal-resolution phase.",
           createdAt: now,
         })
         this.handle.db.insert(v2GoalCapsules).values({
@@ -939,7 +902,7 @@ export class V2FlowStore {
       flowId: input.context.flowId,
       goalId,
       action: goalBefore.status === "completed" || goalBefore.status === "discarded" || goalBefore.status === "archived" ? "reopen" : "switch",
-      note: "Selected by the shared pre-turn Goal Router.",
+      note: "Selected by the shared same-Socrates goal-resolution phase.",
     })
     const now = nowIso()
     let bridge = this.handle.db.select().from(v2ClassicConversationBridges).where(eq(v2ClassicConversationBridges.conversationId, input.conversationId)).limit(1).get()
@@ -1014,6 +977,31 @@ export class V2FlowStore {
       sourceTurnId: turnId,
       taskRequest: user?.content ?? "Continue the current task.",
     })
+  }
+
+  continueClassicGoalTurn(input: {
+    previousTurnId: string
+    turnId: string
+    sessionId: string
+  }): ActiveGoalCard | undefined {
+    const previous = this.handle.db.select().from(v2ClassicTurnGoalLinks)
+      .where(eq(v2ClassicTurnGoalLinks.turnId, input.previousTurnId)).limit(1).get()
+    if (!previous) return undefined
+    const now = nowIso()
+    this.handle.db.insert(v2ClassicTurnGoalLinks).values({
+      id: createId("v2ctgoal"),
+      projectId: previous.projectId,
+      flowId: previous.flowId,
+      goalId: previous.goalId,
+      bridgeId: previous.bridgeId,
+      conversationId: previous.conversationId,
+      sessionId: input.sessionId,
+      turnId: input.turnId,
+      userMessageId: previous.userMessageId,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing().run()
+    return this.getClassicGoalForTurn(input.turnId)
   }
 
   attachClassicGoalAssistantMessage(turnId: string, assistantMessageId: string): void {
@@ -1570,7 +1558,7 @@ export class V2FlowStore {
     turnId: string
     messageId: string
     messageContent: string
-    result: V2GoalRouterResult
+    result: SocratesGoalResolutionResult
     providerId?: string
     modelId?: string
   }): RoutingApplication {
@@ -1750,7 +1738,7 @@ export class V2FlowStore {
     flowId: string
     turnId: string
     messageId: string
-    result: V2GoalRouterResult
+    result: SocratesGoalResolutionResult
     providerId?: string
     modelId?: string
   }): { routingRun: V2GoalRoutingRun; message: V2Message; turn: V2Turn } {
@@ -1862,7 +1850,7 @@ export class V2FlowStore {
     return operation()
   }
 
-  listGoalsForRouter(flowId: string, anchorGoalIds: readonly string[] = []): V2Goal[] {
+  listGoalsForResolution(flowId: string, anchorGoalIds: readonly string[] = []): V2Goal[] {
     const goals = this.handle.db
       .select()
       .from(v2Goals)
@@ -1894,7 +1882,7 @@ export class V2FlowStore {
     }
   }
 
-  listCapsulesForRouter(flowId: string, goalIds?: readonly string[]): V2GoalCapsule[] {
+  listCapsulesForResolution(flowId: string, goalIds?: readonly string[]): V2GoalCapsule[] {
     return this.handle.db
       .select()
       .from(v2GoalCapsules)
@@ -3740,10 +3728,6 @@ export class V2FlowStore {
     return mapError(row)
   }
 }
-
-const goalSearchTerms = (value: string): string[] => [
-  ...new Set(value.toLocaleLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) ?? []),
-].slice(0, 24)
 
 const mapFlow = (row: typeof v2Flows.$inferSelect): V2Flow => ({
   id: row.id,

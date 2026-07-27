@@ -88,8 +88,6 @@ export const workerModelRoleSchema = z.enum([
   "socrates_context_compactor",
   "memory_context_compactor",
   "title_generator",
-  "goal_router",
-  "memory_router",
   "frontier",
 ])
 export type WorkerModelRole = z.infer<typeof workerModelRoleSchema>
@@ -134,6 +132,8 @@ export const conversationContextUsageSchema = z
 
 export const aiUsageCostSourceSchema = z.enum(["provider_reported", "computed", "unknown", "mixed"])
 
+// Router values are read-only compatibility for persisted pre-convergence usage rows.
+// Current goal-resolution usage is emitted as main_model_call; no router producer remains.
 export const aiUsageSourceKindSchema = z.enum(["main_model_call", "context_compaction", "conversation_title", "goal_router", "memory_router"])
 
 export const usageBreakdownItemSchema = z

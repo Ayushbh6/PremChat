@@ -1,36 +1,37 @@
 import { describe, expect, it } from "vitest"
 import { resolvedTurnContextSchema, resolvedTurnContextSeedSchema } from "./resolvedTurnContext"
+import { socratesGoalResolutionOutputSchema } from "./turnResolution"
 
+const exact = "x".repeat(30_000)
 const seed = {
-  presentation: { kind: "classic" as const, aperture: "selected_conversation" as const },
-  project: { name: "Socrates", description: "One runtime, two views." },
-  goal: { title: "Converge Flow", objective: "Use one lifecycle.", state: "foreground", progress: "Phase 2 is active.", openDecisions: [], blockers: [] },
-  task: { ordinal: 3, request: "Continue the convergence work." },
-  history: [{ role: "user" as const, content: "Continue." }],
+  goal: { title: "Converge Flow", objective: "Use one lifecycle.", state: "foreground", progress: exact, openDecisions: [], blockers: [] },
+  task: { ordinal: 3, request: exact },
+  latestExchange: { user: exact, assistant: exact },
+  retrieval: { goalCandidates: "completed" as const, memoryCandidates: "completed" as const, warnings: [] },
 }
 
 describe("resolved turn context contracts", () => {
-  it("accepts a bounded human-readable seed and resolved memory", () => {
+  it("preserves selected exact text without per-item clipping limits", () => {
     expect(resolvedTurnContextSeedSchema.parse(seed)).toEqual(seed)
-    expect(resolvedTurnContextSchema.parse({
+    const result = resolvedTurnContextSchema.parse({
       ...seed,
-      memory: [{ surface: "project_docs", reference: "FLOW_NORTH_STAR.md", content: "Classic and Flow share one runtime." }],
-    }).memory).toHaveLength(1)
+      memory: [{ surface: "project_memory", reference: "MEMORY.md/durable_decisions", scope: "project", content: exact }],
+    })
+    expect(result.task.request).toBe(exact)
+    expect(result.latestExchange?.assistant).toBe(exact)
+    expect(result.memory[0]?.content).toBe(exact)
   })
 
-  it("rejects oversized history and opaque extra authority fields", () => {
-    expect(resolvedTurnContextSeedSchema.safeParse({ ...seed, history: Array.from({ length: 11 }, () => seed.history[0]) }).success).toBe(false)
+  it("rejects view policy and opaque authority fields", () => {
+    expect(resolvedTurnContextSeedSchema.safeParse({ ...seed, presentation: { kind: "flow" } }).success).toBe(false)
     expect(resolvedTurnContextSeedSchema.safeParse({ ...seed, goalId: "v2goal_internal" }).success).toBe(false)
   })
 
-  it("requires one exact presentation aperture", () => {
-    expect(resolvedTurnContextSeedSchema.safeParse({
-      ...seed,
-      presentation: { kind: "flow", aperture: "selected_goal" },
-    }).success).toBe(true)
-    expect(resolvedTurnContextSeedSchema.safeParse({
-      ...seed,
-      presentation: { kind: "flow", aperture: "selected_conversation" },
-    }).success).toBe(false)
+  it("accepts only the four semantic goal decisions", () => {
+    expect(socratesGoalResolutionOutputSchema.safeParse({ decision: "current" }).success).toBe(true)
+    expect(socratesGoalResolutionOutputSchema.safeParse({ decision: "older", candidate: 2 }).success).toBe(true)
+    expect(socratesGoalResolutionOutputSchema.safeParse({ decision: "new", title: "Handle today's email" }).success).toBe(true)
+    expect(socratesGoalResolutionOutputSchema.safeParse({ decision: "clarify", question: "Which outcome do you mean?" }).success).toBe(true)
+    expect(socratesGoalResolutionOutputSchema.safeParse({ decision: "resume", candidate: 2 }).success).toBe(false)
   })
 })

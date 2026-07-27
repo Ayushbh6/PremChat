@@ -3,7 +3,7 @@ import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 import type { ChatCompaction, V2RuntimeConfig } from "@socrates/contracts"
-import { DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS, type V2GoalRouterResult } from "@socrates/core"
+import { DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS, type SocratesGoalResolutionResult } from "@socrates/core"
 import { createId, nowIso } from "@socrates/shared"
 import { openDatabase, runMigrations, type DatabaseHandle } from "../db/client"
 import type { SocratesStore } from "../services/store"
@@ -69,8 +69,8 @@ const setup = () => {
   return { handle, store, flowId, turnId: created.turn.id, goalId: routed.goal.id }
 }
 
-const forcedCreateResult = (store: V2FlowStore, flowId: string): V2GoalRouterResult => {
-  const foregroundGoal = store.listGoalsForRouter(flowId).find((goal) => goal.status === "foreground")
+const forcedCreateResult = (store: V2FlowStore, flowId: string): SocratesGoalResolutionResult => {
+  const foregroundGoal = store.listGoalsForResolution(flowId).find((goal) => goal.status === "foreground")
   const foreground = foregroundGoal ? { goal: foregroundGoal, candidate: 1 } : undefined
   return {
     decision: { action: "create", title: "Test goal" },

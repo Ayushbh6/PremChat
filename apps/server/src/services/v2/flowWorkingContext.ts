@@ -17,7 +17,7 @@ export const buildFlowWorkingMessages = async (
   const history = store.getModelMessages(input.flowId, input.goalId, input.includeImages)
   // The shared compactor owns history reduction. A view adapter must never
   // silently truncate a separate tail or manufacture a second authority.
-  const retained = await sharedStore.prepareBoundedGoalHistory({
+  const retained = await sharedStore.prepareExactGoalHistory({
     projectId: input.projectId,
     goalId: input.goalId,
     query: input.query,

@@ -63,8 +63,8 @@ export const buildServer = async (options: BuildServerOptions) => {
   const terminals = new ConversationTerminalManager(store, subscriptions, { supervisorScope: socratesHome ?? path.dirname(options.dbPath) })
   await terminals.reconcilePersistedTerminals()
   const app = Fastify({ logger: options.logger ?? false })
-  const flowStore = v2FlowEnabled ? new V2FlowStore(handle) : undefined
-  flowStore?.recoverInterruptedTurns()
+  const flowStore = new V2FlowStore(handle)
+  flowStore.recoverInterruptedTurns()
   const speechHome = socratesHome ?? path.dirname(options.dbPath)
   const speechPacks = new SpeechPackManager(speechHome)
   const runtimeRoot = process.env.SOCRATES_RUNTIME_DIR ?? path.join(speechHome, "runtime")
@@ -111,13 +111,11 @@ export const buildServer = async (options: BuildServerOptions) => {
   const websocketRuntime = await registerWebSocketRoutes(app, store, terminals, subscriptions, agent, mcpRuntime, titleProvider, flowStore)
   await registerHttpRoutes(app, store, credentials, mcpRuntime, {
     onConversationDelete: (conversationId) => terminals.stopConversation(conversationId, "Conversation deleted."),
-    ...(flowStore ? {
-      getConversationDeletionImpact: (projectId, conversationId) => flowStore.getClassicConversationDeletionImpact(projectId, conversationId),
-      beforeConversationDelete: (projectId, conversationId, scope) => flowStore.deleteClassicConversationProjection(projectId, conversationId, scope),
-      afterConversationDelete: (projectId, _conversationId, scope) => {
-        if (scope === "everywhere") store.rebuildProjectRetrieval(projectId, "classic_conversation_deleted_everywhere")
-      },
-    } : {}),
+    getConversationDeletionImpact: (projectId, conversationId) => flowStore.getClassicConversationDeletionImpact(projectId, conversationId),
+    beforeConversationDelete: (projectId, conversationId, scope) => flowStore.deleteClassicConversationProjection(projectId, conversationId, scope),
+    afterConversationDelete: (projectId, _conversationId, scope) => {
+      if (scope === "everywhere") store.rebuildProjectRetrieval(projectId, "classic_conversation_deleted_everywhere")
+    },
     onProjectWorkspaceSwitch: (projectId) => terminals.stopProject(projectId, "Project workspace switched."),
   })
   await registerClassicSpeechRoutes(app, {
@@ -129,7 +127,7 @@ export const buildServer = async (options: BuildServerOptions) => {
   })
 
   let shutdownV2 = async (): Promise<void> => undefined
-  if (flowStore) {
+  if (v2FlowEnabled) {
     await registerV2FlowRoutes(app, flowStore, store)
     const v2WebSocketRuntime = await registerV2WebSocketRoutes(app, {
       store: flowStore,
@@ -137,7 +135,6 @@ export const buildServer = async (options: BuildServerOptions) => {
       agent: v2Agent,
       mcpRuntime,
       supervisorScope: socratesHome ?? path.dirname(options.dbPath),
-      ...(titleProvider ? { routerProvider: titleProvider } : {}),
     })
 
     await registerV2SpeechRoutes(app, {
@@ -152,7 +149,6 @@ export const buildServer = async (options: BuildServerOptions) => {
     })
     shutdownV2 = async () => {
       await v2WebSocketRuntime.shutdown()
-      flowStore.recoverInterruptedTurns("Socrates shut down before this Flow response completed.")
     }
   }
 
@@ -160,6 +156,7 @@ export const buildServer = async (options: BuildServerOptions) => {
     terminals.beginShutdown()
     await websocketRuntime.shutdown()
     await shutdownV2()
+    flowStore.recoverInterruptedTurns("Socrates shut down before this Flow response completed.")
     store.cancelStaleActiveTurns("Socrates shut down before this response completed.")
     store.requeueInterruptedTerminalTasks()
     await terminals.dispose({ preserveRunning: options.preserveTerminalsOnClose ?? true })

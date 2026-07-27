@@ -257,7 +257,7 @@ inspect
   returns raw source text or exact tool evidence
 ```
 
-Retrieval internals such as LanceDB tables, chunks, vectors, embedding fingerprints, jobs, scores, and diagnostics must not become separate model-visible tools. They remain backend implementation details behind `trace_retrieve` and `memory_search`.
+Retrieval internals such as LanceDB tables, chunks, vectors, embedding fingerprints, jobs, scores, and diagnostics must not become separate model-visible tools. They remain backend implementation details behind model-visible `trace_retrieve` and the automatic typed goal/memory candidate adapters.
 
 Embedding providers must follow the same boundary rules as chat providers. OpenAI hosted embeddings and offline local embeddings through Ollama or a future Hugging Face / sentence-transformers backend must live behind `packages/providers`; frontend code, routes, WebSocket handlers, and `packages/core` must not call embedding SDKs or local model runtimes directly. Socrates must not silently install or download offline embedding models; it should detect missing local setup and show explicit setup guidance.
 

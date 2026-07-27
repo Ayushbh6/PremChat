@@ -398,10 +398,6 @@ const createStructuredFinalAwareTestAgent = (provider: ModelProvider): SocratesA
   const finalAwareProvider: ModelProvider = {
     countTokens: provider.countTokens.bind(provider),
     async *stream(request) {
-      if (request.system.includes("Memory Router Agent")) {
-        yield { type: "model.completed" }
-        return
-      }
       let currentAnswer = ""
       for await (const event of provider.stream(request)) {
         if (event.type === "model.answer.delta") currentAnswer += event.text
@@ -412,6 +408,14 @@ const createStructuredFinalAwareTestAgent = (provider: ModelProvider): SocratesA
       }
     },
     async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
+      if (request.system.includes("<socrates_goal_resolution_phase>")) {
+        const content = String(request.messages.at(-1)?.content ?? "")
+        return {
+          output: (content.includes('"currentGoal":null')
+            ? { decision: "new", title: "Test goal" }
+            : { decision: "current" }) as TOutput,
+        }
+      }
       const isMainFinal = request.messages.some(
         (message) => typeof message.content === "string" && message.content.includes("<socrates_final_answer_checkpoint>"),
       )
@@ -424,11 +428,6 @@ const createStructuredFinalAwareTestAgent = (provider: ModelProvider): SocratesA
             finalAnswer,
             goalFinalization: { state: "active", note: "The test focus remains active." },
           } as TOutput,
-        }
-      }
-      if (request.system.includes("Memory Router Agent")) {
-        return {
-          output: { readTargets: [], reason: "No routed recall needed in this server test." } as TOutput,
         }
       }
       if (request.system.includes("Soul Confirmation Agent") && !provider.generateStructured) {
@@ -466,11 +465,6 @@ const createTestAgent = (): SocratesAgent => {
       }
     },
     async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
-      if (request.system.includes("Memory Router Agent")) {
-        return {
-          output: { readTargets: [], reason: "No routed recall needed." } as TOutput,
-        }
-      }
       const sessionKey = request.sessionId ?? "default"
       const finalAnswer = latestAnswerBySession.get(sessionKey) ?? "Test answer."
       latestAnswerBySession.delete(sessionKey)
@@ -2358,23 +2352,11 @@ describe("HTTP API", () => {
       "socrates_context_compactor",
       "memory_context_compactor",
       "title_generator",
-      "goal_router",
-      "memory_router",
       "frontier",
     ])
     expect(listBody.data.settings.find((setting) => setting.workerId === "skill_writer")).toMatchObject({
       providerId: "openrouter",
       modelId: "xiaomi/mimo-v2.5-pro",
-      thinkingEnabled: false,
-    })
-    expect(listBody.data.settings.find((setting) => setting.workerId === "memory_router")).toMatchObject({
-      providerId: "openrouter",
-      modelId: "deepseek/deepseek-v4-flash",
-      thinkingEnabled: false,
-    })
-    expect(listBody.data.settings.find((setting) => setting.workerId === "goal_router")).toMatchObject({
-      providerId: "openrouter",
-      modelId: "meta-llama/llama-4-maverick",
       thinkingEnabled: false,
     })
     expect(listBody.data.settings.find((setting) => setting.workerId === "frontier")).toMatchObject({
@@ -2392,7 +2374,7 @@ describe("HTTP API", () => {
 
     const updateResponse = await app.inject({
       method: "PATCH",
-      url: "/api/worker-model-settings/goal_router",
+      url: "/api/worker-model-settings/title_generator",
       payload: {
         providerId: "google",
         authMode: "api_key",
@@ -2407,7 +2389,7 @@ describe("HTTP API", () => {
       throw new Error("Expected worker model settings update success")
     }
     expect(updateBody.data.settings).toMatchObject({
-      workerId: "goal_router",
+      workerId: "title_generator",
       providerId: "google",
       authMode: "api_key",
       modelId: "gemini-3.5-flash",
@@ -2463,20 +2445,6 @@ describe("HTTP API", () => {
       thinkingEffort: "low",
     })
     expect(resolutionByWorker.get("title_generator")?.effective).toMatchObject({
-      providerId: "openai",
-      authMode: "chatgpt_subscription",
-      modelId: "gpt-5.4-mini",
-      thinkingEnabled: true,
-      thinkingEffort: "low",
-    })
-    expect(resolutionByWorker.get("goal_router")?.effective).toMatchObject({
-      providerId: "openai",
-      authMode: "chatgpt_subscription",
-      modelId: "gpt-5.4-mini",
-      thinkingEnabled: true,
-      thinkingEffort: "low",
-    })
-    expect(resolutionByWorker.get("memory_router")?.effective).toMatchObject({
       providerId: "openai",
       authMode: "chatgpt_subscription",
       modelId: "gpt-5.4-mini",
@@ -3756,9 +3724,6 @@ describe("WebSocket API", () => {
         safetyMarginPercent: 0,
       }),
       async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
-        if (request.system.includes("Memory Router Agent")) {
-          return { output: { readTargets: [], reason: "No routed recall is needed." } as TOutput }
-        }
         return { output: {
           finalAnswer: "Frontier-only persisted answer.",
           goalFinalization: { state: "active", note: "The concurrency test remains active." },
@@ -3767,14 +3732,6 @@ describe("WebSocket API", () => {
       async *stream(request) {
         requests.push(request)
         const toolNames = request.tools?.map((tool) => tool.name) ?? []
-        if (!toolNames.includes("handover_to_frontier") && toolNames.includes("memory_search")) {
-          yield {
-            type: "model.answer.delta",
-            text: JSON.stringify({ readTargets: [], reason: "No routed recall is needed." }),
-          }
-          yield { type: "model.completed", usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 } }
-          return
-        }
         if (!handedOver && toolNames.includes("handover_to_frontier")) {
           handedOver = true
           yield { type: "model.answer.delta", text: "Discard this driver draft." }
@@ -3864,6 +3821,7 @@ describe("WebSocket API", () => {
           .all() as Array<{ providerId: string; modelId: string; status: string }>
         expect(calls).toEqual([
           { providerId: "openrouter", modelId: "deepseek/deepseek-v4-flash", status: "completed" },
+          { providerId: "openrouter", modelId: "deepseek/deepseek-v4-flash", status: "completed" },
           { providerId: "openrouter", modelId: "x-ai/grok-4.5", status: "completed" },
           { providerId: "openrouter", modelId: "x-ai/grok-4.5", status: "completed" },
           { providerId: "openrouter", modelId: "x-ai/grok-4.5", status: "completed" },
@@ -3894,9 +3852,6 @@ describe("WebSocket API", () => {
         safetyMarginPercent: 0,
       }),
       async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
-        if (request.system.includes("Memory Router Agent")) {
-          return { output: { readTargets: [], reason: "No routed recall is needed." } as TOutput }
-        }
         return { output: {
           finalAnswer: "Socrates finished after the declined Frontier request.",
           goalFinalization: { state: "active", note: "The lifecycle test remains active." },
@@ -3974,7 +3929,7 @@ describe("WebSocket API", () => {
     }
   })
 
-  it("continues the user task while persisting failed Memory Router errors and usage", async () => {
+  it("continues the current goal while persisting a same-Socrates resolution failure", async () => {
     const dbPath = tempDbPath()
     let mainCalls = 0
     const provider: ModelProvider = {
@@ -3986,32 +3941,20 @@ describe("WebSocket API", () => {
         method: "local_tiktoken",
         safetyMarginPercent: 0,
       }),
-      async *stream(request) {
-        if (request.system.includes("Memory Router Agent")) {
-          yield { type: "model.usage", usage: { inputTokens: 4, outputTokens: 1, totalTokens: 5 } }
-          yield { type: "model.completed" }
-          return
-        }
+      async *stream() {
         mainCalls += 1
-        yield { type: "model.answer.delta", text: mainCalls === 1 ? "Suppressed draft." : "The ordinary task still completed." }
-        yield { type: "model.completed", usage: { inputTokens: 10, outputTokens: 4, totalTokens: 14 } }
+        yield { type: "model.answer.delta", text: "The ordinary task still completed." }
+        yield { type: "model.completed" }
       },
       async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>): Promise<StructuredModelResult<TOutput>> {
-        const isMainFinal = request.messages.some(
-          (message) => typeof message.content === "string" && message.content.includes("<socrates_final_answer_checkpoint>"),
-        )
-        if (isMainFinal) {
-          return {
-            output: {
-              finalAnswer: "The ordinary task still completed.",
-              goalFinalization: { state: "active", note: "The ordinary test task remains active." },
-            } as TOutput,
-            usage: { inputTokens: 6, outputTokens: 4, totalTokens: 10 },
-          }
+        if (request.system.includes("<socrates_goal_resolution_phase>")) {
+          return { output: { invalid: true } as TOutput }
         }
         return {
-          output: { readTargets: [], reason: "" } as TOutput,
-          usage: { inputTokens: 6, outputTokens: 2, totalTokens: 8 },
+          output: {
+            finalAnswer: "The ordinary task still completed.",
+            goalFinalization: { state: "active", note: "The ordinary test task remains active." },
+          } as TOutput,
         }
       },
     }
@@ -4022,31 +3965,23 @@ describe("WebSocket API", () => {
     const socket = await connectWebSocket(app)
     try {
       await waitForEvent(socket, "connection.ready")
-      sendCommand(socket, chatMessageCommand(project.id, conversation.id, "Complete this ordinary task even if memory routing fails."))
+      sendCommand(socket, chatMessageCommand(project.id, conversation.id, "Complete this ordinary task."))
       const completed = await waitForEvent(socket, "message.completed")
       expect(completed.payload.message.content).toBe("The ordinary task still completed.")
       await waitForEvent(socket, "turn.completed")
+      expect(mainCalls).toBeGreaterThan(0)
 
       const sqlite = new Database(dbPath)
       try {
         const errors = sqlite
-          .prepare("SELECT code, recoverable, details_json AS detailsJson FROM errors WHERE source = 'memory_router' ORDER BY created_at")
+          .prepare("SELECT code, recoverable FROM errors WHERE source = 'goal_resolution' ORDER BY created_at")
           .all() as Array<{ code: string; recoverable: number; detailsJson: string }>
         expect(errors).toHaveLength(1)
-        expect(errors.map((error) => error.code)).toEqual(["structured_agent_output_invalid"])
-        expect(errors.map((error) => JSON.parse(error.detailsJson).phase)).toEqual(["pre_turn"])
-
-        const usageRows = sqlite
-          .prepare("SELECT status, metadata_json AS metadataJson FROM ai_usage_events WHERE source_kind = 'memory_router' ORDER BY created_at")
-          .all() as Array<{ status: string; metadataJson: string }>
-        expect(usageRows).toHaveLength(3)
-        expect(usageRows.every((row) => row.status === "failed")).toBe(true)
-        expect(usageRows.map((row) => JSON.parse(row.metadataJson).phase)).toEqual([
-          "pre_turn",
-          "pre_turn",
-          "pre_turn",
-        ])
-        expect(usageRows.every((row) => Boolean(JSON.parse(row.metadataJson).errorId))).toBe(true)
+        expect(errors[0]).toMatchObject({ code: "goal_resolution_invalid_output", recoverable: 1 })
+        const resolutionCalls = sqlite
+          .prepare("SELECT status FROM model_calls WHERE request_json LIKE '%goal_resolution%'")
+          .all() as Array<{ status: string }>
+        expect(resolutionCalls).toEqual([{ status: "failed" }])
       } finally {
         sqlite.close()
       }
@@ -7008,7 +6943,7 @@ describe("WebSocket API", () => {
       store.runUserProfileTool(project.id, { operation: "read_section", sectionId: "collaboration_style" })
       await store.waitForRetrievalIdle(project.id)
       expect(embeddedValues - baselineEmbeddedValues).toBe(1)
-      const recalled = await store.searchMemory(project.id, { query: "slow mode", mode: "combined", scope: "global", limit: 8 })
+      const recalled = await store.retrieveMemoryCandidates(project.id, { query: "slow mode", mode: "combined", scope: "global", limit: 8 })
       expect(recalled.results[0]).toMatchObject({ fileName: "user_profile.md", sectionId: "collaboration_style" })
 
       const now = nowIso()
@@ -7025,12 +6960,12 @@ describe("WebSocket API", () => {
       ).run(createId("mdsec"), staleIndexId, now)
       store.reindexProjectEmbeddings(project.id)
       await store.waitForRetrievalIdle(project.id)
-      expect((await store.searchMemory(project.id, { query: "RETIRED-MEMORY-MARKER", mode: "lexical", scope: "global", limit: 8 })).results.length).toBeGreaterThan(0)
+      expect((await store.retrieveMemoryCandidates(project.id, { query: "RETIRED-MEMORY-MARKER", mode: "lexical", scope: "global", limit: 8 })).results.length).toBeGreaterThan(0)
 
       store.ensureProjectMemory(project.id)
       await store.waitForRetrievalIdle(project.id)
       expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM memory_doc_indexes WHERE path = 'operating_principles.md'").get()).toEqual({ count: 0 })
-      const afterRetiredSearch = await store.searchMemory(project.id, { query: "RETIRED-MEMORY-MARKER", mode: "lexical", scope: "global", limit: 8 })
+      const afterRetiredSearch = await store.retrieveMemoryCandidates(project.id, { query: "RETIRED-MEMORY-MARKER", mode: "lexical", scope: "global", limit: 8 })
       expect(
         afterRetiredSearch.results,
         JSON.stringify({ status: store.getProjectEmbeddingStatus(project.id), afterRetiredSearch }),
@@ -9032,12 +8967,12 @@ describe("WebSocket API", () => {
         const tool = sqlite.prepare("SELECT status FROM tool_calls WHERE turn_id = ? AND provider_tool_call_id = ?").get(started.payload.turnId, "tcall_waiting_bash") as {
           status: string
         }
-        const modelCall = sqlite.prepare("SELECT status FROM model_calls WHERE turn_id = ?").get(started.payload.turnId) as {
+        const modelCalls = sqlite.prepare("SELECT status FROM model_calls WHERE turn_id = ? ORDER BY rowid").all(started.payload.turnId) as Array<{
           status: string
-        }
+        }>
         expect(approval).toEqual({ status: "rejected", decision: "rejected" })
         expect(tool.status).toBe("cancelled")
-        expect(modelCall.status).toBe("cancelled")
+        expect(modelCalls).toEqual([{ status: "completed" }, { status: "cancelled" }])
       } finally {
         sqlite.close()
       }

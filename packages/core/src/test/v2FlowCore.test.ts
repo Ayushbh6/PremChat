@@ -13,7 +13,7 @@ import {
   getV2ContextReviewRequirements,
   planV2GoalRoutingTransition,
   refreshV2GoalCapsule,
-  routeV2Goal,
+  resolveSocratesGoal,
   selectV2GoalRoutingCandidates,
   type ImmutableEvidenceRecord,
   type V2ContextItem,
@@ -21,8 +21,9 @@ import {
   type V2FlowContextMessage,
   type V2Goal,
 } from "../v2"
-import { capabilityCatalog, legacyGoalRouterRoleManifest } from "../capabilities/CapabilityCatalog"
-import { socratesMainAgentDefinition } from "../agent/agentDefinitions"
+import { capabilityCatalog } from "../capabilities/CapabilityCatalog"
+import { socratesGoalResolutionPhaseManifest, socratesMainAgentDefinition } from "../agent/agentDefinitions"
+import { SocratesAgent } from "../agent/SocratesAgent"
 
 const flowId = "flow_1"
 
@@ -33,7 +34,9 @@ describe("V2 Flow goal routing", () => {
     expect(mainTools).toContain("trace_retrieve")
     expect(mainTools).not.toContain("focus_ledger")
     expect(mainTools).not.toContain("turn_evidence")
-    expect(capabilityCatalog.resolve(legacyGoalRouterRoleManifest).list().map((capability) => capability.tool.name)).toEqual(["goal_search"])
+    expect(capabilityCatalog.resolve(socratesGoalResolutionPhaseManifest).modelDefinitions()).toEqual([])
+    expect(capabilityCatalog.inventory().map((capability) => capability.modelToolName)).not.toContain("goal_search")
+    expect(capabilityCatalog.inventory().map((capability) => capability.modelToolName)).not.toContain("memory_search")
   })
 
   it("bounds a 30-goal Flow to five cards and honors retrieved goal ids without deciding semantically", () => {
@@ -74,160 +77,76 @@ describe("V2 Flow goal routing", () => {
     expect(selected.candidates.map((candidate) => candidate.goal.id).slice(0, 3)).toEqual(["selected", "previous", "semantic"])
   })
 
-  it("routes a meaningful follow-up back to the still-selected completed goal as a reopen", async () => {
-    const provider = providerWithStructured(async () => ({
-      output: { action: "use", candidates: [1], title: null } as never,
-    }))
-    const result = await routeV2Goal({
-      projectId: "project_1",
-      flowId,
-      turnId: "turn_2",
-      workspacePath: "/workspace",
-      userMessage: "Okay, now update the focus ledger with that information",
-      goals: [goal("selected", "completed", "Review and improve focus ledger")],
-      selectedGoalId: "selected",
-      provider,
-      model: { providerId: "openrouter", modelId: "router-model", thinkingEnabled: false },
-    })
-    expect(result.decision).toEqual({ action: "resume", primaryGoalId: "selected" })
-  })
-
-  it("falls back conservatively to the foreground when the model router fails", async () => {
-    const provider = providerWithStructured(async () => {
-      throw new Error("provider unavailable")
-    })
-    const result = await routeV2Goal({
-      projectId: "project_1",
-      flowId,
-      turnId: "turn_1",
-      workspacePath: "/workspace",
-      userMessage: "Can you take another look?",
-      goals: [goal("active", "foreground", "Build V2"), goal("parked", "parked", "Travel")],
-      provider,
-      model: { providerId: "openrouter", modelId: "router-model", thinkingEnabled: false },
-    })
-
-    expect(result.source).toBe("fallback")
-    expect(result.fallbackReason).toBe("provider_error")
-    expect(result.decision).toMatchObject({ action: "continue", primaryGoalId: "active" })
-  })
-
-  it("honors an explicit new-goal command when the model router fails", async () => {
-    const provider = providerWithStructured(async () => {
-      throw new Error("provider unavailable")
-    })
-    const result = await routeV2Goal({
-      projectId: "project_1",
-      flowId,
-      turnId: "turn_1",
-      workspacePath: "/workspace",
-      userMessage: "Start a focused goal: design a README acceptance checklist",
-      goals: [goal("active", "foreground", "General Conversation")],
-      provider,
-      model: { providerId: "openrouter", modelId: "router-model", thinkingEnabled: false },
-    })
-
-    expect(result.source).toBe("fallback")
-    expect(result.decision).toEqual({ action: "create", title: "design a README acceptance checklist" })
-  })
-
-  it("falls back on timeout even when a provider ignores abort", async () => {
-    const provider = providerWithStructured(async () => new Promise(() => undefined))
-    const result = await routeV2Goal({
-      projectId: "project_1",
-      flowId,
-      turnId: "turn_1",
-      workspacePath: "/workspace",
-      userMessage: "keep going",
-      goals: [goal("active", "foreground", "Build V2")],
-      provider,
-      model: { providerId: "openrouter", modelId: "router-model", thinkingEnabled: false, timeoutMs: 50 },
-    })
-
-    expect(result.fallbackReason).toBe("timeout")
-    expect(result.decision.action).toBe("continue")
-  })
-
-  it("passes three visible Q&A pairs without opaque goal ids and accepts one bounded clarification", async () => {
-    let routedPayload: Record<string, unknown> | undefined
+  it("uses the same Socrates prompt and resolves current, older, new, and clarify", async () => {
+    const decisions = [
+      { decision: "current" },
+      { decision: "older", candidate: 2 },
+      { decision: "new", title: "Design the release checklist" },
+      { decision: "clarify", question: "Should I continue API work or presentation work?" },
+    ] as const
+    const requests: StructuredModelRequest<unknown>[] = []
+    let call = 0
     const provider = providerWithStructured(async <TOutput>(request: StructuredModelRequest<TOutput>) => {
-      routedPayload = JSON.parse(String(request.messages[0]?.content)) as Record<string, unknown>
-      return {
-        output: ({
-          action: "clarify",
-          candidates: [1, 2],
-          title: null,
-        }) as unknown as TOutput,
-      }
+      requests.push(request as StructuredModelRequest<unknown>)
+      return { output: decisions[call++] as TOutput }
     })
-    const result = await routeV2Goal({
+    const agent = new SocratesAgent(provider)
+    const base = {
+      agent,
       projectId: "project_1",
+      conversationId: flowId,
+      sessionId: "session_1",
       flowId,
-      turnId: "turn_1",
       workspacePath: "/workspace",
-      userMessage: "What about the second one?",
-      goals: [goal("api", "foreground", "API work"), goal("slides", "parked", "Presentation")],
-      recentTurns: [
-        { goalId: "api", user: "Fix authentication", assistant: "Tests are ready." },
-        { goalId: "slides", user: "Outline the talk", assistant: "The outline is ready." },
-        { goalId: "slides", user: "Compare two openings", assistant: "The second is calmer." },
-      ],
-      provider,
-      model: { providerId: "openrouter", modelId: "router-model", thinkingEnabled: false },
-    })
-
-    expect(result.decision).toMatchObject({
-      action: "clarify",
-      clarificationGoalIds: ["api", "slides"],
-      clarificationQuestion: "Should I continue “API work” or “Presentation”?",
-    })
-    expect(routedPayload?.immediatelyPrecedingExchanges).toHaveLength(3)
-    expect(routedPayload?.immediatelyPrecedingExchanges).not.toContainEqual(expect.objectContaining({ goalId: expect.anything() }))
-  })
-
-  it("exposes bounded goal search and enforces three calls even when the model keeps requesting it", async () => {
-    let streamCalls = 0
-    let searchCalls = 0
-    const provider: ModelProvider = {
-      countTokens: async (request) => ({ providerId: request.providerId, modelId: request.modelId, inputTokens: 1, baseTokens: 1, method: "local_tiktoken", safetyMarginPercent: 0 }),
-      async *stream() {
-        streamCalls += 1
-        yield {
-          type: "model.tool_call.completed",
-          toolCall: {
-            toolCallId: `goal_search_${streamCalls}`,
-            toolName: "goal_search",
-            input: { query: `older goal ${streamCalls}`, mode: "combined", limit: 1 },
-          },
-        }
-        yield { type: "model.completed", finishReason: "tool-calls" }
-      },
-      async generateStructured() {
-        return { output: { action: "use", candidates: [4], title: null } as never }
-      },
+      runtimeConfig: runtimeConfig(),
+      goals: [goal("active", "foreground", "API work"), goal("slides", "parked", "Presentation")],
+      selectedGoalId: "active",
+      previousGoalId: "slides",
+      selectedGoalTurns: [{ goalId: "active", user: "Review the API", assistant: "The API review is complete." }],
     }
-    const result = await routeV2Goal({
-      projectId: "project_1",
-      flowId,
-      turnId: "turn_1",
-      workspacePath: "/workspace",
-      userMessage: "Return to the older goal",
-      goals: [goal("active", "foreground", "Current work")],
-      goalSearch: async () => {
-        searchCalls += 1
-        return [{ goal: goal(`older_${searchCalls}`, "completed", `Older goal ${searchCalls}`), latestTask: `Task ${searchCalls}` }]
-      },
-      provider,
-      model: { providerId: "openrouter", modelId: "router-model", thinkingEnabled: false },
-    })
+    const current = await resolveSocratesGoal({ ...base, turnId: "turn_1", userMessage: "Now fix the issue we found." })
+    const older = await resolveSocratesGoal({ ...base, turnId: "turn_2", userMessage: "Return to the slides." })
+    const fresh = await resolveSocratesGoal({ ...base, turnId: "turn_3", userMessage: "Let's design release checks." })
+    const clarify = await resolveSocratesGoal({ ...base, turnId: "turn_4", userMessage: "What about the other one?" })
 
-    expect(searchCalls).toBe(3)
-    expect(streamCalls).toBe(3)
-    expect(result.candidates.candidates).toHaveLength(4)
-    expect(result.decision).toMatchObject({ action: "resume", primaryGoalId: "older_3" })
+    expect(current.decision).toEqual({ action: "continue", primaryGoalId: "active" })
+    expect(older.decision).toEqual({ action: "resume", primaryGoalId: "slides" })
+    expect(fresh.decision).toEqual({ action: "create", title: "Design the release checklist" })
+    expect(clarify.decision).toMatchObject({ action: "clarify", clarificationQuestion: "Should I continue API work or presentation work?" })
+    expect(requests.every((request) => request.system.includes("You are Socrates"))).toBe(true)
+    expect(requests.every((request) => request.system.includes("<socrates_goal_resolution_phase>"))).toBe(true)
+    expect(requests.every((request) => request.system.includes("Never guess the first older candidate"))).toBe(true)
+    expect(capabilityCatalog.resolve(socratesGoalResolutionPhaseManifest).modelDefinitions()).toEqual([])
+    expect(JSON.stringify(requests[0]?.messages)).toContain("The API review is complete.")
   })
 
-  it("runs through the shared structured agent and repairs one invalid result", async () => {
+  it("falls back conservatively to current or clarification when the same-Socrates phase fails", async () => {
+    const agent = new SocratesAgent(providerWithStructured(async () => { throw new Error("provider unavailable") }))
+    const common = {
+      agent,
+      projectId: "project_1",
+      conversationId: flowId,
+      sessionId: "session_1",
+      flowId,
+      workspacePath: "/workspace",
+      runtimeConfig: runtimeConfig(),
+      userMessage: "Can you take another look?",
+    }
+    const current = await resolveSocratesGoal({
+      ...common,
+      turnId: "turn_current",
+      goals: [goal("active", "foreground", "Build V2")],
+      selectedGoalId: "active",
+    })
+    const empty = await resolveSocratesGoal({ ...common, turnId: "turn_empty", goals: [] })
+
+    expect(current.source).toBe("fallback")
+    expect(current.decision).toEqual({ action: "continue", primaryGoalId: "active" })
+    expect(empty.source).toBe("fallback")
+    expect(empty.decision.action).toBe("clarify")
+  })
+
+  it("repairs one invalid same-Socrates resolution and aggregates both usages", async () => {
     let attempts = 0
     let systemPrompt = ""
     const provider = providerWithStructured(async <TOutput>(request: StructuredModelRequest<TOutput>) => {
@@ -236,38 +155,37 @@ describe("V2 Flow goal routing", () => {
       if (attempts === 1) {
         return {
           output: {
-            action: "use",
-            candidates: [99],
-            title: null,
+            decision: "older",
+            candidate: 99,
           } as TOutput,
           usage: { inputTokens: 8, outputTokens: 2, totalTokens: 10 },
         }
       }
       return {
         output: {
-          action: "use",
-          candidates: [1],
-          title: null,
+          decision: "current",
         } as TOutput,
         usage: { inputTokens: 9, outputTokens: 2, totalTokens: 11 },
       }
     })
 
-    const result = await routeV2Goal({
+    const result = await resolveSocratesGoal({
+      agent: new SocratesAgent(provider),
       projectId: "project_1",
+      conversationId: flowId,
+      sessionId: "session_1",
       flowId,
       turnId: "turn_repair",
       workspacePath: "/workspace",
       userMessage: "keep going",
       goals: [goal("active", "foreground", "Build V2")],
-      provider,
-      model: { providerId: "openrouter", modelId: "router-model", thinkingEnabled: false },
+      selectedGoalId: "active",
+      runtimeConfig: runtimeConfig(),
     })
 
     expect(attempts).toBe(2)
-    expect(systemPrompt).toContain("Goal Router Agent")
-    expect(systemPrompt).toContain("asks about the active conversation")
-    expect(systemPrompt).toContain("Never select it for a concrete task")
+    expect(systemPrompt).toContain("You are Socrates")
+    expect(systemPrompt).toContain("<socrates_goal_resolution_phase>")
     expect(result.source).toBe("model")
     expect(result.decision).toMatchObject({ action: "continue", primaryGoalId: "active" })
     expect(result.modelAttempt?.usage).toMatchObject({ inputTokens: 17, outputTokens: 4, totalTokens: 21 })
@@ -508,6 +426,16 @@ const providerWithStructured = (generateStructured: NonNullable<ModelProvider["g
     yield { type: "model.completed" }
   },
   generateStructured,
+})
+
+const runtimeConfig = () => ({
+  id: "runtime_goal_resolution",
+  providerId: "openrouter" as const,
+  authMode: "api_key" as const,
+  modelId: "main-socrates-model",
+  thinkingEnabled: false,
+  approvalMode: "read_only_auto" as const,
+  sandboxMode: "read_only" as const,
 })
 
 const evidenceRecord = (index: number): ImmutableEvidenceRecord => createImmutableEvidenceRecord({

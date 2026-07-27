@@ -5,12 +5,10 @@ export const actorForRuntimeSource = (
   source: string,
 ): { type: "user" | "main_agent" | "worker" | "tool" | "system"; label?: string } => {
   if (source === "user") return { type: "user" }
-  if (source === "main_agent" || source === "frontier_agent") {
-    return { type: "main_agent", ...(source === "frontier_agent" ? { label: "Frontier" } : {}) }
+  if (source === "main_agent" || source === "frontier_agent" || source === "goal_resolution") {
+    return { type: "main_agent", ...(source === "frontier_agent" ? { label: "Frontier" } : source === "goal_resolution" ? { label: "Goal resolution" } : {}) }
   }
   if (source === "tool" || source === "terminal") return { type: "tool", label: source }
-  if (source === "goal_router") return { type: "worker", label: "Goal Router" }
-  if (source === "memory_router") return { type: "worker", label: "Memory Router" }
   if (source === "context_compactor" || source === "context_distiller") {
     return { type: "worker", label: source === "context_compactor" ? "Context Compactor" : "Context Distiller" }
   }

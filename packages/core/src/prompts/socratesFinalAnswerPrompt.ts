@@ -1,4 +1,4 @@
-import type { ActiveGoalCard } from "../agent/MemoryRouterAgent"
+import type { ActiveGoalCard } from "../agent/goalContext"
 import type { ResolvedTurnContext } from "@socrates/contracts"
 
 const goalLines = (context: ResolvedTurnContext | undefined, fallback: ActiveGoalCard | undefined): string[] => context

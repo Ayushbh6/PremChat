@@ -485,6 +485,7 @@ export const v2RuntimeEventSchema = z
   })
   .strict()
 
+// Router values remain parseable only for historical v2_model_calls rows.
 export const v2ModelCallRoleSchema = z.enum([
   "main_agent",
   "frontier_agent",

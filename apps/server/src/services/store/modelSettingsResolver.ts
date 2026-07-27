@@ -48,16 +48,6 @@ const CHATGPT_CODEX_ROLE_DEFAULTS: Record<"memory_agent" | WorkerModelRole, Omit
     thinkingEnabled: true,
     thinkingEffort: "low",
   },
-  goal_router: {
-    modelId: "gpt-5.4-mini",
-    thinkingEnabled: true,
-    thinkingEffort: "low",
-  },
-  memory_router: {
-    modelId: "gpt-5.4-mini",
-    thinkingEnabled: true,
-    thinkingEffort: "low",
-  },
   frontier: {
     modelId: "gpt-5.5",
     thinkingEnabled: true,
@@ -134,10 +124,6 @@ const modelRoleLabel = (role: ModelSettingsRole): string => {
       return "Memory context compactor"
     case "title_generator":
       return "Title generator"
-    case "goal_router":
-      return "Goal router"
-    case "memory_router":
-      return "Memory router"
     case "frontier":
       return "Frontier"
   }

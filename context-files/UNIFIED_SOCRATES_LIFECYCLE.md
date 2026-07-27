@@ -4,6 +4,8 @@ Status: detailed technical target for the global goal-centric Socrates lifecycle
 
 FLOW_NORTH_STAR.md defines the product experience. AGENT_REFACTOR_MANIFESTO.md defines the replacement agent architecture. AGENT_CAPABILITY_WORKFLOW.md defines the mandatory change procedure. Current Classic, project, V2, router, and compaction implementations are migration evidence when they conflict with this target.
 
+Implementation checkpoint (2026-07-27): Phase 3 converges the released Classic and Flow pre-turn path through concurrent typed goal/memory retrieval, same-main-Socrates no-tool four-way resolution, deterministic exact-memory selection, and one view-neutral exact prepared context. The former Goal Router, Memory Router, their model tools/settings/prompts, sliced goal-history helper, and view-specific context policy are deleted. The global no-project UI and the consent-gated replacement for released automatic lossy compaction remain later migration work.
+
 ## One Product Model
 
 The target product has one global Socrates, one canonical goal/task history, one shared agent runtime, and one finalization path.

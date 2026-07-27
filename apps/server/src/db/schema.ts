@@ -1595,8 +1595,8 @@ export const v2GoalClassicHomes = sqliteTable(
 )
 
 // Classic turns are assigned to exactly one canonical project goal by the
-// pre-turn Memory Router. This compact ledger is sufficient to reconstruct a
-// multi-goal Classic conversation without replaying its full token history.
+// shared pre-turn goal-resolution lifecycle. This compact ledger is sufficient
+// to reconstruct a multi-goal Classic conversation without replaying its full token history.
 export const v2ClassicTurnGoalLinks = sqliteTable(
   "v2_classic_turn_goal_links",
   {

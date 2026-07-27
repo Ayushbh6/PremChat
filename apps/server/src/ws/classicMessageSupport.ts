@@ -1,5 +1,17 @@
 import type { ModelUsage } from "@socrates/providers"
+import type { RuntimeConfig } from "@socrates/contracts"
 import type { SocratesStore } from "../services/store"
+
+export type ClassicTerminalTaskContinuation = Readonly<{
+  projectId: string
+  conversationId: string
+  sessionId: string
+  turnId: string
+  runtimeConfigId: string
+  runtimeConfig: RuntimeConfig
+  resumedFromTurnId: string
+  wakeContext: string
+}>
 
 export const withLateDeveloperContext = (
   history: ReturnType<SocratesStore["getConversationModelMessages"]>,

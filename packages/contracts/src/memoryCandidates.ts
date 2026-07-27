@@ -67,7 +67,7 @@ export const memoryRetrievalSectionSchema = z.enum([
 ])
 export type MemoryRetrievalSection = z.infer<typeof memoryRetrievalSectionSchema>
 
-export const MEMORY_ROUTING_SECTIONS_BY_FILE: Record<MemoryRetrievalFile, readonly MemoryRetrievalSection[]> = {
+export const MEMORY_SECTIONS_BY_FILE: Record<MemoryRetrievalFile, readonly MemoryRetrievalSection[]> = {
   "PROJECT_NOTES.md": ["runtime_context", "state_ledger", "active_context", "active_todos", "checked_files", "next_commands", "scratch_notes", "completed_archive"],
   "MEMORY.md": ["current_state", "always_apply_rules", "durable_decisions", "constraints", "project_preferences", "blockers", "handoff", "evidence_anchors"],
   "CORE_IDEA.md": ["purpose", "current_direction", "milestones", "update_triggers"],
@@ -78,7 +78,7 @@ export const MEMORY_ROUTING_SECTIONS_BY_FILE: Record<MemoryRetrievalFile, readon
   "identity.md": ["core_identity", "voice_and_presence", "relationship_to_user", "operating_principles", "safety_boundaries", "tool_and_memory_discipline"],
 }
 const validSectionsByFile: Record<MemoryRetrievalFile, ReadonlySet<MemoryRetrievalSection>> = Object.fromEntries(
-  Object.entries(MEMORY_ROUTING_SECTIONS_BY_FILE).map(([fileName, sections]) => [fileName, new Set(sections)]),
+  Object.entries(MEMORY_SECTIONS_BY_FILE).map(([fileName, sections]) => [fileName, new Set(sections)]),
 ) as unknown as Record<MemoryRetrievalFile, ReadonlySet<MemoryRetrievalSection>>
 
 const validFilesBySurface: Record<MemoryRetrievalSurface, ReadonlySet<MemoryRetrievalFile>> = {
@@ -107,31 +107,7 @@ const validateMemoryDestination = (
   }
 }
 
-export const memoryReadTargetSchema = z
-  .object({ ...memoryDestinationShape, reason: z.string().min(1).max(500) })
-  .strict()
-  .superRefine(validateMemoryDestination)
-export type MemoryReadTarget = z.infer<typeof memoryReadTargetSchema>
-
-/** @deprecated The router no longer returns writes. Kept only for persisted-history compatibility. */
-export const routedMemoryWriteSchema = z.union([
-  z
-    .object({ kind: z.literal("document"), ...memoryDestinationShape, text: z.string().min(1).max(1_200), reason: z.string().min(1).max(500) })
-    .strict()
-    .superRefine(validateMemoryDestination),
-  z.object({ kind: z.literal("skill_candidate"), text: z.string().min(1).max(1_200), reason: z.string().min(1).max(500) }).strict(),
-])
-export type RoutedMemoryWrite = z.infer<typeof routedMemoryWriteSchema>
-
-export const memoryRouterPreTurnResultSchema = z
-  .object({
-    readTargets: z.array(memoryReadTargetSchema).max(8),
-    reason: z.string().min(1).max(500),
-  })
-  .strict()
-export type MemoryRouterPreTurnResult = z.infer<typeof memoryRouterPreTurnResultSchema>
-
-export const memorySearchInputSchema = z
+export const memoryCandidateQuerySchema = z
   .object({
     query: z.string().min(1).max(1_000),
     mode: z.enum(["lexical", "semantic", "combined"]).default("combined"),
@@ -139,12 +115,12 @@ export const memorySearchInputSchema = z
     limit: z.number().int().positive().max(8).default(8),
   })
   .strict()
-export type MemorySearchInput = z.infer<typeof memorySearchInputSchema>
+export type MemoryCandidateQuery = z.infer<typeof memoryCandidateQuerySchema>
 
-export const memorySearchResultSchema = z
+export const memoryCandidateSchema = z
   .object({
     resultNumber: z.number().int().positive(),
-    content: z.string(),
+    content: z.string().min(1),
     surface: memoryRetrievalSurfaceSchema,
     fileName: memoryRetrievalFileSchema,
     sectionId: memoryRetrievalSectionSchema,
@@ -152,13 +128,14 @@ export const memorySearchResultSchema = z
     scope: z.enum(["global", "project"]),
   })
   .strict()
-export type MemorySearchResult = z.infer<typeof memorySearchResultSchema>
+  .superRefine(validateMemoryDestination)
+export type MemoryCandidate = z.infer<typeof memoryCandidateSchema>
 
-export const memorySearchOutputSchema = z
+export const memoryCandidateRetrievalSchema = z
   .object({
-    results: z.array(memorySearchResultSchema).max(8),
+    results: z.array(memoryCandidateSchema).max(8),
     totalMatches: z.number().int().nonnegative(),
     warnings: z.array(z.string()).optional(),
   })
   .strict()
-export type MemorySearchOutput = z.infer<typeof memorySearchOutputSchema>
+export type MemoryCandidateRetrieval = z.infer<typeof memoryCandidateRetrievalSchema>

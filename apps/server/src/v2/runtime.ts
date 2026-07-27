@@ -13,11 +13,12 @@ import {
 import {
   createResolvedTurnContextSeed,
   findModelOption,
+  selectExactMemoryCandidates,
   type SocratesAgent,
   type SocratesAgentEvent,
 } from "@socrates/core"
 import type { McpRuntime } from "@socrates/mcp"
-import type { ModelProvider, ModelUsage } from "@socrates/providers"
+import type { ModelUsage } from "@socrates/providers"
 import { createId, normalizeError, nowIso, SocratesError } from "@socrates/shared"
 import { listWorkspaceEnvKeyCandidates, readWorkspaceEnvValue } from "@socrates/workspace"
 import type { SocratesStore } from "../services/store"
@@ -26,7 +27,7 @@ import type { V2ContinuedTerminalTask, V2FlowStore, V2ReadyTerminalTask } from "
 import { buildFlowWorkingMessages } from "../services/v2/flowWorkingContext"
 import { ActiveTurns } from "../ws/activeTurns"
 import { makeV2Event } from "./eventSender"
-import { resolveFlowGoal } from "./goalRoutingCoordinator"
+import { resolveFlowGoal } from "./goalLifecycleCoordinator"
 import { createV2LiveActivity, v2ToolActivity } from "./liveActivity"
 import { actorForRuntimeSource, recordV2ModelUsage, safeRuntimeStringify } from "./runtimeTelemetry"
 import { V2FlowSubscriptions } from "./flowSubscriptions"
@@ -42,7 +43,6 @@ export type V2ExecutionRuntimeDeps = {
   subscriptions?: V2FlowSubscriptions
   activeTurns?: ActiveTurns
   mcpRuntime?: McpRuntime
-  routerProvider?: ModelProvider
   supervisorScope?: string
 }
 
@@ -232,7 +232,7 @@ export class V2ExecutionRuntime {
     this.emit("v2.routing.clarification.resolved", {
       routingRun: resolved.routingRun,
       answerMessage: resolved.answerMessage,
-    }, { projectId: command.projectId, flowId: command.flowId, turnId: resolved.created.turn.id }, "goal_router")
+    }, { projectId: command.projectId, flowId: command.flowId, turnId: resolved.created.turn.id }, "goal_resolution")
     const syntheticCommand = {
       id: createId("v2evt"),
       schemaVersion: 2 as const,
@@ -392,6 +392,12 @@ export class V2ExecutionRuntime {
     let reasoningText = ""
     let finalResult: SocratesFinalAnswer | undefined
     let goalId: string | undefined
+    let memoryCandidates: readonly import("@socrates/contracts").MemoryCandidate[] = []
+    let retrievalStatus: import("@socrates/contracts").CandidateRetrievalStatus = {
+      goalCandidates: "completed",
+      memoryCandidates: "completed",
+      warnings: [],
+    }
     let suspended = false
     let durableTurnCommitted = false
     let frontierHandoverActive = false
@@ -433,21 +439,25 @@ export class V2ExecutionRuntime {
           workspacePath,
           store: this.deps.store,
           sharedStore: this.deps.sharedStore,
+          agent: this.deps.agent,
+          runtimeConfig,
           recordUsage: (modelCallId, usage) => recordV2ModelUsage(this.deps.store, modelCallId, usage),
           ...(clarificationAnswer ? { clarificationAnswer } : {}),
-          ...(this.deps.routerProvider ? { routerProvider: this.deps.routerProvider } : {}),
+          abortSignal: abortController.signal,
         })
         if (resolution.status === "clarification") {
           publishActivity(createV2LiveActivity(created.turn.id, "awaiting_input", "Waiting for your focus choice…"))
           this.emit("v2.routing.clarification.requested", {
             routingRun: resolution.routingRun,
             message: resolution.message,
-          }, { projectId: command.projectId, flowId: command.flowId, turnId: created.turn.id }, "goal_router")
-          this.emit("v2.message.completed", { message: resolution.message }, { projectId: command.projectId, flowId: command.flowId, turnId: created.turn.id }, "goal_router")
-          this.emit("v2.turn.updated", { turn: resolution.turn }, { projectId: command.projectId, flowId: command.flowId, turnId: created.turn.id }, "goal_router")
+          }, { projectId: command.projectId, flowId: command.flowId, turnId: created.turn.id }, "goal_resolution")
+          this.emit("v2.message.completed", { message: resolution.message }, { projectId: command.projectId, flowId: command.flowId, turnId: created.turn.id }, "goal_resolution")
+          this.emit("v2.turn.updated", { turn: resolution.turn }, { projectId: command.projectId, flowId: command.flowId, turnId: created.turn.id }, "goal_resolution")
           return
         }
         const applied = resolution.applied
+        memoryCandidates = resolution.memoryCandidates
+        retrievalStatus = resolution.retrieval
         activeGoalId = resolution.goalId
         goalId = activeGoalId
         publishActivity(createV2LiveActivity(created.turn.id, "thinking", "Reviewing the relevant context…"))
@@ -457,7 +467,7 @@ export class V2ExecutionRuntime {
           "v2.goal.routed",
           { routingRun: applied.routingRun, goal: applied.goal, ...(applied.transition ? { transition: applied.transition } : {}) },
           { projectId: command.projectId, flowId: command.flowId, goalId: activeGoalId, turnId: created.turn.id },
-          "goal_router",
+          "goal_resolution",
         )
         const routedTurn: V2Turn = { ...created.turn, goalId: activeGoalId, status: "running", updatedAt: nowIso() }
         this.emit("v2.turn.updated", { turn: routedTurn }, { projectId: command.projectId, flowId: command.flowId, goalId: activeGoalId, turnId: created.turn.id }, "main_agent")
@@ -480,7 +490,6 @@ export class V2ExecutionRuntime {
       }
       const promptContext = this.deps.sharedStore.getAgentContext(command.projectId)
       const stableCachePreludeSnapshot = this.deps.sharedStore.loadStableCachePreludeSnapshot(command.projectId, workspacePath)
-      const memoryRouterModelSettings = this.deps.sharedStore.getWorkerModelSetting("memory_router")
       const frontierModelSettings = this.deps.sharedStore.getWorkerModelSetting("frontier")
       const exposedMcpServers = new Set<string>()
       const toolExecutors = createV2ToolExecutors({
@@ -517,7 +526,6 @@ export class V2ExecutionRuntime {
         providerId: runtimeConfig.providerId,
         modelId: runtimeConfig.modelId,
         runtimeConfig,
-        memoryRouterModelSettings,
         frontierModelSettings,
         messages,
         promptContext,
@@ -529,50 +537,17 @@ export class V2ExecutionRuntime {
           taskStartedAt: reconciliationWatermark.taskStartedAt,
           persistReconciliationWatermark: (state) => this.deps.sharedStore.saveTaskReconciliationWatermark("v2_flow", created.turn.id, state),
         } : {}),
-        automaticMemorySearch: (memoryInput) => this.deps.sharedStore.searchMemory(command.projectId, memoryInput, true),
         activeGoal,
         resolvedTurnContextSeed: createResolvedTurnContextSeed({
-          presentation: { kind: "flow", aperture: "selected_goal" },
-          projectName: promptContext.projectName,
-          ...(promptContext.projectDescription ? { projectDescription: promptContext.projectDescription } : {}),
           goal: activeGoal,
           messages,
+          retrieval: retrievalStatus,
         }),
-        recordMemoryRouterRun: async (run) => {
-          const error = run.error
-            ? this.deps.store.recordError({
-                projectId: command.projectId,
-                flowId: command.flowId,
-                goalId: activeGoalId,
-                turnId: created.turn.id,
-                source: "memory_router",
-                code: run.error.code,
-                message: run.error.message,
-                details: { phase: run.phase, routerDetails: run.error.details },
-                recoverable: run.error.recoverable,
-              })
-            : undefined
-          const attempts: Array<ModelUsage | undefined> = run.usages.length > 0 ? run.usages : [undefined]
-          for (const [index, usage] of attempts.entries()) {
-            const modelCallId = this.deps.store.createModelCall({
-              projectId: command.projectId,
-              flowId: command.flowId,
-              goalId: activeGoalId,
-              turnId: created.turn.id,
-              role: "memory_router",
-              providerId: run.providerId,
-              modelId: run.modelId,
-              request: { phase: run.phase, attempt: index + 1, attemptCount: attempts.length, startedAt: run.startedAt },
-            })
-            const isLastAttempt = index === attempts.length - 1
-            this.deps.store.completeModelCall({
-              modelCallId,
-              response: { phase: run.phase, status: run.status, attempt: index + 1, startedAt: run.startedAt, completedAt: run.completedAt },
-              ...(error && isLastAttempt ? { errorId: error.id } : {}),
-            })
-            if (usage) recordV2ModelUsage(this.deps.store, modelCallId, usage)
-          }
-        },
+        resolvedTurnMemory: selectExactMemoryCandidates({
+          candidates: memoryCandidates,
+          userMessage: command.payload.content,
+          goal: activeGoal,
+        }),
         contextCompression: createV2ContextCompressionRuntime({
           store: this.deps.store,
           sharedStore: this.deps.sharedStore,

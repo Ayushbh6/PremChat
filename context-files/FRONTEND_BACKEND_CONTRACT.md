@@ -40,7 +40,7 @@ The contract must also stay expandable for later:
 
 Everything below remains the V1 Classic contract unless a section explicitly says otherwise.
 
-V2 does not add goal ids, Flow state, V2 context-projection rows, or Flow routing semantics to V1 wire payloads and events. It has a namespaced contract family, separate handlers/subscriptions, a feature-gated UI entry, and V2-owned execution persistence. Existing V1 clients continue to function without knowing V2 exists. The model-visible `context_disposition` tool is different: it is a shared core Socrates within-turn control in both views and never creates V2 persistence from Classic. Behind that wire boundary, both views bind the current task through the shared Goal Router policy, then use the read-only pre-turn Memory Router. Goal finalization belongs only to the validated main-Socrates result applied to that existing binding. The Classic microphone is a small conversation-scoped STT contract: it returns text for the existing unsent draft and creates no Flow speech job or artifact.
+V2 does not add goal ids, Flow state, V2 context-projection rows, or Flow routing semantics to V1 wire payloads and events. It has a namespaced contract family, separate handlers/subscriptions, a feature-gated UI entry, and V2-owned execution persistence. Existing V1 clients continue to function without knowing V2 exists. The model-visible `context_disposition` tool is different: it is a shared core Socrates within-turn control in both views and never creates V2 persistence from Classic. Behind that wire boundary, both views persist the user message, retrieve typed goal/memory candidates concurrently, use the selected main Socrates for the zero-tool four-way goal decision, bind the task deterministically, and select exact memory without another model call. Goal finalization belongs only to the validated main-Socrates result applied to that existing binding. The Classic microphone is a small conversation-scoped STT contract: it returns text for the existing unsent draft and creates no Flow speech job or artifact.
 
 `SOCRATES_V2_FLOW_ENABLED` is false for a directly constructed source server unless its value is exactly `true`. Direct source-server development must set it explicitly. The ordinary NPM/runtime-archive `scripts/runtime/launcher.mjs` passes the explicit environment value or defaults it to `true`, so the normal packaged web/backend product exposes the project-scoped Seamless switch and retains an explicit rollback override.
 
@@ -58,7 +58,7 @@ v2.speech.*
 
 The exact entities, HTTP bodies, socket commands, socket events, and speech unions are in `packages/contracts/src/v2Flow.ts`. That module is not merged into the V1 command or event unions, so a V2 payload cannot be accidentally accepted by a Classic handler.
 
-V2 reuses the same normalized provider, main tool executors, approvals, Terminal supervisor, artifacts, usage normalization, errors, workspace `.socrates/`, global `~/.Socrates/`, MCP/skills, pre-turn Memory Router, and global Memory Agent. Ordinary V2 execution never creates a shadow Classic runtime merely to reuse an endpoint. The explicit bridge keeps one canonical goal/task ledger: a Classic conversation can contain many goals, each routed Classic turn links to one goal, and each goal has at most one preferred Classic home. Homes store projection references rather than copied Q&A; tools, evidence, usage, and events stay source-runtime-owned. Canonical V2 Q&A parents enter the shared retrieval index with `runtimeKind = "v2_flow"` and `flowId`; lexical/semantic/combined/queryless/inspect/audit operations resolve through the shared trace authority with semantic view scopes.
+V2 reuses the same normalized provider, main tool executors, approvals, Terminal supervisor, artifacts, usage normalization, errors, workspace `.socrates/`, global `~/.Socrates/`, MCP/skills, concurrent candidate retrieval, deterministic exact-memory selection, and global Memory Agent. Ordinary V2 execution never creates a shadow Classic runtime merely to reuse an endpoint. The explicit bridge keeps one canonical goal/task ledger: a Classic conversation can contain many goals, each Classic task links to one goal, a resumed physical turn retains that association, and each goal has at most one preferred Classic home. Homes store projection references rather than copied Q&A; tools, evidence, usage, and events stay source-runtime-owned. Canonical V2 Q&A parents enter the shared retrieval index with `runtimeKind = "v2_flow"` and `flowId`; lexical/semantic/combined/queryless/inspect/audit operations resolve through the shared trace authority with semantic view scopes.
 
 V2 also renders the same shared web `ChatComposer` used by Classic. The component owns identical model/thinking menus, send/stop behavior, attachment picker, pasted and drag/dropped images, previews, vision warning, Agent Skill ZIP support, large-paste conversion, and optional microphone presentation in both views. V2 supplies V2-scoped attachment upload/send and voice callbacks; Classic supplies its existing attachment/send callbacks plus its conversation-scoped transcription callback. There is no V2-specific Tools toggle or second composer implementation.
 
@@ -160,7 +160,7 @@ WS /v2/ws
 
 V2 client commands are `v2.flow.subscribe`, `v2.flow.unsubscribe`, `v2.message.send`, `v2.routing.clarification.respond`, `v2.focus.update`, `v2.turn.cancel`, `v2.approval.decide`, `v2.feedback.submit`, `v2.credential.input.submit`, and the `v2.terminal.stop/input/resize/rename` family. Focus actions are `switch`, `pause`, `finish`, `reopen`, `archive`, `pin`, and `unpin`. The live server emits connection/snapshot hydration, turns/messages, goal routing/clarification/capsules/transitions, context dispositions/compaction, tool/approval/credential/Terminal/error lifecycle, feedback, and Frontier handover. The contract also reserves typed `v2.artifact.created` and `v2.speech.job.updated` events; artifact/speech jobs are currently handled through HTTP. All envelopes carry schema version 2 plus project/Flow scope; runtime events use a `v2.` prefix.
 
-The V2 project route is `/seamless/projects/:projectId`; `/seamless` redirects to the Classic `/projects` directory. The Classic project dashboard owns the capability-aware **Go to Flow View** link into its matching Flow; a mapped Classic chat uses **Continue in Flow View**. These labels do not rename the internal route namespace. V2 does not call the Classic conversation-title endpoint/service or a separate capsule-writing model; deterministic goal titles and materiality-gated rich capsule versions are its navigation/resume contract. The V2 Goal Router has a dedicated `goal_router` model/thinking setting and calls the strict V2 routing schema through the shared structured-agent runner; it is not a title rewrite.
+The V2 project route is `/seamless/projects/:projectId`; `/seamless` redirects to the Classic `/projects` directory. The Classic project dashboard owns the capability-aware **Go to Flow View** link into its matching Flow; a mapped Classic chat uses **Continue in Flow View**. These labels do not rename the internal route namespace. V2 does not call the Classic conversation-title endpoint/service or a separate capsule-writing model; deterministic goal titles and materiality-gated rich capsule versions are its navigation/resume contract. Goal resolution uses the selected main model, shared Socrates prompt core/runtime, zero tools, and the strict current/older/new/clarify schema; it is not a title rewrite or independently configured worker.
 
 ## Route Contract
 
@@ -1941,7 +1941,7 @@ mcp_registry
 
 The main-agent `memory_note` tool uses only `note` and optional `importance` as model-authored input. The backend attaches current-turn lookup refs, source project/workspace metadata, and default project-local skill-scope hint automatically.
 
-Do not expose separate `glob`, `grep`, `write`, `git`, `todo`, `question`, broad web-search, consult-agent, or sub-agent/task tools in the initial tooling phase. Internal implementation helpers may be more granular, but the main Socrates model-visible surface should remain the tools above plus `memory_note` and dynamic MCP tools returned by `mcp_registry`. `handover_to_frontier` is conditionally visible only before a configured one-way Frontier transfer and accepts only optional compact `focus`; it is not a consultation or returnable delegation loop. It always uses the typed approval flow, even in approve-all/full-access mode. Rejection removes it for the rest of the turn and returns control to the default Socrates model. `url_fetch` is exact-URL reading only, not search or crawling. `projects`, `edit_files`, `memory_notes`, and `skill_write` are base/specialized contract tools for backend agent workflows, not normal main-agent tools. Dynamic MCP tools are not included in the system prompt or first provider-call schemas; the MCP runtime may expose `mcp__...` tools only after `mcp_registry` returns them during the same turn. Current date/time is exposed through `current_time`, not through changing system-prompt context. Main chat must not inject per-turn wake-context blocks or hidden skill/MCP matches based on user-query wording. The Memory Router may attach a tiny always-apply rules pack and route Socrates to curated docs, but it must not become raw conversation recall or hidden skill/MCP prompt matching. That always-apply pack is rendered as `<socrates_stable_cache_prelude>` before conversation/user text; dynamic routed docs, tool results, and ledgers stay after the current user message. Patch application is exposed as `apply_patch`, not as a hidden mode inside `edit`.
+Do not expose separate `glob`, `grep`, `write`, `git`, `todo`, `question`, broad web-search, consult-agent, or sub-agent/task tools in the initial tooling phase. Internal implementation helpers may be more granular, but the main Socrates model-visible surface should remain the tools above plus `memory_note` and dynamic MCP tools returned by `mcp_registry`. `handover_to_frontier` is conditionally visible only before a configured one-way Frontier transfer and accepts only optional compact `focus`; it is not a consultation or returnable delegation loop. It always uses the typed approval flow, even in approve-all/full-access mode. Rejection removes it for the rest of the turn and returns control to the default Socrates model. `url_fetch` is exact-URL reading only, not search or crawling. `projects`, `edit_files`, `memory_notes`, and `skill_write` are base/specialized contract tools for backend agent workflows, not normal main-agent tools. Dynamic MCP tools are not included in the system prompt or first provider-call schemas; the MCP runtime may expose `mcp__...` tools only after `mcp_registry` returns them during the same turn. Current date/time is exposed through `current_time`, not through changing system-prompt context. Main chat must not inject per-turn wake-context blocks or hidden skill/MCP matches based on user-query wording. The stable always-apply pack is backend-assembled and rendered as `<socrates_stable_cache_prelude>` before conversation/user text; deterministic selection attaches only authorized non-duplicate dynamic memory after binding. Tool results and runtime ledgers stay after the current user message. Patch application is exposed as `apply_patch`, not as a hidden mode inside `edit`.
 
 All tool schemas live in `packages/contracts`. `packages/core/tools` owns the model-visible tool wrappers and registry. `packages/workspace` owns filesystem, document parsing, image extraction, shell, git, patch, and trace implementation details.
 
@@ -2297,7 +2297,7 @@ Rules:
 
 Accepted replacement contract: main Socrates retrieval is active-project scoped and defaults to the full project. Search modes are `lexical`, `semantic`, `combined`, and `audit`; `exact` and main-agent cross-project selectors are retired. Lexical queries accept at most 128 characters and search all supplied terms. Semantic/combined queries accept at most 1,000 characters. Normal rows return only `resultNumber`, `content`, `turnId`, `conversationTitle`, `turnNumber`, `matchedRole`, `status`, and `occurredAt`; inspect resolves the numbered result to its full parent. Scores and storage/vector/message/chunk ids remain backend-only.
 
-Memory retrieval rows return only `resultNumber`, `content`, `surface`, `fileName`, `sectionId`, `sectionHeading`, and `scope`. The pre-turn `MemoryRouterAgent` receives automatic hybrid candidates, may call `memory_search` three times, and must finish with Zod-validated exact `readTargets` only. It has no write field or write path.
+Automatic goal-card rows return only typed `resultNumber`, backend `goalId`, human `title`, exact card `content`, and `occurredAt`; the backend resolves ids before the model sees numbered cards. Memory rows return only `resultNumber`, exact candidate `content`, `surface`, `fileName`, `sectionId`, `sectionHeading`, and `scope`. Both adapters validate their Zod contracts, run concurrently, and expose no model tool. Deterministic selection filters memory only after goal binding and never writes.
 
 Normal retrieval searches visible active/archived conversation turns in the active project. The main-agent contract never accepts a project selector; the WebSocket executor supplies the active `projectId`. The Global Memory Agent has a separate explicit cross-project contract.
 
@@ -2577,7 +2577,7 @@ Rules:
 
 ### Worker Model Settings
 
-Skill Writer, Socrates Context Compactor, Memory Context Compactor, Title Generator, Goal Router, Memory Router, and Frontier model settings are independently user-configurable through `/api/worker-model-settings`. The Settings page should show polished registry-backed model/thinking selectors for all seven workers while preserving the default models already used by the app. Socrates Context Compactor controls shared Classic/Flow 170k chat compression. Fine-grained within-turn tool-output disposition is selected by the active main Socrates model in the same response as its next functional tool, so it has no separate worker setting. Memory Context Compactor controls Global Memory Agent and Skill Writer compression. Memory Router controls only read-only pre-turn recall selection in the target lifecycle; the main model owns progress/final reconciliation. Frontier controls the one-way same-task takeover target.
+Skill Writer, Socrates Context Compactor, Memory Context Compactor, Title Generator, and Frontier model settings are independently user-configurable through `/api/worker-model-settings`. The Settings page shows polished registry-backed model/thinking selectors for these five workers. Socrates Context Compactor controls shared Classic/Flow 170k chat compression. Fine-grained within-turn tool-output disposition is selected by the active main Socrates model in the same response as its next functional tool, so it has no separate worker setting. Memory Context Compactor controls Global Memory Agent and Skill Writer compression. The selected main Socrates model also owns semantic goal resolution; deterministic memory selection has no model setting. Frontier controls the one-way same-task takeover target.
 
 All model settings are auth-mode-aware. `authMode = "api_key"` means normal provider API credentials or a local direct provider path such as Ollama. `authMode = "chatgpt_subscription"` is currently valid only for OpenAI ChatGPT Codex subscription auth. Saved unavailable settings are preserved, and runtime/UI resolution returns an effective fallback without overwriting the saved row. Ollama settings are valid when the exact discovered local model is still available; Ollama thinking options are intentionally just Off and On.
 
@@ -2587,13 +2587,11 @@ type WorkerModelRole =
   | "socrates_context_compactor"
   | "memory_context_compactor"
   | "title_generator"
-  | "goal_router"
-  | "memory_router"
   | "frontier"
 
 type WorkerModelSettings = {
   workerId: WorkerModelRole
-  providerId: "openai" | "google" | "openrouter" | "ollama"
+  providerId: "openai" | "google" | "openrouter" | "deepseek" | "ollama"
   authMode?: "api_key" | "chatgpt_subscription"
   modelId: string
   thinkingEnabled: boolean
@@ -2609,37 +2607,48 @@ PATCH /api/worker-model-settings/:workerId
   -> { settings: WorkerModelSettings }
 ```
 
-The built-in Memory Router default is OpenRouter `deepseek/deepseek-v4-flash` with thinking off. When ChatGPT Codex is connected and the saved router setting is the built-in default or unavailable, the effective runtime default is ChatGPT Codex `gpt-5.4-mini` with low reasoning. Its token/cost usage should be counted in normal turn/conversation totals through `ai_usage_events`; the frontend does not need a separate router-cost display.
-
 The built-in Frontier default is OpenRouter `x-ai/grok-4.5` with low reasoning. OpenRouter marks this model's reasoning as mandatory and rejects disabled/none requests, so the registry exposes only Low, Medium, and High and normalizes a stale unsupported saved choice to Low. `handover_to_frontier` accepts `{ focus?: string }`, where focus is at most 20 words and 160 characters. Every call emits a normal `approval.requested` event with the user-facing title `Call Frontier model`, target-model description, and compact focus preview. Approval persists the accepted tool call and `agent.model.handover`; the driver and Frontier use separate `model_calls` under the same turn, driver answer text from the transfer step is discarded, and Frontier's answer is the only final answer. Rejection persists the rejected approval/tool call, exposes no `agent.model.handover`, removes the tool from later calls in that turn, and adds a developer instruction for the driver to continue itself. A later user-authored turn uses the main selected chat model again.
 
-Memory Router contract:
+Unified pre-turn contract:
 
 ```ts
-type MemoryReadTarget = {
+type GoalCandidate = {
+  resultNumber: number
+  goalId: string // backend-only; Socrates receives numbered cards
+  title: string
+  content: string
+  occurredAt: string
+}
+
+type MemoryCandidate = {
+  resultNumber: number
+  content: string
   surface: "project_notes" | "project_memory" | "repo_docs" | "user_profile" | "identity"
   fileName: MemoryRetrievalFile
   sectionId: MemoryRetrievalSection
-  reason: string
+  sectionHeading: string
+  scope: "global" | "project"
 }
 
-type MemoryRouterPreTurnResult = {
-  readTargets: MemoryReadTarget[] // max 8
-  reason: string
+type CandidateRetrievalStatus = {
+  goalCandidates: "completed" | "failed"
+  memoryCandidates: "completed" | "failed"
+  warnings: string[]
 }
-
 ```
 
 The behavior stays simple and human-facing:
 
-- Pre-turn routing returns exact valid file/section read targets, not boolean surfaces or loose doc hints.
-- Pre-turn runtime loads bounded identity sections (`core_identity`, `voice_and_presence`, `relationship_to_user`) plus global/project always-apply sections into one backend-owned per-project snapshot and renders it with the registry-generated surface map into a provider-agnostic stable cache prelude before conversation/user text. A stat fast path avoids re-reading unchanged files; changed files are content-hashed and parsed, but same-content rewrites or changes outside these standing sections retain the cached snapshot. Only a changed standing-section hash replaces it. The bounded cache uses least-recently-used eviction. This path emits no standing-section tool calls and does not depend on successful structured Memory Router generation. Router targets matching standing sections and exact repeated dynamic targets are hard-deduplicated; only dynamic docs remain in the later visible context tail.
-- Before router reasoning, the complete user prompt is shared-chunked and automatically hybrid-prefetched against eligible memory sections. Up to 12 prompt segments are merged into at most eight section parents; this does not consume the router's tool budget.
-- The pre-turn Memory Router has `memory_search` only for routing, runs after goal/task binding, and is strictly read-only. There is no final/post-turn Memory Router. Main Socrates may inspect normal task evidence through its shared tools, while `project_notes/runtime_context` and `project_notes/state_ledger` remain backend-owned and rejected as mutation targets.
-- If pre-turn routing still fails, the backend persists a `memory_router` error plus every usage item already observed as failed `ai_usage_events` with phase/error metadata, then lets the ordinary task continue. Socrates is told not to claim routed recall succeeded. No durable retry/pending-reconciliation subsystem is created.
+- The backend starts goal-card and memory-candidate retrieval before awaiting either one. Each result validates through the shared contract; `Promise.allSettled` produces an honest independent receipt.
+- The current capsule and latest exact exchange are supplied independently of retrieval rank. Same-Socrates resolution receives at most five whole numbered goal cards and returns only current, older candidate number, new title, or clarification question.
+- Goal resolution uses the selected main provider/model, shared prompt core/runtime, zero tools, strict Zod validation, and one repair. Provider/validation failure retains an available current goal or asks for clarification; there is no keyword or score fallback.
+- After binding, deterministic memory selection rejects backend-only and standing sections, deduplicates file/section owners, reranks against the goal/current task, preserves source diversity, and attaches at most eight exact candidate contents. It has no write field or write path.
+- Pre-turn runtime loads standing identity sections (`core_identity`, `voice_and_presence`, `relationship_to_user`) plus global/project always-apply sections into one backend-owned per-project snapshot and renders it with the registry-generated surface map into a provider-agnostic stable cache prelude before conversation/user text. A stat fast path avoids re-reading unchanged files; changed files are content-hashed and parsed, but same-content rewrites or changes outside these standing sections retain the cached snapshot. Only a changed standing-section hash replaces it. The cache uses least-recently-used eviction. This path emits no standing-section tool calls. Deterministic selection excludes standing sections and repeated exact dynamic targets; only selected dynamic sources remain in the later visible context tail.
+- Main Socrates may inspect normal task evidence through its shared tools, while `project_notes/runtime_context` and `project_notes/state_ledger` remain backend-owned and rejected as mutation targets.
+- Goal-resolution model calls persist under the main-agent role with `phase = goal_resolution`; retrieval failures are carried in the receipt and are never claimed as successful recall. No durable retry/pending-reconciliation subsystem is created.
 - The Global Memory Agent follows the same tool-loop then structured-final pattern. Its final Zod journal has bounded `summary`, `patternsObserved`, `skillsAffected`, `decisions`, `openInvestigations`, and `nextRunFocus`; scoped file/proposal work remains normal internal tool calls. A valid successful run creates one `memory_agent_journal` row and refreshes the generated Memory Agent Ledger file exposed by Memory Center.
 - The Memory Agent-only `read_memory_journal` tool is read-only. `list` defaults to 5 and caps at 10 compact previews; `read` accepts one run id. Character limits default to 8,000 for list serialization and 12,000 for a run, with a 20,000 hard maximum and explicit truncation metadata. It cannot write, delete, search, or embed journal history.
-- The router never authors `oldText`, `newText`, patches, hashes, or evidence ids. Backend task evidence remains private runtime state for Terminal continuation and audit paths.
+- Candidate retrieval and deterministic selection never author `oldText`, `newText`, patches, hashes, or evidence ids. Backend task evidence remains private runtime state for Terminal continuation and audit paths.
 - Every user request creates one durable task. Automatic Terminal wait/resume turns stay inside that task; a user-authored follow-up starts a new task.
 - The first no-tool answer is held as a proposed draft. The same Socrates turn receives its mandatory reconciliation checkpoint there, completes and verifies any required `.socrates` work, then enters the strict no-tool structured final call.
 - Socrates opens exact targets and uses `project_docs` or `repo_docs` for mutations. The runtime blocks the final answer until every observed checkpoint mutation has a successful read of that same section after the mutation.

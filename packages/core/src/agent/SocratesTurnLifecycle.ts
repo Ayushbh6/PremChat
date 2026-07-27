@@ -3,28 +3,21 @@ import {
   type ToolExecutionResult,
   type ToolName,
 } from "@socrates/contracts"
-import type { ModelMessage, ModelProvider } from "@socrates/providers"
+import type { ModelMessage } from "@socrates/providers"
 import { createId, normalizeError, SocratesError } from "@socrates/shared"
 import type { CapabilitySet } from "../capabilities/CapabilityCatalog"
 import type { ApprovalRequest, ToolLifecycleEvent, ToolRuntimeContext } from "../tools/types"
-import { MemoryRouterAgent, type ActiveGoalCard } from "./MemoryRouterAgent"
+import type { ActiveGoalCard } from "./goalContext"
 import type { SocratesAgentTurnInput } from "./SocratesAgent"
 import { AsyncEventQueue } from "./AsyncEventQueue"
 import {
   canLoadStableCachePrelude,
-  canRunMemoryLoop,
-  emptyMemoryLoopRunResult,
-  isStableCachePreludeRecord,
-  memoryLoopWarning,
-  memoryRouterBaseInput,
-  renderMemoryLoopDeveloperMessage,
+  emptyStablePreludeRunResult,
   renderStableCachePrelude,
   renderStableCachePreludeSnapshot,
-  routedPreTurnRecallRequests,
   stablePreludeRecallRequests,
-  summarizeMemoryLoop,
-  type MemoryLoopRunResult,
-  type MemoryLoopToolRecord,
+  type StablePreludeRunResult,
+  type StablePreludeToolRecord,
 } from "./socratesMemorySupport"
 import {
   TurnDocsLedger,
@@ -41,9 +34,7 @@ import {
 
 export class SocratesTurnLifecycle {
   constructor(
-    private readonly provider: ModelProvider,
     private readonly baseCapabilities: CapabilitySet,
-    private readonly memoryRouterAgent: MemoryRouterAgent,
   ) {}
 
   executeToolCalls(input: {
@@ -113,20 +104,20 @@ export class SocratesTurnLifecycle {
     return { events: queue, done }
   }
 
-  async runPreTurnMemoryLoop(
+  async loadStablePrelude(
     input: SocratesAgentTurnInput,
     messages: ModelMessage[],
     docsLedger: TurnDocsLedger,
-  ): Promise<MemoryLoopRunResult> {
+  ): Promise<StablePreludeRunResult> {
     if (!input.stableCachePreludeSnapshot && !canLoadStableCachePrelude(input, this.baseCapabilities)) {
-      return emptyMemoryLoopRunResult()
+      return emptyStablePreludeRunResult()
     }
 
     const events: ToolLifecycleEvent[] = []
-    const records: MemoryLoopToolRecord[] = []
+    const records: StablePreludeToolRecord[] = []
     if (!input.stableCachePreludeSnapshot) {
       for (const request of stablePreludeRecallRequests()) {
-        const record = await this.executeMemoryLoopTool(input, docsLedger, request)
+        const record = await this.executeStablePreludeTool(input, docsLedger, request)
         events.push(...record.events)
         records.push(record)
       }
@@ -135,60 +126,22 @@ export class SocratesTurnLifecycle {
       ? renderStableCachePreludeSnapshot(input.stableCachePreludeSnapshot)
       : renderStableCachePrelude(records)
 
-    if (!canRunMemoryLoop(this.provider, input, this.baseCapabilities)) {
-      return {
-        events: [],
-        records,
-        ...(input.activeGoal ? { activeGoal: input.activeGoal } : {}),
-        ...(stableCachePreludeMessage ? { stableCachePreludeMessage } : {}),
-      }
-    }
-
-    try {
-      const route = await this.memoryRouterAgent.routePreTurn(memoryRouterBaseInput(input, messages))
-      const skipped: string[] = []
-
-      for (const request of routedPreTurnRecallRequests(route)) {
-        const record = await this.executeMemoryLoopTool(input, docsLedger, request)
-        events.push(...record.events)
-        records.push(record)
-      }
-
-      const activeGoal: ActiveGoalCard | undefined = input.activeGoal
-      const summary = summarizeMemoryLoop("pre_turn", route, records, skipped)
-      const dynamicRecords = records.filter((record) => !isStableCachePreludeRecord(record))
-      const memoryDeveloperMessage = renderMemoryLoopDeveloperMessage("pre_turn", route, dynamicRecords, skipped, {
-        stableCachePreludeApplied: Boolean(stableCachePreludeMessage),
-      })
-      return {
-        events,
-        summary,
-        records,
-        ...(activeGoal ? { activeGoal } : {}),
-        ...(stableCachePreludeMessage ? { stableCachePreludeMessage } : {}),
-        developerMessage: memoryDeveloperMessage,
-      }
-    } catch (error) {
-      const normalized = normalizeError(error)
-      const warning = memoryLoopWarning("pre_turn", `${normalized.code}: ${normalized.message}`)
-      const activeGoal = input.activeGoal
-      return {
-        ...warning,
-        events: [...events, ...warning.events],
-        records,
-        ...(activeGoal ? { activeGoal } : {}),
-        ...(stableCachePreludeMessage ? { stableCachePreludeMessage } : {}),
-      }
+    const activeGoal: ActiveGoalCard | undefined = input.activeGoal
+    return {
+      events,
+      records,
+      ...(activeGoal ? { activeGoal } : {}),
+      ...(stableCachePreludeMessage ? { stableCachePreludeMessage } : {}),
     }
   }
 
-  private async executeMemoryLoopTool(
+  private async executeStablePreludeTool(
     input: SocratesAgentTurnInput,
     docsLedger: TurnDocsLedger,
     request: { toolName: ToolName; input: unknown },
-  ): Promise<MemoryLoopToolRecord> {
+  ): Promise<StablePreludeToolRecord> {
     if (!input.toolExecutors || !input.workspacePath || !input.requestApproval) {
-      const error = new SocratesError("memory_loop_tool_context_unavailable", "Memory loop tool execution requires tools, workspacePath, and approval handler.", {
+      const error = new SocratesError("stable_prelude_context_unavailable", "Stable prelude loading requires tools, workspacePath, and approval handler.", {
         recoverable: true,
       })
       const toolCallId = createId("tcall")

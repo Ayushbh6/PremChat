@@ -16,11 +16,24 @@ import { TITLE_GENERATOR_SYSTEM_PROMPT } from "../prompts/titleGeneratorPrompt"
 import { SOUL_CONFIRMATION_AGENT_SYSTEM_PROMPT } from "../prompts/soulConfirmationPrompt"
 import {
   defineAgent,
+  defineRoleManifest,
   describeAgentDefinition,
   type AgentDefinition,
   type AgentDefinitionInventoryEntry,
   type AgentStructuredOutputSchema,
 } from "./AgentDefinition"
+
+export const socratesGoalResolutionPhaseManifest = defineRoleManifest({
+  id: "socrates-goal-resolution-phase-v1",
+  role: "socrates",
+  capabilityIds: [
+    "retrieval.goal_candidates",
+    "retrieval.memory_candidates",
+    "context.stable_prompt",
+    "context.exact_messages",
+    "runtime.structured_repair",
+  ],
+})
 
 const structuredWorkerContext = {
   id: "structured-worker-context-v1",

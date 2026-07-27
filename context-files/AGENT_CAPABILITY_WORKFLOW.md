@@ -56,7 +56,7 @@ Phase 1 of the agent-core rebuild establishes these concrete owners:
 - `packages/core/src/agent/agentDefinitions.ts` owns the production definition records.
 - `architecture/agent-definitions.generated.json` is generated evidence, not a hand-edited authority. Run `pnpm generate:agent-architecture` after intentional definition changes and `pnpm check:agent-architecture` in verification.
 
-The architecture check inventories the released Goal Router and Memory Router as explicit legacy removal debt. Do not migrate them into new definitions: remove them with the owning goal-resolution and deterministic-memory-selection cutovers.
+Phase 3 removed the former Goal Router and Memory Router definitions with their owning lifecycle cutovers. The architecture check now rejects their names, tools, prompts, worker settings, and direct callers; never reintroduce them as definitions or compatibility aliases.
 
 ### Implemented Capability-Catalog Owners
 

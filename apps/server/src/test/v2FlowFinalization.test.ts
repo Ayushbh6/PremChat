@@ -2,7 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import type { V2GoalRouterResult } from "@socrates/core"
+import type { SocratesGoalResolutionResult } from "@socrates/core"
 import { createId, nowIso } from "@socrates/shared"
 import { openDatabase, runMigrations, type DatabaseHandle } from "../db/client"
 import { V2FlowStore } from "../services/v2/flowStore"
@@ -85,8 +85,8 @@ const setup = (): { store: V2FlowStore } => {
   return { store: new V2FlowStore(handle) }
 }
 
-const createGoalRoute = (store: V2FlowStore, flowId: string): V2GoalRouterResult => {
-  const foregroundGoal = store.listGoalsForRouter(flowId).find((goal) => goal.status === "foreground")
+const createGoalRoute = (store: V2FlowStore, flowId: string): SocratesGoalResolutionResult => {
+  const foregroundGoal = store.listGoalsForResolution(flowId).find((goal) => goal.status === "foreground")
   const foreground = foregroundGoal ? { goal: foregroundGoal, candidate: 1 } : undefined
   return {
     decision: { action: "create", title: "Review shared runtime" },

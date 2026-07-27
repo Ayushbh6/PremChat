@@ -1207,8 +1207,6 @@
                             "mcp_registry",
                             "memory_note",
                             "memory_notes",
-                            "memory_search",
-                            "goal_search",
                             "read_memory_journal",
                             "skill_write",
                             "skill_manager",
@@ -1661,8 +1659,6 @@
                             "mcp_registry",
                             "memory_note",
                             "memory_notes",
-                            "memory_search",
-                            "goal_search",
                             "read_memory_journal",
                             "skill_write",
                             "skill_manager",
@@ -4431,169 +4427,6 @@
       }
     },
     {
-      "id": "legacy.tool.goal_search",
-      "description": "Search older goals in the current project when the five supplied candidates are insufficient. This read-only escape hatch returns at most three numbered goal cards. Prefer the supplied candidates and use this only when needed.",
-      "kind": "model_tool",
-      "allowedRoles": [
-        "legacy_goal_router"
-      ],
-      "runtimeScopes": [
-        "turn",
-        "project"
-      ],
-      "executorBinding": "goal_search",
-      "modelToolName": "goal_search",
-      "providerSchema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 500
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "lexical",
-              "semantic",
-              "combined"
-            ],
-            "default": "combined"
-          },
-          "limit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 3,
-            "default": 3
-          }
-        },
-        "required": [
-          "query"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "hasInputSchema": true,
-      "hasResultSchema": true,
-      "policy": {
-        "approval": "automatic",
-        "sandbox": "backend_authority",
-        "concurrency": "parallel",
-        "retry": "model_correction",
-        "timeout": "runtime_default",
-        "idempotency": "idempotent"
-      },
-      "persistence": {
-        "evidence": "tool_events",
-        "usage": "model_call",
-        "errors": "typed_and_persisted",
-        "audit": "full"
-      },
-      "documentationTitle": "goal_search",
-      "documentationGuidance": [
-        "Search older goals in the current project when the five supplied candidates are insufficient. This read-only escape hatch returns at most three numbered goal cards. Prefer the supplied candidates and use this only when needed."
-      ],
-      "documentationPaths": [],
-      "source": {
-        "owner": "apps/server",
-        "definitionPath": "packages/core/src/tools/goalSearchTool.ts",
-        "implementationPath": "apps/server/src/services/v2/flowStore.ts",
-        "callers": [
-          "packages/core/src/agent/GoalRouterAgent.ts"
-        ],
-        "tests": [
-          "packages/core/src/test/v2FlowCore.test.ts"
-        ],
-        "status": "legacy_remove_with_goal_lifecycle"
-      }
-    },
-    {
-      "id": "legacy.tool.memory_search",
-      "description": "Search indexed curated memory sections for exact routing evidence. Use lexical for literal phrases, semantic for concepts, and combined for hybrid recall. Results identify the exact human-facing surface, file, and section Socrates should read. This tool is read-only and cannot edit memory.",
-      "kind": "model_tool",
-      "allowedRoles": [
-        "legacy_memory_router"
-      ],
-      "runtimeScopes": [
-        "turn",
-        "project"
-      ],
-      "executorBinding": "memory_search",
-      "modelToolName": "memory_search",
-      "providerSchema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 1000
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "lexical",
-              "semantic",
-              "combined"
-            ],
-            "default": "combined"
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "global",
-              "project",
-              "all"
-            ],
-            "default": "all"
-          },
-          "limit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 8,
-            "default": 8
-          }
-        },
-        "required": [
-          "query"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "hasInputSchema": true,
-      "hasResultSchema": true,
-      "policy": {
-        "approval": "automatic",
-        "sandbox": "backend_authority",
-        "concurrency": "parallel",
-        "retry": "model_correction",
-        "timeout": "runtime_default",
-        "idempotency": "idempotent"
-      },
-      "persistence": {
-        "evidence": "tool_events",
-        "usage": "model_call",
-        "errors": "typed_and_persisted",
-        "audit": "full"
-      },
-      "documentationTitle": "memory_search",
-      "documentationGuidance": [
-        "Search indexed curated memory sections for exact routing evidence. Use lexical for literal phrases, semantic for concepts, and combined for hybrid recall. Results identify the exact human-facing surface, file, and section Socrates should read. This tool is read-only and cannot edit memory."
-      ],
-      "documentationPaths": [],
-      "source": {
-        "owner": "apps/server",
-        "definitionPath": "packages/core/src/tools/memorySearchTool.ts",
-        "implementationPath": "apps/server/src/services/store/memoryStore.ts",
-        "callers": [
-          "packages/core/src/agent/MemoryRouterAgent.ts"
-        ],
-        "tests": [
-          "packages/core/src/test/MemoryRouterAgent.test.ts"
-        ],
-        "status": "legacy_remove_with_memory_selection"
-      }
-    },
-    {
       "id": "retrieval.goal_candidates",
       "description": "Retrieve ranked goal candidates while always retaining the current goal.",
       "kind": "automatic_retrieval",
@@ -4626,14 +4459,14 @@
       "source": {
         "owner": "apps/server",
         "definitionPath": "packages/core/src/capabilities/CapabilityCatalog.ts",
-        "implementationPath": "apps/server/src/v2/goalRoutingCoordinator.ts",
+        "implementationPath": "apps/server/src/services/turn/turnCandidateRetrieval.ts",
         "callers": [
-          "apps/server/src/v2/goalRoutingCoordinator.ts"
+          "apps/server/src/services/turn/turnCandidateRetrieval.ts"
         ],
         "tests": [
           "apps/server/src/test/v2FlowRuntime.test.ts"
         ],
-        "status": "migration_compatibility"
+        "status": "canonical"
       }
     },
     {
@@ -4669,14 +4502,14 @@
       "source": {
         "owner": "apps/server",
         "definitionPath": "packages/core/src/capabilities/CapabilityCatalog.ts",
-        "implementationPath": "apps/server/src/services/retrieval/retrievalStore.ts",
+        "implementationPath": "apps/server/src/services/turn/turnCandidateRetrieval.ts",
         "callers": [
-          "apps/server/src/services/retrieval/retrievalStore.ts"
+          "apps/server/src/services/turn/turnCandidateRetrieval.ts"
         ],
         "tests": [
           "apps/server/src/test/v2FlowRuntime.test.ts"
         ],
-        "status": "migration_compatibility"
+        "status": "canonical"
       }
     },
     {
@@ -4712,14 +4545,14 @@
       "source": {
         "owner": "packages/core",
         "definitionPath": "packages/core/src/capabilities/CapabilityCatalog.ts",
-        "implementationPath": "packages/core/src/agent/prepareTurnContext.ts",
+        "implementationPath": "packages/core/src/retrieval/deterministicMemorySelection.ts",
         "callers": [
-          "packages/core/src/agent/prepareTurnContext.ts"
+          "packages/core/src/retrieval/deterministicMemorySelection.ts"
         ],
         "tests": [
           "apps/server/src/test/v2FlowRuntime.test.ts"
         ],
-        "status": "legacy_remove_with_memory_selection"
+        "status": "canonical"
       }
     },
     {

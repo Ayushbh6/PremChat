@@ -15,8 +15,6 @@ import type {
   MemoryNoteToolOutput,
   MemoryNotesToolInput,
   MemoryNotesToolOutput,
-  MemorySearchInput,
-  MemorySearchOutput,
   ReadMemoryJournalToolInput,
   ReadMemoryJournalToolOutput,
   McpRegistryToolInput,
@@ -24,8 +22,6 @@ import type {
   ModelToolDefinition,
   EditFilesToolInput,
   EditFilesToolOutput,
-  GoalSearchInput,
-  GoalSearchOutput,
   ProjectDocsToolInput,
   ProjectDocsToolOutput,
   ProjectsToolInput,
@@ -109,8 +105,6 @@ export type ToolExecutors = {
   ) => Promise<ListProjectResourcesToolOutput>
   memory_note?: (input: MemoryNoteToolInput, context: ToolExecutorContext) => Promise<MemoryNoteToolOutput>
   memory_notes?: (input: MemoryNotesToolInput, context: ToolExecutorContext) => Promise<MemoryNotesToolOutput>
-  memory_search?: (input: MemorySearchInput, context: ToolExecutorContext) => Promise<MemorySearchOutput>
-  goal_search?: (input: GoalSearchInput, context: ToolExecutorContext) => Promise<GoalSearchOutput>
   read_memory_journal?: (input: ReadMemoryJournalToolInput, context: ToolExecutorContext) => Promise<ReadMemoryJournalToolOutput>
   skill_write?: (input: SkillWriteToolInput, context: ToolExecutorContext) => Promise<SkillWriteToolOutput>
   skill_manager?: (input: SkillManagerToolInput, context: ToolExecutorContext) => Promise<SkillManagerToolOutput>

@@ -304,18 +304,6 @@
       "path": "packages/core/src/agent/SoulConfirmationAgent.ts",
       "definitionId": "soul-confirmation",
       "status": "canonical"
-    },
-    {
-      "id": "legacy-goal-router",
-      "path": "packages/core/src/agent/GoalRouterAgent.ts",
-      "definitionId": null,
-      "status": "legacy_remove_with_goal_lifecycle"
-    },
-    {
-      "id": "legacy-memory-router",
-      "path": "packages/core/src/agent/MemoryRouterAgent.ts",
-      "definitionId": null,
-      "status": "legacy_remove_with_memory_selection"
     }
   ]
 }

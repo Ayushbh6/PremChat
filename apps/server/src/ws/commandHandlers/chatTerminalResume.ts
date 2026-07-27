@@ -59,6 +59,7 @@ export const resumeTerminalTask = async (
     turnId: continued.turnId,
     runtimeConfigId: continued.runtimeConfigId,
     runtimeConfig: continued.runtimeConfig,
+    resumedFromTurnId: continued.currentTurnId,
     wakeContext,
   }, flowStore)
 }

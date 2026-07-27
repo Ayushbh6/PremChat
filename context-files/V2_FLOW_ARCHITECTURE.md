@@ -1,6 +1,6 @@
 # Socrates V2 Flow Architecture
 
-This document records the current implemented architecture, migration constraints, and technical mechanics of the experimental Socrates V2 Seamless Flow experience. `FLOW_NORTH_STAR.md` is the product-intent authority and `UNIFIED_SOCRATES_LIFECYCLE.md` is the detailed lifecycle/cleanup authority. Phase 1 removed the post-turn Memory Router, mutable main-agent goal ledger, and pending finalization fallback. Phase 3 replaced the released mirror-based Q&A bridge with canonical task/message identity and reference-based projections; Phase 4 completed the target navigation and live-answer presentation on those canonical reads. Namespaced physical runtime tables remain migration adapters rather than separate semantic state.
+This document records the current implemented architecture, migration constraints, and technical mechanics of the experimental Socrates V2 Seamless Flow experience. `FLOW_NORTH_STAR.md` is the product-intent authority and `UNIFIED_SOCRATES_LIFECYCLE.md` is the detailed lifecycle/cleanup authority. Phase 1 removed the post-turn Memory Router, mutable main-agent goal ledger, and pending finalization fallback. The current Phase 3 converges Classic and Flow on one pre-turn lifecycle: typed parallel candidate retrieval, a no-tool semantic decision by the selected main Socrates, deterministic exact-memory selection, and one exact view-neutral context contract. The earlier canonical projection and presentation work remains intact beneath that lifecycle. Namespaced physical runtime tables remain migration adapters rather than separate semantic state.
 
 Status: the isolated first product cut is implemented behind the V2 boundary. Whole-workspace regression, production builds, normal runtime packaging, and a real browser E2E have passed. Formal accessibility automation, cross-platform release archives, full local speech-pack runs, and extended reliability validation remain; implementation does not mean that a 24-hour unattended soak has already passed.
 
@@ -16,10 +16,10 @@ V1 means the current project chat product and its current behavior:
 
 - The existing chat window and project/conversation routes.
 - The current `conversations`, `sessions`, `turns`, and `messages` model.
-- The current Classic conversation persistence, Classic context policy, Classic agent-task/tool/Terminal audit rows, Classic retrieval semantics/scoping, voice-input/read-aloud records, and title behavior.
+- The current Classic conversation persistence, agent-task/tool/Terminal audit rows, voice-input/read-aloud records, and title behavior.
 - Existing HTTP, WebSocket, persistence, replay, and frontend contracts.
 
-V1 must remain behaviorally untouched by Flow orchestration while V2 is built. Do not retrofit V2 goals, Flow routing, capsules, context dispositions, self-pruning, automatic topic separation, V2 speech jobs/read-aloud, or other V2 persistence into V1. Existing V1 conversations must not be migrated, reinterpreted, or silently written into V2 state. The explicitly approved shared composer microphone is a bounded exception: Classic may transcribe temporary conversation audio into its unsent draft, but that path creates no V2 goal, artifact, job, event, or Flow state.
+Classic and Flow now share the same semantic pre-turn lifecycle, but Classic must not write V2-only runtime rows merely to obtain that behavior. Existing V1 conversations must not be migrated, reinterpreted, or silently copied into V2 state. Classic may project a canonical goal/task association through the shared lifecycle while retaining its own conversation/session persistence. The explicitly approved shared composer microphone is also bounded: Classic may transcribe temporary conversation audio into its unsent draft, but that path creates no V2 speech artifact, job, event, or Flow state.
 
 ### V2 Flow
 
@@ -34,7 +34,7 @@ V2 is a separate experimental product surface and execution path:
 - V2-namespaced contracts, persistence, events, services, and tests.
 - A source-server feature flag that is off unless `SOCRATES_V2_FLOW_ENABLED=true`, plus an ordinary packaged NPM/runtime launcher that defaults the flag to `true` for the normal product.
 
-`GET /api/v2/capabilities` remains mounted so the UI can report availability. When V2 is off, the Flow/speech HTTP routes and `/v2/ws` are not mounted, and V1 goal/routing/persistence behavior remains identical to Classic. Direct source-server development must set `SOCRATES_V2_FLOW_ENABLED=true`; the ordinary `scripts/runtime/launcher.mjs` passes the explicit environment value or defaults it to `true`, so the normal packaged web/backend product exposes the project-scoped **Go to Flow View** action. Classic's separate conversation-scoped STT route is intentionally available independently of that feature flag and still creates no V2 state.
+`GET /api/v2/capabilities` remains mounted so the UI can report availability. When V2 is off, the Flow/speech HTTP routes and `/v2/ws` are not mounted; Classic remains available and continues to use the shared goal lifecycle through its own transport. Direct source-server development must set `SOCRATES_V2_FLOW_ENABLED=true`; the ordinary `scripts/runtime/launcher.mjs` passes the explicit environment value or defaults it to `true`, so the normal packaged web/backend product exposes the project-scoped **Go to Flow View** action. Classic's separate conversation-scoped STT route is intentionally available independently of that feature flag and creates no V2 speech state.
 
 ### Allowed Shared Foundation
 
@@ -48,17 +48,17 @@ V2 may reuse stable low-level infrastructure:
 - The same Socrates agent behavior and model-visible tool set.
 - Workspace `.socrates/` project memory, notes, repo docs, resources, attachments, and project skills.
 - Global `~/.Socrates/` identity, user profile, tool docs, provider credentials/settings, global skills, and MCP configuration.
-- The same Memory Router implementation and background Global Memory Agent, with V2 source adapters and V2-owned telemetry.
+- The same typed goal-card and memory-candidate retrieval adapters, deterministic exact-memory selector, and background Global Memory Agent.
 - The accepted V2 Voice V1 speech engines: local Whisper, the three-model OpenRouter transcription allowlist, and local Kokoro-82M.
 
 The rule is:
 
 ```text
-reuse plumbing
-do not reuse V1 orchestration policy as V2 policy
+reuse one semantic lifecycle and shared plumbing
+keep presentation and persistence adapters explicit
 ```
 
-V2 must not achieve reuse by inserting V2 routing or context behavior into the V1 turn path. It should call shared capabilities from an explicitly V2-owned orchestration layer.
+Classic and Flow must enter the same semantic lifecycle. Their thin coordinators may translate between storage identities, but neither may own an alternative goal-decision, memory-selection, or context-assembly policy.
 
 The older `V2 Provider Plan` wording in `PROVIDER_USAGE.md` referred to a later provider-adapter roadmap. It is not the V2 Flow product. Provider documentation must use unambiguous wording so the two ideas cannot be confused.
 
@@ -76,11 +76,13 @@ shared by Classic and Seamless
   project/global skills, including Agent Skill ZIP import
   .socrates memory, notes, repo docs, resources, attachments
   ~/.Socrates identity, user profile, tool docs, settings
-  Memory Router implementation and Global Memory Agent
+  typed parallel goal/memory candidate retrieval and Global Memory Agent
+  same-Socrates goal resolution and deterministic exact-memory selection
+  one exact resolved-turn context contract
 
 owned only by Seamless
   persistent Flow and goals
-  bounded Goal Router and goal-message links
+  goal-message links and V2 lifecycle persistence effects
   deterministic goal titles and versioned capsules
   goal-aware context projection and evidence dispositions around shared Socrates
   v2.* contracts/events and /api/v2/* plus /v2/ws
@@ -91,9 +93,9 @@ V2 passes Flow/turn ids into shared runner primitives only as scoped runtime han
 
 The Global Memory Agent is one application-level learner across both experiences. Its manifest includes unprocessed completed V2 turns with project/Flow/goal labels, it resolves their Q&A and raw evidence through the shared retrieval facade, and a completed shared Memory Agent job records the processed V2 turn ids in its evidence receipt. V2 does not fork profile, identity, memory-agent journal, or skill-learning state merely to preserve conversation isolation.
 
-Classic and Flow use the same bounded Goal Router before the same Memory Router. Goal routing completes first, binds or reopens the canonical goal, and only then does the read-only Memory Router select curated memory for that resolved goal. The shared typed prepared context includes one concise presentation clause: Classic with a selected-conversation aperture or Flow with a selected-goal aperture. This is the only model-facing view specialization; it does not fork the Socrates base prompt, tool set, or runtime. Each view persists telemetry through its existing adapter, but neither owns a second goal-routing policy. Both views also use the same Context Compactor worker and the exact shared 170k trigger, 120k acceptance ceiling, and 180k hard pre-provider limit. Selected-model context-window metadata must not create a V2-only compaction policy.
+Classic and Flow retrieve typed goal-card and memory candidates concurrently. The selected main Socrates model then makes one strict no-tool decision: current goal, one numbered older candidate, a new goal, or clarify. Code binds the canonical goal and deterministically selects exact memory from the already retrieved candidates. Both views render the same typed context from the current goal capsule, current task, latest exact completed exchange, selected exact memory, and honest retrieval status. No presentation/view label changes model-visible policy. Each view persists telemetry through its existing adapter, but neither owns a second semantic policy. Both views also use the same Context Compactor worker and the exact shared 170k trigger, 120k acceptance ceiling, and 180k hard pre-provider limit. Selected-model context-window metadata must not create a Flow-only compaction policy.
 
-V2 does not invoke the Classic conversation-title rewriter and does not make a separate capsule-writing model call. New goal titles and rich capsule snapshots are derived deterministically from authoritative V2 state, and capsule versions provide the resumable semantic label/state. The Goal Router uses its own configurable `goal_router` worker selection and calls its strict V2 routing schema through the shared structured-agent runner rather than the Classic title-rewrite service.
+V2 does not invoke the Classic conversation-title rewriter and does not make a separate capsule-writing model call. New goal titles and rich capsule snapshots are derived deterministically from authoritative V2 state, and capsule versions provide the resumable semantic label/state. Goal resolution uses the already selected main Socrates provider/model/thinking configuration through `SocratesAgent`; no router worker setting or separate agent instance exists.
 
 ## Product North Star
 
@@ -240,13 +242,13 @@ A model-context representation linked to one or more immutable evidence sources.
 
 A context item is not necessarily one whole tool result. It may represent one page, one result chunk, an exact excerpt, a distilled brief, a goal capsule, or a recent visible exchange.
 
-### Routing Run
+### Goal Resolution Run
 
-The auditable result of the Goal Router. The model-facing contract stays deliberately small: `action`, numbered `candidates`, and a new human-facing `title` only when creation is selected. The backend resolves ids, generates any clarification copy, and records runtime effects without asking the model for confidence, rationale, secondary links, or hidden chain-of-thought.
+The auditable result of the same-Socrates pre-turn phase. The model-facing contract stays deliberately small: current, one numbered older candidate, new with a human-facing title, or clarify with a short question. The backend resolves ids and records runtime effects without asking for confidence, rationale, secondary links, or hidden chain-of-thought. Historical database names that contain `routing` remain compatibility identifiers, not a live router agent.
 
-## Bounded Goal Router
+## Same-Socrates Goal Resolution
 
-The router decides how each new text or voice message relates to the existing Flow.
+The selected main Socrates decides how each new text or voice message relates to canonical goal state before substantive work begins.
 
 Its implemented action vocabulary stays small:
 
@@ -256,23 +258,21 @@ create one new goal with a short human title
 ask one bounded clarification between real numbered candidates
 ```
 
-The shared Goal Router Agent receives the selected goal even when completed, the immediately preceding goal, at most five initially prefetched goal cards, three immediately preceding visible Q&A pairs, up to five Q&A pairs already linked to the selected goal, and any explicit clarification answer. Its dedicated `goal_router` worker setting controls model and thinking, it has an eight-second bounded timeout, validates the strict Zod contract with one bounded repair attempt, and uses only a structural fallback when the provider fails, times out, or remains invalid: continue or resume the selected goal when one exists, otherwise create. There is no keyword, regex, or phrase-matching topic router. Its production prompt lives under `packages/core/src/prompts`, and it runs through the shared structured-agent runner with one read-only `goal_search` tool. That tool returns at most three human-readable goal cards per call and the runner hard-caps it at three calls; the normal prefetched path uses zero calls. Model attempts, tool usage, errors, and routing effects persist through typed telemetry. Goal merging is not performed.
+Goal-card and memory-candidate retrieval start together and reuse the existing hybrid retrieval foundation. The goal phase receives the current goal, the latest exact completed exchange in that goal, and at most four retrieved/anchored older cards so total model-facing goal cards never exceed five. It uses the selected main Socrates model and base prompt, adds one small phase instruction, exposes zero tools, and validates a strict Zod result. An invalid output gets one bounded repair. Timeout or provider failure falls back conservatively to the current goal when one exists and otherwise asks the user to clarify; it never guesses an older goal or silently creates one on a failed semantic call. There is no keyword/regex topic router, router worker setting, model-facing goal search tool, or goal merging.
 
-### Router Inputs
+### Resolution Inputs
 
-The router should receive only bounded metadata:
+The goal-resolution phase receives:
 
 - The new user message or final voice transcript.
 - The selected goal header and latest capsule, regardless of lifecycle state.
-- Three immediately preceding visible Q&A pairs and up to five selected-goal Q&A pairs.
-- The immediately preceding goal plus a small prefetched set of likely goal headers or capsules.
-- Project identity and stable routing rules.
+- The latest exact completed exchange in the current goal.
+- The immediately preceding goal plus a small retrieved set of typed goal cards.
+- Stable goal-continuity rules from the shared Socrates prompt phase.
 
-If those bounded inputs are insufficient, the router may use `goal_search` for at most three read-only lexical, semantic, or combined searches. Each call returns at most three cards; opaque goal ids remain backend-owned.
+The model never receives raw goal ids and cannot search interactively during this phase. Retrieval narrows the candidates before resolution.
 
-It must not receive every full goal history. Retrieval should narrow candidates before full capsule loading.
-
-### Router Output
+### Resolution Output
 
 The backend needs enough structured output to:
 
@@ -383,7 +383,7 @@ When a goal is parked or a large phase finishes, create a new capsule version. F
 
 ### Level 4: Flow-Level Working-Set Review
 
-Flow may select goal-relevant evidence and omit unrelated goals, but it must not invent a separate percentage-based conversation-pressure policy. The full active-goal Q&A history is handed to the shared Socrates runner. The same fixed policy used by Classic then compacts at 170k estimated model-visible input, accepts a compacted request only at or below 120k, and enforces the 180k hard pre-provider ceiling.
+Flow may select goal-relevant evidence and omit unrelated goals, but it must not invent a separate percentage-based conversation-pressure policy. The lifecycle selects complete recent messages and complete retrieved older exchanges from the active goal without character/token slicing any selected item, then hands those exact items to the shared Socrates runner. The same fixed policy used by Classic then compacts at 170k estimated model-visible input, accepts a compacted request only at or below 120k, and enforces the 180k hard pre-provider ceiling; replacing that released automatic lossy policy with consent gating remains separate migration work.
 
 The review should ask:
 
@@ -441,15 +441,15 @@ Voice is an input/output surface over the same Flow, not a separate agent or con
 capture audio
   -> transcribe
   -> show/finalize transcript
-  -> route transcript through the same bounded Goal Router
+  -> submit transcript through the same unified pre-turn lifecycle
   -> create a normal V2 user message and turn
 ```
 
-The goal router should operate on finalized text. Provider-specific partial transcripts may be displayed, but they should not create durable goals until the user submits or the transcript is finalized.
+Goal resolution operates on finalized text. Provider-specific partial transcripts may be displayed, but they must not create durable goals until the user submits or the transcript is finalized.
 
 ### Accepted V2 Voice V1 STT Stack
 
-`V2 Voice V1` means the first speech-job/read-aloud slice inside experimental V2 Flow. Classic shares the push-to-talk composer affordance, lower-level transcriber adapters, and the explicit global selection, which defaults to **Not configured**. Classic appends the transcript to its unsent draft, deletes the temporary WAV, and creates no V2 speech state. Flow alone owns speech artifacts/jobs, Goal Router entry, and Kokoro read-aloud. Offline models download only after an explicit size-labelled Install action.
+`V2 Voice V1` means the first speech-job/read-aloud slice inside experimental V2 Flow. Classic shares the push-to-talk composer affordance, lower-level transcriber adapters, and the explicit global selection, which defaults to **Not configured**. Classic appends the transcript to its unsent draft, deletes the temporary WAV, and creates no V2 speech state. Flow alone owns speech artifacts/jobs and Kokoro read-aloud; finalized transcripts enter the same unified pre-turn lifecycle as typed text. Offline models download only after an explicit size-labelled Install action.
 
 The accepted speech-to-text choices are deliberately narrow:
 
@@ -620,9 +620,9 @@ V1 Classic remains the visible default. `/welcome`, `/projects`, the project das
 The implemented V2 surface has:
 
 - One persistent project Flow rather than a New Chat list.
-- The actual shared Classic `ChatComposer`, not a V2 lookalike: the same textarea, grouped model menu, thinking menu, send/stop behavior, image/text/Agent Skill ZIP picker, image paste, drag/drop, preview tray, vision warning, attachment limits, 10,000-character large-paste conversion, and optional microphone presentation. Classic routes the mic through temporary conversation-scoped STT and appends the transcript to the draft; V2 routes it through V2 speech and the Goal Router. V2 must not add a separate Tools toggle to the composer.
+- The actual shared Classic `ChatComposer`, not a V2 lookalike: the same textarea, grouped model menu, thinking menu, send/stop behavior, image/text/Agent Skill ZIP picker, image paste, drag/drop, preview tray, vision warning, attachment limits, 10,000-character large-paste conversion, and optional microphone presentation. Classic routes the mic through temporary conversation-scoped STT and appends the transcript to the draft; V2 routes finalized text through V2 speech persistence and then the same unified lifecycle as typed input. V2 must not add a separate Tools toggle to the composer.
 - One current-exchange focus canvas. It renders the selected/current user request and Socrates response rather than dumping the entire persistent Flow into the center workspace. Long requests collapse behind **Show more** without changing their stored content.
-- A three-stage Flow overlay sidebar for deliberate Projects to Goals to Queries navigation. It opens on the selected goal's Queries, moves back through Goals to Projects, and keeps each level's heading/controls outside one independently scrolling list. Selecting a query or completed goal is view-only; a later send supplies the explicit goal as a preferred routing candidate without reopening it or bypassing the Goal Router.
+- A three-stage Flow overlay sidebar for deliberate Projects to Goals to Queries navigation. It opens on the selected goal's Queries, moves back through Goals to Projects, and keeps each level's heading/controls outside one independently scrolling list. Selecting a query or completed goal is view-only; a later send supplies the explicit goal as an anchored candidate without bypassing same-Socrates goal resolution.
 - One strict backend-authored live activity event/slot under the prominent orb. Successive routing, thinking, and tool labels replace each other in place. Raw tool arguments, opaque ids, undefined values, provider dumps, and accumulated frontend status logs are excluded. Approvals, credentials, and Terminal input remain full shared interactive components when required.
 - Two lightweight draggable clipped notes on the calm center surface: Live Context and Current Focus/Task. Their complete circular paperclip handles are the only pointer drag targets; the same handles support arrow-key nudging. Coordinates are clamped responsively and persisted per project.
 - A larger Context/Focuses/Activity inspector opened from either note. It provides exact working-evidence state, the focus ledger, approvals, tools, credentials, Terminals, and voice settings, and may be pinned or dismissed without cluttering the default surface.
@@ -651,7 +651,7 @@ If added:
 
 ## Failure And Recovery Principles
 
-- A Goal Router failure must not corrupt the Flow. Use a conservative fallback, persist the error, and keep the user's message visible.
+- A goal-resolution or candidate-retrieval failure must not corrupt the Flow. Use the conservative typed fallback, persist honest status, and keep the exact user message visible.
 - A malformed or unavailable `context_disposition` call leaves the exact current-turn result visible; the ordinary Socrates loop may retry only with another real tool call or continue to a final answer.
 - Restart recovery must distinguish an unfinished V2 turn from a parked goal and from an active durable Terminal/task.
 - Capsule creation failure must not erase the prior capsule version.
@@ -668,7 +668,7 @@ The first cut was built in isolated vertical slices:
 
 1. V2 feature flag, separate UI entry, V2 contracts, and namespaced persistence foundation.
 2. One persistent Flow per project with V2 messages/turns and restart-safe timeline hydration.
-3. Bounded Goal Router, one foreground goal, goal-message links, state transitions, and parked capsules.
+3. Historical bounded goal routing, one foreground goal, goal-message links, state transitions, and parked capsules; current Phase 3 replaces the separate router with same-Socrates resolution.
 4. Immutable V2 evidence records for audit/retrieval without automatic later-turn projection.
 5. Shared main-Socrates within-turn dispositions plus the fixed shared 170k compactor.
 6. Explicit retrieval/re-entry for older exact evidence and long-flow reliability evaluation.
@@ -684,7 +684,7 @@ The implemented user-testable first cut deliberately stops at:
 
 - One persistent Flow per project.
 - One foreground goal and bounded parked goal capsules.
-- Text input plus finalized push-to-talk transcription through local Whisper or one of the three accepted OpenRouter models, all through the same router.
+- Text input plus finalized push-to-talk transcription through local Whisper or one of the three accepted OpenRouter models, all through the same unified pre-turn lifecycle.
 - One-off local Kokoro read aloud for completed assistant text.
 - `keep_exact`, `distill`, `release`, and bounded `unresolved` context dispositions.
 - Immutable evidence and exact re-retrieval.
@@ -700,7 +700,7 @@ The first useful V2 is accepted when:
 
 - A project opens one persistent V2 Flow across app restarts.
 - The user never needs to create a chat to change subjects.
-- The router keeps exactly one foreground execution goal and parks others as capsules.
+- The lifecycle keeps exactly one foreground execution goal and parks others as capsules.
 - A user may accumulate many goals without all goal histories entering each request.
 - Messages can link to multiple goals without creating multiple simultaneous full prompts.
 - Large evidence can be kept exact, distilled, released, or held unresolved with bounded review.
@@ -709,17 +709,17 @@ The first useful V2 is accepted when:
 - Goal-aware context rebuilding materially controls prompt growth before emergency compaction.
 - Exact released evidence can be retrieved and attributed later.
 - Two projects can run independently as separate model calls with no workspace/context leakage.
-- Voice transcripts enter the same router and read-aloud remains a one-off output job.
+- Voice transcripts enter the same pre-turn lifecycle and read-aloud remains a one-off output job.
 - Ambiguous cross-focus references can produce one sparse same-turn clarification without losing the original task or attachments.
 - Each Flow-origin focus lazily gains at most one preferred Classic home, where canonical Q&A and execution references render without replacement copies or ownership transfer.
 - The hosted STT picker exposes only `nvidia/parakeet-tdt-0.6b-v3`, `microsoft/mai-transcribe-1.5`, and `mistralai/voxtral-mini-transcribe` when currently available through OpenRouter.
 - Offline STT is implemented with Whisper `small.en`, and offline read-aloud with Kokoro-82M, without Ollama or a network connection after explicit model-pack installation. `base.en` has completed a real packaged-runtime reference transcription. The final browser pass verified pack discovery, exact pack sizes, explicit install/remove controls, the native Whisper/Kokoro bindings, and honest no-fallback behavior when Kokoro is absent; it did not download and run the large `small.en` or Kokoro packs.
 - No failed local speech operation silently uploads audio or switches providers.
 - Ollama/local modes fail honestly and gracefully on insufficient models or hardware.
-- V2-off behavior is indistinguishable from current V1 Classic.
+- With Flow routes disabled, Classic remains fully usable and still uses the shared semantic lifecycle without exposing V2-only UI or speech state.
 - Ordinary V2 execution never creates or mutates Classic runtime state; explicit **Open in Classic** alone creates/reuses a mapped Classic conversation/session and stores canonical projection references without duplicating Q&A or runtime evidence.
 
-Contracts/core/server tests cover bounded 30-goal routing, timeout fallback, recent-turn clarification, focus lifecycle and staged completion, bridge ownership/idempotence, invalid provider tool recovery, unresolved limits, evidence immutability, the shared fixed 170k/180k Socrates context policy, V2-only attachments/tools/Memory Router and Goal Router telemetry, same-Flow exclusion with cross-project concurrency, credential redaction, shared Memory Agent V2 receipts, canonical/global trace retrieval, durable Terminal restart continuation, feature-flag isolation, speech allowlists, native runtime adapters, pack integrity, and a 652-message/600-evidence bounded-load proof. On 2026-07-17, the whole workspace test run and typecheck passed; the server result was 19 files and 200/200 tests, with 89/89 core tests. Four focused web V2 API tests, server/Next production builds, and the normal runtime build passed. On 2026-07-18, focused contract/server/web typechecks, server and Next production builds, the Classic temporary-STT route test, visible Classic mic/Flow-view browser checks, responsive Flow layout checks, and the critical note/sidebar overlay interaction passed. Opening the 320px drawer did not change the measured viewport coordinates of either the composer or a note; the drawer covered the note as intended. On 2026-07-21, a disposable isolated browser database with three natural-language exchanges verified the current-exchange focus canvas, query-outline history navigation, long-query expansion, single movable notes, concise exchange deletion, and a Flow -> Classic -> Flow round trip at desktop, 820px, and 390px widths. The browser console was clean; targeted Flow-store plus transcript-window tests passed 19/19; web typecheck and the Next production build passed; changed-file lint had no errors. This pass used no normal user database and made no provider call.
+Current contracts/core/server coverage proves typed adapters, concurrent retrieval and partial-failure handling, all four same-Socrates decisions, conservative fallbacks, goal-fragmentation resistance, identical Classic/Flow lifecycle entry, exact task/exchange/memory bytes, terminal continuation ownership, and physical absence of the retired agents/prompts/tools/settings. The isolated real-provider acceptance uses OpenRouter DeepSeek V4 Pro and the production `SocratesAgent.resolveGoal` path; it verifies current, older, new, and clarify plus exact context bytes without touching normal app state. Earlier dated browser, speech, persistence, and packaging evidence below remains valid for its stated revision, not as proof of the newly converged lifecycle.
 
 Historical pre-convergence evidence: a disposable real-browser E2E used OpenRouter `deepseek/deepseek-v4-pro` with thinking off as the main Socrates driver and approved OpenRouter `x-ai/grok-4.5` with low reasoning as Frontier. At that time it exercised the now-retired mutable goal ledger and mirror bridge. Those mechanisms are not current authority and this record must not be used as an implementation template. The current acceptance baseline is canonical cross-view projection, shared tools/trace retrieval, and validated main-turn finalization.
 
@@ -741,7 +741,7 @@ The v0.1.19 release subsequently passed archive construction and native runtime 
 The following remain intentionally open or incomplete:
 
 - Conservative destructive merge semantics; merge is not implemented.
-- Continued Goal Router evaluation across human request patterns and model/thinking selections beyond the current strict contract, bounded repair, and dedicated worker setting.
+- Continued same-Socrates goal-resolution evaluation across human request patterns and model/thinking selections beyond the current strict contract and bounded repair.
 - Distiller/compactor local-model structured-output requirements beyond the shared worker setting.
 - Model-aware proactive and hard context thresholds after measurement.
 - Capsule refresh quality/cadence beyond the deterministic first cut.

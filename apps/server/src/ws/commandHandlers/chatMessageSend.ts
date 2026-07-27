@@ -3,17 +3,15 @@ import {
   DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS,
   createResolvedTurnContextSeed,
   findModelOption,
+  selectExactMemoryCandidates,
   type SocratesAgent,
   type SocratesAgentEvent,
 } from "@socrates/core"
-import type { ClientCommand, RuntimeConfig, SocratesFinalAnswer } from "@socrates/contracts"
+import type { CandidateRetrievalStatus, ClientCommand, MemoryCandidate, SocratesFinalAnswer } from "@socrates/contracts"
 import type { McpRuntime } from "@socrates/mcp"
 import type { ModelMessage, ModelProvider, ModelUsage } from "@socrates/providers"
 import { normalizeError, nowIso, SocratesError } from "@socrates/shared"
-import {
-  listWorkspaceEnvKeyCandidates,
-  readWorkspaceEnvValue,
-} from "@socrates/workspace"
+import { listWorkspaceEnvKeyCandidates, readWorkspaceEnvValue } from "@socrates/workspace"
 import { apiError } from "../../http"
 import { generateConversationTitle } from "../../services/conversationTitleGenerator"
 import type { SocratesStore } from "../../services/store"
@@ -22,7 +20,7 @@ import type { ConversationTerminalManager } from "../conversationTerminals"
 import type { ConversationSubscriptions } from "../conversationSubscriptions"
 import { appendAndEmit, makeEvent, type EventSink } from "../eventSender"
 import type { V2FlowStore } from "../../services/v2/flowStore"
-import { routeClassicGoal } from "../classicGoalRoutingCoordinator"
+import { resolveClassicGoal } from "../classicGoalLifecycleCoordinator"
 import { createClassicToolExecutors } from "../classicToolExecutors"
 import {
   createClassicContextCompressionRuntime,
@@ -37,6 +35,7 @@ import {
   toContractUsage,
   toStoredUsage,
   withLateDeveloperContext,
+  type ClassicTerminalTaskContinuation,
 } from "../classicMessageSupport"
 
 const requireCommandScope = (command: ClientCommand): { projectId: string; conversationId: string } => {
@@ -48,16 +47,6 @@ const requireCommandScope = (command: ClientCommand): { projectId: string; conve
 
 const contextBudgetTokens = DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS.hardLimitTokens
 
-type TerminalTaskContinuation = {
-  projectId: string
-  conversationId: string
-  sessionId: string
-  turnId: string
-  runtimeConfigId: string
-  runtimeConfig: RuntimeConfig
-  wakeContext: string
-}
-
 export const handleChatMessageSend = async (
   socket: WebSocket | undefined,
   store: SocratesStore,
@@ -68,7 +57,7 @@ export const handleChatMessageSend = async (
   command: Extract<ClientCommand, { type: "chat.message.send" }> | undefined,
   mcpRuntime?: McpRuntime,
   titleProvider?: ModelProvider,
-  continuation?: TerminalTaskContinuation,
+  continuation?: ClassicTerminalTaskContinuation,
   flowStore?: V2FlowStore,
 ): Promise<void> => {
   if (!command && !continuation) {
@@ -223,11 +212,23 @@ export const handleChatMessageSend = async (
   let durableTurnCommitted = false
   let suspendedWait: Extract<SocratesAgentEvent, { type: "agent.suspended" }>["wait"] | undefined
   const exposedMcpServers = new Set<string>()
-  let activeGoal = continuation && flowStore ? flowStore.getClassicGoalForTurn(created.turnId) : undefined
+  let activeGoal = continuation && flowStore
+    ? flowStore.continueClassicGoalTurn({
+        previousTurnId: continuation.resumedFromTurnId,
+        turnId: continuation.turnId,
+        sessionId: continuation.sessionId,
+      })
+    : undefined
+  let memoryCandidates: readonly MemoryCandidate[] = []
+  let retrievalStatus: CandidateRetrievalStatus = {
+    goalCandidates: "completed",
+    memoryCandidates: "completed",
+    warnings: [],
+  }
 
   try {
     if (!continuation && flowStore && created.userMessage) {
-      activeGoal = await routeClassicGoal({
+      const routed = await resolveClassicGoal({
         projectId,
         conversationId,
         sessionId: created.sessionId,
@@ -236,18 +237,52 @@ export const handleChatMessageSend = async (
         userMessageId: created.userMessage.id,
         userMessage: created.userMessage.content,
         workspacePath,
-        recentMessages: modelHistory,
         flowStore,
         sharedStore: store,
-        ...(titleProvider ? { provider: titleProvider } : {}),
+        agent,
+        runtimeConfig,
+        abortSignal: abortController.signal,
       })
+      if (routed.status === "clarification") {
+        const assistantMessage = store.completeAgentTurnAtomically({
+          conversationId,
+          sessionId: created.sessionId,
+          turnId: created.turnId,
+          content: routed.question,
+        })
+        durableTurnCommitted = true
+        appendAndEmit(emitEvent, store, makeEvent("message.completed", { message: assistantMessage }, {
+          projectId,
+          conversationId,
+          sessionId: created.sessionId,
+          turnId: created.turnId,
+          actor: { type: "main_agent" },
+        }), "core")
+        appendAndEmit(emitEvent, store, makeEvent("turn.completed", {
+          turnId: created.turnId,
+          assistantMessageId: assistantMessage.id,
+          summary: "Socrates requested goal clarification.",
+        }, {
+          projectId,
+          conversationId,
+          sessionId: created.sessionId,
+          turnId: created.turnId,
+          actor: { type: "main_agent" },
+        }), "core")
+        store.indexTurnTraceDocuments(projectId, conversationId, created.turnId)
+        store.completeTerminalTaskForTurn(created.turnId, "completed")
+        return
+      }
+      activeGoal = routed.goal
+      memoryCandidates = routed.memoryCandidates
+      retrievalStatus = routed.retrieval
       store.indexGoalRetrieval(projectId, activeGoal.goalId)
     }
     if (continuation && flowStore && !activeGoal) {
       throw new SocratesError("classic_goal_link_missing", "The continued task no longer has a goal link.", { recoverable: true })
     }
     if (activeGoal) {
-      modelHistory = await store.prepareBoundedGoalHistory({
+      modelHistory = await store.prepareExactGoalHistory({
         projectId,
         goalId: activeGoal.goalId,
         query: activeGoal.taskRequest ?? activeGoal.title,
@@ -265,7 +300,6 @@ export const handleChatMessageSend = async (
       providerId: runtimeConfig.providerId,
       modelId: runtimeConfig.modelId,
       runtimeConfig,
-      memoryRouterModelSettings: store.getWorkerModelSetting("memory_router"),
       ...(frontierModelSettings ? { frontierModelSettings } : {}),
       cacheKey: providerCacheKey(projectId, conversationId),
       messages: modelHistory,
@@ -278,15 +312,17 @@ export const handleChatMessageSend = async (
         taskStartedAt: reconciliationWatermark.taskStartedAt,
         persistReconciliationWatermark: (state) => store.saveTaskReconciliationWatermark("classic", created.turnId, state),
       } : {}),
-      automaticMemorySearch: (input) => store.searchMemory(projectId, input, true),
       ...(activeGoal ? { activeGoal } : {}),
       ...(activeGoal ? {
         resolvedTurnContextSeed: createResolvedTurnContextSeed({
-          presentation: { kind: "classic", aperture: "selected_conversation" },
-          projectName: promptContext.projectName,
-          ...(promptContext.projectDescription ? { projectDescription: promptContext.projectDescription } : {}),
           goal: activeGoal,
           messages: modelHistory,
+          retrieval: retrievalStatus,
+        }),
+        resolvedTurnMemory: selectExactMemoryCandidates({
+          candidates: memoryCandidates,
+          userMessage: activeGoal.taskRequest ?? created.userMessage?.content ?? activeGoal.title,
+          goal: activeGoal,
         }),
       } : {}),
       toolExecutors: createClassicToolExecutors(store, projectId, created.turnId, activeTurns, terminals, mcpRuntime, {
@@ -438,40 +474,6 @@ export const handleChatMessageSend = async (
           "server",
         )
         return decision
-      },
-      recordMemoryRouterRun: async (run) => {
-        const errorId = run.error
-          ? store.recordError({
-              conversationId,
-              sessionId: created.sessionId,
-              turnId: created.turnId,
-              source: "memory_router",
-              code: run.error.code,
-              message: run.error.message,
-              details: { phase: run.phase, modelId: run.modelId, routerDetails: run.error.details },
-              recoverable: run.error.recoverable,
-            })
-          : undefined
-        for (const [index, usage] of run.usages.entries()) {
-          store.recordMemoryRouterUsage({
-            projectId,
-            conversationId,
-            sessionId: created.sessionId,
-            turnId: created.turnId,
-            sourceId: `${created.turnId}:memory_router:${run.phase}:${index + 1}`,
-            providerId: run.providerId,
-            modelId: run.modelId,
-            status: run.status,
-            startedAt: run.startedAt,
-            completedAt: run.completedAt,
-            usage: toStoredUsage(usage),
-            metadata: {
-              phase: run.phase,
-              ...(errorId ? { errorId } : {}),
-              ...(run.error ? { errorCode: run.error.code } : {}),
-            },
-          })
-        }
       },
       abortSignal: abortController.signal,
     })) {

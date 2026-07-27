@@ -4,7 +4,7 @@ import path from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { WebSocket } from "ws"
 import { type V2ClientCommand, type V2RuntimeConfig, type V2ServerEvent } from "@socrates/contracts"
-import { capabilityCatalog, DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS, routeV2Goal, SocratesAgent, socratesMainAgentDefinition } from "@socrates/core"
+import { capabilityCatalog, DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS, SocratesAgent, socratesMainAgentDefinition, type SocratesGoalResolutionResult } from "@socrates/core"
 import type { EmbeddingProvider, ModelProvider, StructuredModelRequest, StructuredModelResult } from "@socrates/providers"
 import { createId, nowIso } from "@socrates/shared"
 import { openDatabase, runMigrations, type DatabaseHandle } from "../db/client"
@@ -50,6 +50,13 @@ const runtimeConfig: V2RuntimeConfig = {
   sandboxMode: "workspace_write",
   contextWindowTokens: 128_000,
 }
+
+const createGoalResult = (title = "Test goal"): SocratesGoalResolutionResult => ({
+  decision: { action: "create", title },
+  candidates: { parked: [], candidates: [], totalEligibleParked: 0, parkedCandidateLimit: 5 },
+  source: "fallback",
+  fallbackReason: "provider_error",
+})
 
 class FakeSocket {
   readonly readyState = 1
@@ -135,19 +142,11 @@ const frontierProofProvider = () => {
   const provider: ModelProvider = {
     countTokens: fakeCountTokens,
     async generateStructured<TOutput>() {
-      return { output: {} as TOutput }
+      return { output: { decision: "current" } as TOutput }
     },
     async *stream(request) {
       requests.push(request)
       const toolNames = request.tools?.map((tool) => tool.name) ?? []
-      if (!toolNames.includes("handover_to_frontier") && toolNames.includes("memory_search")) {
-        yield {
-          type: "model.answer.delta",
-          text: JSON.stringify({ readTargets: [], reason: "No routed recall is needed." }),
-        }
-        yield { type: "model.completed", usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 } }
-        return
-      }
       if (!requestedHandover && toolNames.includes("handover_to_frontier")) {
         requestedHandover = true
         yield { type: "model.answer.delta", text: "Discard this V2 driver draft." }
@@ -169,39 +168,16 @@ const frontierProofProvider = () => {
   return { provider, requests }
 }
 
-const repairedMemoryRouterProvider = (): ModelProvider => {
-  const attempts = new Map<string, number>()
-  return {
-    countTokens: fakeCountTokens,
-    async *stream(request) {
-      if (request.system.includes("Memory Router Agent")) {
-        yield { type: "model.completed" }
-        return
-      }
-      yield { type: "model.answer.delta", text: "Memory-router telemetry persisted." }
-      yield { type: "model.completed", usage: { inputTokens: 30, outputTokens: 5, totalTokens: 35 } }
-    },
-    async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>): Promise<StructuredModelResult<TOutput>> {
-      const phase = "pre_turn"
-      const attempt = (attempts.get(phase) ?? 0) + 1
-      attempts.set(phase, attempt)
-      const usage = { inputTokens: 10 + attempt, outputTokens: 2, totalTokens: 12 + attempt }
-      if (attempt === 1) return { output: { invalid: true } as TOutput, usage }
-      return { output: { readTargets: [], reason: "No memory recall needed." } as TOutput, usage }
-    },
-  }
-}
-
-const goalRouterProvider = (): ModelProvider => ({
+const goalResolutionProvider = (): ModelProvider => ({
   countTokens: fakeCountTokens,
   async *stream() {
-    yield { type: "model.completed" }
+    yield { type: "model.answer.delta", text: "Created the requested goal." }
+    yield { type: "model.completed", usage: { inputTokens: 20, outputTokens: 4, totalTokens: 24 } }
   },
   async generateStructured<TOutput>() {
     return {
       output: {
-        action: "create",
-        candidates: [],
+        decision: "new",
         title: "Continue the requested work",
       } as TOutput,
       usage: { inputTokens: 17, outputTokens: 3, totalTokens: 20 },
@@ -237,7 +213,7 @@ const controlledParallelProvider = () => {
   return { provider, release: releaseGate, getActive: () => active, getMaxActive: () => maxActive }
 }
 
-const setup = (provider: ModelProvider, projectId = "proj_one", routerProvider?: ModelProvider): TestRuntime => {
+const setup = (provider: ModelProvider, projectId = "proj_one"): TestRuntime => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "socrates-v2-runtime-"))
   const workspace = path.join(root, "workspace-one")
   const handle = openDatabase(path.join(root, "socrates.sqlite"))
@@ -247,14 +223,9 @@ const setup = (provider: ModelProvider, projectId = "proj_one", routerProvider?:
   vi.spyOn(sharedStore, "resolveRuntimeConfig").mockImplementation((config) => config)
   const flowStore = new V2FlowStore(handle)
   const latestMainAnswerBySession = new Map<string, string>()
-  const providerHasStructuredOutput = typeof provider.generateStructured === "function"
   const finalAwareProvider: ModelProvider = {
     countTokens: provider.countTokens.bind(provider),
     async *stream(request) {
-      if (!providerHasStructuredOutput && request.system.includes("Memory Router Agent")) {
-        yield { type: "model.completed" }
-        return
-      }
       let currentAnswer = ""
       for await (const event of provider.stream(request)) {
         if (event.type === "model.answer.delta") currentAnswer += event.text
@@ -279,9 +250,12 @@ const setup = (provider: ModelProvider, projectId = "proj_one", routerProvider?:
           } as TOutput,
         }
       }
-      if (request.system.includes("Memory Router Agent") && !provider.generateStructured) {
+      if (request.system.includes("<socrates_goal_resolution_phase>") && !provider.generateStructured) {
+        const content = String(request.messages.at(-1)?.content ?? "")
         return {
-          output: { readTargets: [], reason: "No routed recall needed in this runtime test." } as TOutput,
+          output: (content.includes('"currentGoal":null')
+            ? { decision: "new", title: "Test goal" }
+            : { decision: "current" }) as TOutput,
         }
       }
       if (!provider.generateStructured) throw new Error("Structured output was not configured for this test provider.")
@@ -293,7 +267,6 @@ const setup = (provider: ModelProvider, projectId = "proj_one", routerProvider?:
     store: flowStore,
     sharedStore,
     agent,
-    ...(routerProvider ? { routerProvider } : {}),
   })
   const result = { root, workspace, handle, sharedStore, flowStore, agent, runtime }
   runtimes.push(result)
@@ -375,14 +348,7 @@ describe("V2ExecutionRuntime", () => {
       content: "Verify the shared Socrates tool surface.",
       runtimeConfig,
     })
-    const routing = await routeV2Goal({
-      projectId: "proj_one",
-      flowId: flow.id,
-      turnId: created.turn.id,
-      workspacePath: testRuntime.workspace,
-      userMessage: created.userMessage.content,
-      goals: [],
-    })
+    const routing = createGoalResult()
     const applied = testRuntime.flowStore.applyRouting({
       projectId: "proj_one",
       flowId: flow.id,
@@ -502,42 +468,35 @@ describe("V2ExecutionRuntime", () => {
     expect(nextTurnMessages).not.toContain("<distilled_evidence")
   })
 
-  it("persists each repaired pre-turn Memory Router attempt as its own V2 model call and usage row", async () => {
-    const testRuntime = setup(repairedMemoryRouterProvider())
+  it("does not create a model-driven memory-selection call", async () => {
+    const testRuntime = setup(toolProofProvider())
     const flow = testRuntime.flowStore.ensureFlow("proj_one").flow
-    await testRuntime.runtime.startTurn(asWebSocket(new FakeSocket()), messageCommand("proj_one", flow.id, "Check memory-router telemetry"))
-    await waitUntil(() => testRuntime.flowStore.getSnapshot("proj_one", flow.id).activeTurn === undefined, "the repaired router turn to complete")
+    await testRuntime.runtime.startTurn(asWebSocket(new FakeSocket()), messageCommand("proj_one", flow.id, "Check deterministic memory selection"))
+    await waitUntil(() => testRuntime.flowStore.getSnapshot("proj_one", flow.id).activeTurn === undefined, "the deterministic-memory turn to complete")
 
     const calls = testRuntime.handle.sqlite.prepare(
       "SELECT id, status FROM v2_model_calls WHERE role = 'memory_router' ORDER BY started_at, id",
     ).all() as Array<{ id: string; status: string }>
-    const usages = testRuntime.handle.sqlite.prepare(
-      "SELECT model_call_id AS modelCallId FROM v2_usage_events WHERE model_call_id IN (SELECT id FROM v2_model_calls WHERE role = 'memory_router')",
-    ).all() as Array<{ modelCallId: string }>
-    expect(calls).toHaveLength(2)
-    expect(calls.every((call) => call.status === "completed")).toBe(true)
-    expect(usages).toHaveLength(2)
-    expect(new Set(usages.map((usage) => usage.modelCallId))).toEqual(new Set(calls.map((call) => call.id)))
+    expect(calls).toEqual([])
     expect(testRuntime.flowStore.countV1Rows().model_calls).toBe(0)
   })
 
-  it("persists the model-backed Goal Router attempt and usage in V2 telemetry", async () => {
-    const testRuntime = setup(toolProofProvider(), "proj_one", goalRouterProvider())
+  it("persists same-Socrates goal resolution under the main-agent role", async () => {
+    const testRuntime = setup(goalResolutionProvider())
     const flow = testRuntime.flowStore.ensureFlow("proj_one").flow
     await testRuntime.runtime.startTurn(asWebSocket(new FakeSocket()), messageCommand("proj_one", flow.id, "Create a routed goal"))
-    await waitUntil(() => testRuntime.flowStore.getSnapshot("proj_one", flow.id).activeTurn === undefined, "the model-routed turn to complete")
+    await waitUntil(() => testRuntime.flowStore.getSnapshot("proj_one", flow.id).activeTurn === undefined, "the resolved turn to complete")
 
     const call = testRuntime.handle.sqlite.prepare(
-      "SELECT id, status, provider_id AS providerId, model_id AS modelId FROM v2_model_calls WHERE role = 'goal_router'",
+      "SELECT id, status, provider_id AS providerId, model_id AS modelId FROM v2_model_calls WHERE role = 'main_agent' AND request_json LIKE '%goal_resolution%'",
     ).get() as { id: string; status: string; providerId: string; modelId: string }
     const usage = testRuntime.handle.sqlite.prepare(
       "SELECT input_tokens AS inputTokens, output_tokens AS outputTokens, total_tokens AS totalTokens FROM v2_usage_events WHERE model_call_id = ?",
     ).get(call.id) as { inputTokens: number; outputTokens: number; totalTokens: number }
-    const routerErrors = testRuntime.handle.sqlite.prepare(
-      "SELECT code, message, details_json AS detailsJson FROM v2_errors WHERE source = 'goal_router'",
+    const resolutionErrors = testRuntime.handle.sqlite.prepare(
+      "SELECT code, message, details_json AS detailsJson FROM v2_errors WHERE source = 'goal_resolution'",
     ).all()
-    const routerModel = testRuntime.sharedStore.getWorkerModelSetting("goal_router")
-    expect({ call, routerErrors }).toMatchObject({ call: { status: "completed", providerId: routerModel.providerId, modelId: routerModel.modelId }, routerErrors: [] })
+    expect({ call, resolutionErrors }).toMatchObject({ call: { status: "completed", providerId: runtimeConfig.providerId, modelId: runtimeConfig.modelId }, resolutionErrors: [] })
     expect(usage).toEqual({ inputTokens: 17, outputTokens: 3, totalTokens: 20 })
     expect(testRuntime.flowStore.countV1Rows().model_calls).toBe(0)
   })
@@ -580,14 +539,7 @@ describe("V2ExecutionRuntime", () => {
       content: "Remember that I prefer exact restart evidence.",
       runtimeConfig,
     })
-    const routing = await routeV2Goal({
-      projectId: "proj_one",
-      flowId: flow.id,
-      turnId: created.turn.id,
-      workspacePath: testRuntime.workspace,
-      userMessage: created.userMessage.content,
-      goals: [],
-    })
+    const routing = createGoalResult()
     const applied = testRuntime.flowStore.applyRouting({
       projectId: "proj_one",
       flowId: flow.id,
@@ -832,6 +784,7 @@ describe("V2ExecutionRuntime", () => {
     ).all() as Array<{ role: string; providerId: string; modelId: string; status: string }>
     expect(calls.filter((call) => call.role === "main_agent")).toEqual([
       { role: "main_agent", providerId: "openai", modelId: "gpt-test", status: "completed" },
+      { role: "main_agent", providerId: "openai", modelId: "gpt-test", status: "completed" },
     ])
     const frontierCalls = calls.filter((call) => call.role === "frontier_agent")
     expect(frontierCalls.length).toBeGreaterThan(0)
@@ -899,14 +852,7 @@ describe("V2ExecutionRuntime", () => {
       content: "Connect a credentialed tool",
       runtimeConfig,
     })
-    const routing = await routeV2Goal({
-      projectId: "proj_one",
-      flowId: flow.id,
-      turnId: created.turn.id,
-      workspacePath: testRuntime.workspace,
-      userMessage: created.userMessage.content,
-      goals: [],
-    })
+    const routing = createGoalResult()
     const applied = testRuntime.flowStore.applyRouting({
       projectId: "proj_one",
       flowId: flow.id,

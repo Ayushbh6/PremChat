@@ -37,12 +37,10 @@ import { currentTimeTool } from "../tools/currentTimeTool"
 import { editFilesTool } from "../tools/editFilesTool"
 import { editTool } from "../tools/editTool"
 import { frontierHandoverTool } from "../tools/frontierHandoverTool"
-import { goalSearchTool } from "../tools/goalSearchTool"
 import { listProjectResourcesTool } from "../tools/listProjectResourcesTool"
 import { mcpRegistryTool } from "../tools/mcpRegistryTool"
 import { memoryNoteTool } from "../tools/memoryNoteTool"
 import { memoryNotesTool } from "../tools/memoryNotesTool"
-import { memorySearchTool } from "../tools/memorySearchTool"
 import { projectDocsTool } from "../tools/projectDocsTool"
 import { projectsTool } from "../tools/projectsTool"
 import { readMemoryJournalTool } from "../tools/readMemoryJournalTool"
@@ -84,8 +82,6 @@ type StaticToolSpec = Readonly<{
 const MAIN = "socrates"
 const MEMORY = "global_memory"
 const SKILL_WRITER = "skill_writer"
-const LEGACY_GOAL = "legacy_goal_router"
-const LEGACY_MEMORY = "legacy_memory_router"
 const ALL_AGENT_ROLES = [
   MAIN,
   MEMORY,
@@ -136,8 +132,6 @@ const staticToolSpecs: readonly StaticToolSpec[] = [
   toolSpec("tool.read_memory_journal", readMemoryJournalTool, [MEMORY], "apps/server", "apps/server/src/services/store/memoryAgentJournal.ts", ["apps/server/src/services/store/memoryAgentRunner.ts"], ["apps/server/src/services/store/memoryAgentJournal.test.ts"], ["memory_agent/read_memory_journal.md"]),
   toolSpec("tool.skill_write", skillWriteTool, [SKILL_WRITER], "apps/server", "apps/server/src/services/store/skillWriterToolExecutors.ts", ["apps/server/src/services/store/skillWriterAgentRunner.ts"], ["apps/server/src/services/store/memorySkills.test.ts"]),
   toolSpec("tool.context_disposition", contextDispositionTool, [MAIN], "packages/core", "packages/core/src/context/toolOutputDisposition.ts", mainCallers, ["packages/core/src/test/toolOutputDisposition.test.ts"], ["context_disposition.md"]),
-  toolSpec("legacy.tool.goal_search", goalSearchTool, [LEGACY_GOAL], "apps/server", "apps/server/src/services/v2/flowStore.ts", ["packages/core/src/agent/GoalRouterAgent.ts"], ["packages/core/src/test/v2FlowCore.test.ts"], undefined, "legacy_remove_with_goal_lifecycle"),
-  toolSpec("legacy.tool.memory_search", memorySearchTool, [LEGACY_MEMORY], "apps/server", "apps/server/src/services/store/memoryStore.ts", ["packages/core/src/agent/MemoryRouterAgent.ts"], ["packages/core/src/test/MemoryRouterAgent.test.ts"], undefined, "legacy_remove_with_memory_selection"),
 ]
 
 const toolDocumentationGuidance: Readonly<Record<string, readonly string[]>> = Object.freeze({
@@ -166,12 +160,27 @@ const toolDocumentationGuidance: Readonly<Record<string, readonly string[]>> = O
   ],
 })
 
+const specialToolDefinitionFiles: Readonly<Record<string, string>> = Object.freeze({
+  apply_patch: "applyPatchTool.ts",
+  handover_to_frontier: "frontierHandoverTool.ts",
+  current_time: "currentTimeTool.ts",
+  trace_retrieve: "traceRetrieveTool.ts",
+  list_project_resources: "listProjectResourcesTool.ts",
+  mcp_registry: "mcpRegistryTool.ts",
+  memory_note: "memoryNoteTool.ts",
+  memory_notes: "memoryNotesTool.ts",
+  read_memory_journal: "readMemoryJournalTool.ts",
+  skill_write: "skillWriteTool.ts",
+  skill_manager: "skillManagerTool.ts",
+  context_disposition: "contextDispositionTool.ts",
+})
+
 const staticToolCapabilities = staticToolSpecs.map((spec) => defineStaticToolCapability(spec))
 
 const serviceCapabilities: CapabilityDefinition[] = [
-  serviceCapability("retrieval.goal_candidates", "automatic_retrieval", "Retrieve ranked goal candidates while always retaining the current goal.", "retrieval.goal_candidates", [MAIN], ["goal", "runtime"], "apps/server/src/v2/goalRoutingCoordinator.ts", "migration_compatibility"),
-  serviceCapability("retrieval.memory_candidates", "automatic_retrieval", "Retrieve authorized exact-memory candidates in parallel with goal candidates.", "retrieval.memory_candidates", [MAIN], ["goal", "runtime"], "apps/server/src/services/retrieval/retrievalStore.ts", "migration_compatibility"),
-  serviceCapability("authority.memory_selection", "deterministic_authority", "Select exact authorized memory after goal binding without a model router.", "memory.select_exact", [MAIN], ["goal", "runtime"], "packages/core/src/agent/prepareTurnContext.ts", "legacy_remove_with_memory_selection"),
+  serviceCapability("retrieval.goal_candidates", "automatic_retrieval", "Retrieve ranked goal candidates while always retaining the current goal.", "retrieval.goal_candidates", [MAIN], ["goal", "runtime"], "apps/server/src/services/turn/turnCandidateRetrieval.ts", "canonical"),
+  serviceCapability("retrieval.memory_candidates", "automatic_retrieval", "Retrieve authorized exact-memory candidates in parallel with goal candidates.", "retrieval.memory_candidates", [MAIN], ["goal", "runtime"], "apps/server/src/services/turn/turnCandidateRetrieval.ts", "canonical"),
+  serviceCapability("authority.memory_selection", "deterministic_authority", "Select exact authorized memory after goal binding without a model router.", "memory.select_exact", [MAIN], ["goal", "runtime"], "packages/core/src/retrieval/deterministicMemorySelection.ts", "canonical"),
   serviceCapability("authority.goal_ledger", "deterministic_authority", "Own canonical goal pointers, lifecycle state, task counts, and capsule references.", "goal_ledger.transaction", [MAIN], ["goal", "project"], "apps/server/src/services/v2/flowStore.ts", "migration_compatibility"),
   serviceCapability("authority.finalization", "deterministic_authority", "Validate and persist the substantive answer and bound work-state outcome before publication.", "finalization.atomic_commit", [MAIN], ["turn", "goal"], "apps/server/src/services/v2/goalFinalizationStore.ts", "migration_compatibility"),
   serviceCapability("context.stable_prompt", "context_stage", "Attach stable prompt and standing rules before dynamic turn context.", "context.stable_prompt", ALL_AGENT_ROLES, ["turn"], "packages/core/src/agent/ContextPipeline.ts", "canonical"),
@@ -302,17 +311,6 @@ export const canonicalCapabilities = Object.freeze([
 export const capabilityCatalog = new CapabilityCatalog()
 export const emptyCapabilitySet = new CapabilitySet([])
 export const capabilityInventory = (): CapabilityInventoryEntry[] => capabilityCatalog.inventory()
-export const legacyGoalRouterRoleManifest: RoleManifest = Object.freeze({
-  id: "legacy-goal-router-capabilities-v1",
-  role: LEGACY_GOAL,
-  capabilityIds: Object.freeze(["legacy.tool.goal_search"]),
-})
-export const legacyMemoryRouterRoleManifest: RoleManifest = Object.freeze({
-  id: "legacy-memory-router-capabilities-v1",
-  role: LEGACY_MEMORY,
-  capabilityIds: Object.freeze(["legacy.tool.memory_search"]),
-})
-
 function defineStaticToolCapability(spec: StaticToolSpec): ModelToolCapabilityDefinition {
   return defineCapability({
   id: spec.id,
@@ -534,35 +532,8 @@ function runtimeScopesForTool(tool: SocratesTool<any, any>) {
 }
 
 function toolDefinitionPath(tool: SocratesTool<any, any>): string {
-  const fileName = tool.name === "apply_patch"
-    ? "applyPatchTool.ts"
-    : tool.name === "handover_to_frontier"
-      ? "frontierHandoverTool.ts"
-    : tool.name === "current_time"
-      ? "currentTimeTool.ts"
-      : tool.name === "trace_retrieve"
-        ? "traceRetrieveTool.ts"
-        : tool.name === "list_project_resources"
-          ? "listProjectResourcesTool.ts"
-          : tool.name === "mcp_registry"
-            ? "mcpRegistryTool.ts"
-            : tool.name === "memory_note"
-              ? "memoryNoteTool.ts"
-              : tool.name === "memory_notes"
-                ? "memoryNotesTool.ts"
-                : tool.name === "memory_search"
-                  ? "memorySearchTool.ts"
-                  : tool.name === "goal_search"
-                    ? "goalSearchTool.ts"
-                    : tool.name === "read_memory_journal"
-                      ? "readMemoryJournalTool.ts"
-                      : tool.name === "skill_write"
-                        ? "skillWriteTool.ts"
-                        : tool.name === "skill_manager"
-                          ? "skillManagerTool.ts"
-                          : tool.name === "context_disposition"
-                            ? "contextDispositionTool.ts"
-                            : `${tool.name.replace(/_([a-z])/g, (_match, letter: string) => letter.toUpperCase())}Tool.ts`
+  const fileName = specialToolDefinitionFiles[tool.name]
+    ?? `${tool.name.replace(/_([a-z])/g, (_match, letter: string) => letter.toUpperCase())}Tool.ts`
   return `packages/core/src/tools/${fileName}`
 }
 

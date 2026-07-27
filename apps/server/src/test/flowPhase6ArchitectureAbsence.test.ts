@@ -57,14 +57,14 @@ describe("Flow convergence Phase 6 architecture absence", () => {
     expect(projection).toContain("conversationTaskProjections")
   })
 
-  it("keeps model-facing routing bounded and free of opaque goal/task ids", () => {
-    const prompt = read("packages/core/src/prompts/goalRouterPrompt.ts")
-    const coordinator = read("apps/server/src/v2/goalRoutingCoordinator.ts")
+  it("keeps same-Socrates goal resolution bounded and free of opaque goal/task ids", () => {
+    const prompt = read("packages/core/src/prompts/socratesGoalResolutionPrompt.ts")
+    const coordinator = read("apps/server/src/v2/goalLifecycleCoordinator.ts")
     const flowStore = read("apps/server/src/services/v2/flowStore.ts")
-    expect(prompt).toContain("Return their numbers, never internal ids")
+    expect(prompt).toContain("Candidate numbers are human references")
     expect(prompt).not.toContain("goalId: turn.goalId")
     expect(prompt).not.toContain("taskId")
-    expect(coordinator).toContain("listGoalsForRouter")
+    expect(coordinator).toContain("listGoalsForResolution")
     expect(coordinator).not.toContain("goals: snapshot.goals")
     expect(flowStore).toContain(".slice(0, 25)")
     expect(flowStore).not.toContain(".slice(0, 100)")
@@ -75,7 +75,7 @@ describe("Flow convergence Phase 6 architecture absence", () => {
     const flowContext = read("apps/server/src/services/v2/flowWorkingContext.ts")
     expect(flowTools).not.toContain("retrieveV2Trace")
     expect(flowTools).not.toContain('mode: "lexical" as const')
-    expect(flowContext).toContain("prepareBoundedGoalHistory")
+    expect(flowContext).toContain("prepareExactGoalHistory")
     expect(flowContext).not.toContain("slice(-")
   })
 })

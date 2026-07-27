@@ -1,13 +1,15 @@
 import path from "node:path"
 import type {
+  GoalCandidateRetrieval,
   MemoryDocIndex,
-  MemorySearchInput,
-  MemorySearchOutput,
+  MemoryCandidateQuery,
+  MemoryCandidateRetrieval,
   TraceRetrieveMainResult,
   TraceRetrieveMainToolInput,
   TraceRetrieveMainToolOutput,
   TraceRetrieveVisibleStatus,
 } from "@socrates/contracts"
+import { goalCandidateRetrievalSchema, memoryCandidateRetrievalSchema } from "@socrates/contracts"
 import type { RankedRetrievalParent } from "@socrates/core"
 import { sha256Hex } from "@socrates/core"
 import { createId, nowIso, SocratesError } from "@socrates/shared"
@@ -231,7 +233,7 @@ export class RetrievalStore {
     return { results, totalMatches: results.length }
   }
 
-  async searchMemory(projectId: string, input: MemorySearchInput, automaticFallback = false): Promise<MemorySearchOutput> {
+  async retrieveMemoryCandidates(projectId: string, input: MemoryCandidateQuery, automaticFallback = false): Promise<MemoryCandidateRetrieval> {
     const ranked = await this.search({
       projectId,
       query: input.query,
@@ -240,7 +242,7 @@ export class RetrievalStore {
       limit: input.limit,
       automaticFallback,
     })
-    return {
+    return memoryCandidateRetrievalSchema.parse({
       results: ranked.map((result) => ({
         resultNumber: result.rank,
         content: result.content,
@@ -251,19 +253,28 @@ export class RetrievalStore {
         scope: result.metadata.scope,
       })),
       totalMatches: ranked.length,
-    }
+    })
   }
 
-  async searchGoalCards(projectId: string, query: string, limit = 4): Promise<string[]> {
+  async retrieveGoalCandidates(projectId: string, query: string, limit = 4): Promise<GoalCandidateRetrieval> {
     const ranked = await this.search({
       projectId,
       query,
       mode: "combined",
       filters: { corpusKind: "goal_card", scope: "project" },
-      limit: Math.max(1, Math.min(25, limit)),
+      limit: Math.max(1, Math.min(12, limit)),
       automaticFallback: true,
     })
-    return ranked.map((result) => result.parentId)
+    return goalCandidateRetrievalSchema.parse({
+      results: ranked.map((result) => ({
+        resultNumber: result.rank,
+        goalId: result.parentId,
+        title: result.metadata.sectionHeading,
+        content: result.content,
+        occurredAt: result.occurredAt,
+      })),
+      totalMatches: ranked.length,
+    })
   }
 
   status(projectId: string): RetrievalStateRow | undefined {

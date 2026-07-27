@@ -63,23 +63,12 @@ export {
   titleGeneratorAgentDefinition,
   type DynamicSystemPromptContext,
 } from "./agent/agentDefinitions"
-export {
-  MemoryRouterAgent,
-  type MemoryRouterAgentModelSettings,
-  type MemoryRouterPreTurnInput,
-  type ActiveGoalCard,
-  type GoalCandidateCard,
-} from "./agent/MemoryRouterAgent"
+export type { ActiveGoalCard, GoalCandidateCard } from "./agent/goalContext"
 export {
   createResolvedTurnContextSeed,
   prepareTurnContext,
   renderResolvedTurnContext,
 } from "./agent/prepareTurnContext"
-export {
-  GoalRouterAgent,
-  type GoalRouterAgentInput,
-  type GoalRouterAgentModelSettings,
-} from "./agent/GoalRouterAgent"
 export {
   TitleGeneratorAgent,
   type TitleGeneratorAgentInput,
@@ -109,12 +98,11 @@ export {
   type StartCompactionSnapshotInput,
 } from "./context/contextCompression"
 export {
-  BOUNDED_GOAL_HISTORY_MAX_CHARS,
-  BOUNDED_GOAL_HISTORY_MAX_RECENT_MESSAGES,
-  BOUNDED_GOAL_HISTORY_MAX_RETRIEVED_ITEMS,
-  selectBoundedGoalHistory,
-  type RetrievedGoalHistoryItem,
-} from "./context/boundedGoalHistory"
+  EXACT_GOAL_HISTORY_MAX_RECENT_MESSAGES,
+  EXACT_GOAL_HISTORY_MAX_RETRIEVED_ITEMS,
+  selectExactGoalHistory,
+  type RetrievedExactGoalHistoryItem,
+} from "./context/exactGoalHistory"
 export {
   RECONCILIATION_ACTIVITY_EVIDENCE_LIMIT,
   RECONCILIATION_LONG_TASK_MS,
@@ -129,6 +117,7 @@ export { buildMemoryAgentSystemPrompt, memoryAgentBasePrompt, type MemoryAgentPr
 export { buildSkillWriterSystemPrompt, skillWriterBasePrompt, type SkillWriterPromptContext } from "./prompts/skillWriterPrompt"
 export { TITLE_GENERATOR_SYSTEM_PROMPT } from "./prompts/titleGeneratorPrompt"
 export { SOUL_CONFIRMATION_AGENT_SYSTEM_PROMPT, buildSoulConfirmationUserContent } from "./prompts/soulConfirmationPrompt"
+export type { SocratesGoalResolutionCandidate } from "./prompts/socratesGoalResolutionPrompt"
 export {
   SOCRATES_COMPRESSOR_SYSTEM_PROMPT,
   buildSocratesCompressorUserContent,
@@ -149,8 +138,6 @@ export {
   capabilityInventory,
   canonicalCapabilities,
   emptyCapabilitySet,
-  legacyGoalRouterRoleManifest,
-  legacyMemoryRouterRoleManifest,
 } from "./capabilities/CapabilityCatalog"
 export type {
   CapabilityDefinition,

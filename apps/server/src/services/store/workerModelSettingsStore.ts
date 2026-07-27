@@ -40,20 +40,6 @@ export const DEFAULT_WORKER_MODEL_SETTINGS: Record<WorkerModelRole, Omit<WorkerM
     modelId: "meta-llama/llama-4-maverick",
     thinkingEnabled: false,
   },
-  goal_router: {
-    workerId: "goal_router",
-    providerId: "openrouter",
-    authMode: "api_key",
-    modelId: "meta-llama/llama-4-maverick",
-    thinkingEnabled: false,
-  },
-  memory_router: {
-    workerId: "memory_router",
-    providerId: "openrouter",
-    authMode: "api_key",
-    modelId: "deepseek/deepseek-v4-flash",
-    thinkingEnabled: false,
-  },
   frontier: {
     workerId: "frontier",
     providerId: "openrouter",
@@ -69,8 +55,6 @@ const workerOrder: WorkerModelRole[] = [
   "socrates_context_compactor",
   "memory_context_compactor",
   "title_generator",
-  "goal_router",
-  "memory_router",
   "frontier",
 ]
 
