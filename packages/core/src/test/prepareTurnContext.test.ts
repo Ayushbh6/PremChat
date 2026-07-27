@@ -5,6 +5,7 @@ import type { MemoryLoopToolRecord } from "../agent/socratesMemorySupport"
 describe("prepareTurnContext", () => {
   it("resolves one immutable human-readable context after memory retrieval", () => {
     const seed = createResolvedTurnContextSeed({
+      presentation: { kind: "classic", aperture: "selected_conversation" },
       projectName: "Socrates",
       projectDescription: "A local-first coding agent.",
       goal: {
@@ -45,6 +46,9 @@ describe("prepareTurnContext", () => {
     expect(Object.isFrozen(resolved)).toBe(true)
     expect(Object.isFrozen(resolved.goal)).toBe(true)
     expect(resolved.memory).toHaveLength(1)
+    expect(rendered).toContain("CURRENT VIEW\nClassic")
+    expect(rendered).toContain("selected a conversation")
+    expect(rendered).toContain("current_goal for older work")
     expect(rendered).toContain("CURRENT TASK - 4")
     expect(rendered).toContain("Classic and Flow are views of one runtime.")
     expect(rendered).not.toContain("v2goal_private")
@@ -53,6 +57,7 @@ describe("prepareTurnContext", () => {
 
   it("caps visible history at ten items and derives safe legacy defaults", () => {
     const seed = createResolvedTurnContextSeed({
+      presentation: { kind: "flow", aperture: "selected_goal" },
       goal: { goalId: "private", title: "Legacy task", state: "active", note: "In progress." },
       messages: Array.from({ length: 14 }, (_, index) => ({ role: index % 2 ? "assistant" as const : "user" as const, content: `message-${index}` })),
     })
@@ -60,5 +65,28 @@ describe("prepareTurnContext", () => {
     expect(seed.history[0]?.content).toBe("message-4")
     expect(seed.task.ordinal).toBe(1)
     expect(seed.task.request).toBe("message-12")
+    expect(renderResolvedTurnContext(prepareTurnContext(seed))).toContain("CURRENT VIEW\nFlow")
+    expect(renderResolvedTurnContext(prepareTurnContext(seed))).toContain("absence here does not prove")
+  })
+
+  it("keeps Classic and Flow specialization bounded to the presentation block", () => {
+    const common = {
+      projectName: "Socrates",
+      goal: { goalId: "private", title: "Shared work", state: "active" as const, note: "In progress." },
+      messages: [{ role: "user" as const, content: "Continue the shared task." }],
+    }
+    const classic = renderResolvedTurnContext(prepareTurnContext(createResolvedTurnContextSeed({
+      ...common,
+      presentation: { kind: "classic", aperture: "selected_conversation" },
+    })))
+    const flow = renderResolvedTurnContext(prepareTurnContext(createResolvedTurnContextSeed({
+      ...common,
+      presentation: { kind: "flow", aperture: "selected_goal" },
+    })))
+
+    const sharedStart = "PROJECT\nSocrates"
+    expect(classic.slice(classic.indexOf(sharedStart))).toBe(flow.slice(flow.indexOf(sharedStart)))
+    expect(classic.indexOf(sharedStart)).toBeLessThan(1_200)
+    expect(flow.indexOf(sharedStart)).toBeLessThan(1_200)
   })
 })

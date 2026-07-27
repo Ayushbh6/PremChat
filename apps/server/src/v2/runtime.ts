@@ -532,6 +532,7 @@ export class V2ExecutionRuntime {
         automaticMemorySearch: (memoryInput) => this.deps.sharedStore.searchMemory(command.projectId, memoryInput, true),
         activeGoal,
         resolvedTurnContextSeed: createResolvedTurnContextSeed({
+          presentation: { kind: "flow", aperture: "selected_goal" },
           projectName: promptContext.projectName,
           ...(promptContext.projectDescription ? { projectDescription: promptContext.projectDescription } : {}),
           goal: activeGoal,

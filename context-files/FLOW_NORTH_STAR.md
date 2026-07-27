@@ -29,6 +29,8 @@ Classic UI -- user-selected conversation scope --+
 Flow UI ------- Socrates-selected goal scope -----+
 ```
 
+The shared prepared context must tell the main model which presentation produced the turn and what history aperture it received: Classic means the selected conversation; Flow means the selected goal. This is one small typed context clause inside the same Socrates prompt and runtime, not separate Classic and Flow personas or prompt harnesses.
+
 Cross-view navigation must use references and projections over canonical work. Copying visible Q&A into replacement turns or messages is not the target architecture because duplicated semantic state can drift.
 
 ## Canonical Product Concepts

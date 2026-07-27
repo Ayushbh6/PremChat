@@ -17,7 +17,19 @@ export const resolvedTurnMemoryItemSchema = z.object({
   content: z.string().min(1).max(4_000),
 }).strict()
 
+export const resolvedTurnPresentationSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("classic"),
+    aperture: z.literal("selected_conversation"),
+  }).strict(),
+  z.object({
+    kind: z.literal("flow"),
+    aperture: z.literal("selected_goal"),
+  }).strict(),
+])
+
 export const resolvedTurnContextSeedSchema = z.object({
+  presentation: resolvedTurnPresentationSchema,
   project: z.object({
     name: z.string().min(1).max(500),
     description: z.string().max(2_000).optional(),
@@ -45,5 +57,6 @@ export const resolvedTurnContextSchema = resolvedTurnContextSeedSchema.extend({
 export type ResolvedTurnHistoryItem = z.infer<typeof resolvedTurnHistoryItemSchema>
 export type ResolvedTurnTransition = z.infer<typeof resolvedTurnTransitionSchema>
 export type ResolvedTurnMemoryItem = z.infer<typeof resolvedTurnMemoryItemSchema>
+export type ResolvedTurnPresentation = z.infer<typeof resolvedTurnPresentationSchema>
 export type ResolvedTurnContextSeed = z.infer<typeof resolvedTurnContextSeedSchema>
 export type ResolvedTurnContext = z.infer<typeof resolvedTurnContextSchema>

@@ -282,6 +282,7 @@ export const handleChatMessageSend = async (
       ...(activeGoal ? { activeGoal } : {}),
       ...(activeGoal ? {
         resolvedTurnContextSeed: createResolvedTurnContextSeed({
+          presentation: { kind: "classic", aperture: "selected_conversation" },
           projectName: promptContext.projectName,
           ...(promptContext.projectDescription ? { projectDescription: promptContext.projectDescription } : {}),
           goal: activeGoal,

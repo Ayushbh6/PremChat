@@ -18,6 +18,8 @@ describe("Flow convergence Phase 2 authority absence", () => {
     const flow = read("apps/server/src/v2/runtime.ts")
     expect(classic).toContain("resolvedTurnContextSeed: createResolvedTurnContextSeed")
     expect(flow).toContain("resolvedTurnContextSeed: createResolvedTurnContextSeed")
+    expect(classic).toContain('presentation: { kind: "classic", aperture: "selected_conversation" }')
+    expect(flow).toContain('presentation: { kind: "flow", aperture: "selected_goal" }')
   })
 
   it("does not retain the legacy active-goal developer message", () => {

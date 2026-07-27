@@ -12,6 +12,7 @@ const MAX_HISTORY_ITEMS = 10
 const MAX_MEMORY_ITEMS = 8
 
 export const createResolvedTurnContextSeed = (input: {
+  presentation: ResolvedTurnContextSeed["presentation"]
   projectName?: string
   projectDescription?: string
   goal: ActiveGoalCard
@@ -19,6 +20,7 @@ export const createResolvedTurnContextSeed = (input: {
 }): ResolvedTurnContextSeed => {
   const latestUserRequest = [...input.messages].reverse().find((message) => message.role === "user")
   return resolvedTurnContextSeedSchema.parse({
+  presentation: input.presentation,
   project: {
     name: input.projectName?.trim() || "Current project",
     ...(input.projectDescription?.trim() ? { description: input.projectDescription.trim() } : {}),
@@ -63,6 +65,7 @@ export const prepareTurnContext = (
 
 export const renderResolvedTurnContext = (context: ResolvedTurnContext): string => [
   "<socrates_resolved_turn_context>",
+  renderPresentationContext(context.presentation),
   `PROJECT\n${context.project.name}`,
   ...(context.project.description ? [`PROJECT DESCRIPTION\n${context.project.description}`] : []),
   `CURRENT GOAL\n${context.goal.title}`,
@@ -84,6 +87,19 @@ export const renderResolvedTurnContext = (context: ResolvedTurnContext): string 
   "The runtime has already bound this task to the goal above. Never expose or infer internal goal/task ids, and finalization cannot select another goal.",
   "</socrates_resolved_turn_context>",
 ].join("\n\n")
+
+const renderPresentationContext = (presentation: ResolvedTurnContext["presentation"]): string =>
+  presentation.kind === "classic"
+    ? [
+        "CURRENT VIEW\nClassic",
+        "HISTORY APERTURE\nThe user selected a conversation. Its recent exact Q&A may span several goals; the runtime has already bound this task to the one current goal below.",
+        "RETRIEVAL GUIDANCE\nTreat the attached conversation and goal continuity as primary. Use presented_context for exact evidence in this projection, current_goal for older work in the bound goal, and project only for wider related work. Do not retrieve merely to understand an ordinary follow-up already resolved by the attached history.",
+      ].join("\n\n")
+    : [
+        "CURRENT VIEW\nFlow",
+        "HISTORY APERTURE\nThe user is working in one selected goal. Attached messages intentionally contain that goal's bounded history and transition context, not a whole Classic conversation; absence here does not prove that older or related project work does not exist.",
+        "RETRIEVAL GUIDANCE\nTreat the attached goal history and transition as primary. Use current_goal for exact older work in this goal and project for explicit dependencies or related work outside it. Do not retrieve merely to understand an ordinary follow-up already resolved by the attached context.",
+      ].join("\n\n")
 
 const messageText = (message: ModelMessage): string => typeof message.content === "string"
   ? message.content

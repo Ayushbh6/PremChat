@@ -65,6 +65,9 @@ The orchestration boundary is one provider-neutral `prepareTurnContext()` operat
 The runtime-owned shape is conceptually:
 
 ```text
+presentation
+  Classic with selected-conversation aperture, or Flow with selected-goal aperture
+
 project
   internal id, name, workspace
 
@@ -145,7 +148,7 @@ Large-goal recall should use the shared hybrid lexical and embedding retrieval f
 
 ## Classic And Flow Context Projections
 
-The shared lifecycle and tools are identical. Only the history aperture differs.
+The shared lifecycle, base prompt, and tools are identical. Only the presentation clause and history aperture differ. The typed prepared context tells main Socrates whether the current turn came from Classic's selected conversation or Flow's selected goal so it can interpret missing history and retrieve proportionately without becoming a separate view-specific agent.
 
 Classic normally projects:
 
@@ -162,6 +165,10 @@ Flow normally projects:
 - retrieved memory.
 
 Flow does not require a Classic conversation. A technical transport/session/cache key is not semantic conversation state.
+
+## Bounded Agent Working Space
+
+For a non-trivial implementation or build, main Socrates creates or refreshes `.socrates/PLAN.md` before source mutation and maintains `.socrates/TASKS.md` while work proceeds. Disposable one-off scripts, probes, diagnostics, and temporary test artifacts belong under `.socrates/work/`. These are transient task-working artifacts, not new durable memory surfaces or replacements for `project_docs` and `repo_docs`; production code, deliverables, migrations, and permanent tests remain in their proper repository locations. Trivial answers and tiny edits should not create planning noise.
 
 ### Switching Views During A Running Task
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import { resolvedTurnContextSchema, resolvedTurnContextSeedSchema } from "./resolvedTurnContext"
 
 const seed = {
+  presentation: { kind: "classic" as const, aperture: "selected_conversation" as const },
   project: { name: "Socrates", description: "One runtime, two views." },
   goal: { title: "Converge Flow", objective: "Use one lifecycle.", state: "foreground", progress: "Phase 2 is active.", openDecisions: [], blockers: [] },
   task: { ordinal: 3, request: "Continue the convergence work." },
@@ -20,5 +21,16 @@ describe("resolved turn context contracts", () => {
   it("rejects oversized history and opaque extra authority fields", () => {
     expect(resolvedTurnContextSeedSchema.safeParse({ ...seed, history: Array.from({ length: 11 }, () => seed.history[0]) }).success).toBe(false)
     expect(resolvedTurnContextSeedSchema.safeParse({ ...seed, goalId: "v2goal_internal" }).success).toBe(false)
+  })
+
+  it("requires one exact presentation aperture", () => {
+    expect(resolvedTurnContextSeedSchema.safeParse({
+      ...seed,
+      presentation: { kind: "flow", aperture: "selected_goal" },
+    }).success).toBe(true)
+    expect(resolvedTurnContextSeedSchema.safeParse({
+      ...seed,
+      presentation: { kind: "flow", aperture: "selected_conversation" },
+    }).success).toBe(false)
   })
 })
