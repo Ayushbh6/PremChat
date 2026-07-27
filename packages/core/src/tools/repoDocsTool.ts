@@ -1,4 +1,4 @@
-import { repoDocsToolInputSchema, repoDocsToolModelInputSchema, repoDocsToolOutputSchema } from "@socrates/contracts"
+import { repoDocsToolInputSchema, repoDocsToolOutputSchema } from "@socrates/contracts"
 import type { SocratesTool } from "./types"
 
 export const repoDocsTool: SocratesTool<typeof repoDocsToolInputSchema._type, typeof repoDocsToolOutputSchema._type> = {
@@ -6,7 +6,6 @@ export const repoDocsTool: SocratesTool<typeof repoDocsToolInputSchema._type, ty
   description:
     'Read, search, index, or edit the active workspace\'s four .socrates/repo_docs/*.md doctrine files. Call this before nontrivial repo work when repo rules, architecture, contracts, workflows, or durable pitfalls may matter. Prefer read_index first, then read_section or patch_section by sectionId. For patch_section, provide path, sectionId, exact oldText, and newText; do not pass text. For whole-doc replacement, use edit with path plus oldText/newText. Generic edit/apply_patch cannot mutate these files.',
   inputSchema: repoDocsToolInputSchema,
-  modelInputSchema: repoDocsToolModelInputSchema,
   resultSchema: repoDocsToolOutputSchema,
   permission: "mutate",
   executeLane: "mutation",

@@ -7,7 +7,6 @@ import {
 } from "@socrates/contracts"
 import type { ModelMessageContent, ModelProvider, ModelUsage } from "@socrates/providers"
 import { SocratesError } from "@socrates/shared"
-import { createTitleGeneratorToolRegistry } from "../tools/registry"
 import { AgentInstance } from "./AgentInstance"
 import { titleGeneratorAgentDefinition } from "./agentDefinitions"
 
@@ -47,7 +46,6 @@ export class TitleGeneratorAgent {
       runtimeConfig: titleGeneratorRuntimeConfig(input.modelSettings),
       promptContext: undefined,
       userContent: input.userContent,
-      toolRegistry: createTitleGeneratorToolRegistry(),
       toolExecutors: {},
       projectId: input.projectId,
       conversationId: input.conversationId,

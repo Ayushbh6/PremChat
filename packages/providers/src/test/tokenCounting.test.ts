@@ -1,5 +1,6 @@
 import { readToolInputSchema } from "@socrates/contracts"
 import { describe, expect, it } from "vitest"
+import { z } from "zod"
 import { AiSdkProvider } from "../ai-sdk/AiSdkProvider"
 import {
   DEFAULT_TOKEN_SAFETY_MARGIN_PERCENT,
@@ -95,6 +96,8 @@ describe("provider token counting", () => {
             name: "read",
             description: "Read a file from the workspace.",
             inputSchema: readToolInputSchema,
+            resultSchema: z.unknown(),
+            providerInputSchema: { type: "object", additionalProperties: false, required: ["path"], properties: { path: { type: "string" } } },
           },
         ],
       }),
@@ -189,7 +192,7 @@ describe("provider token counting", () => {
           approvalMode: "manual",
           sandboxMode: "read_only",
         },
-        tools: [{ name: "read", description: "Read a file.", inputSchema: readToolInputSchema }],
+        tools: [{ name: "read", description: "Read a file.", inputSchema: readToolInputSchema, resultSchema: z.unknown(), providerInputSchema: { type: "object", additionalProperties: false, required: ["path"], properties: { path: { type: "string" } } } }],
       })
       const local = countModelRequestLocally(request)
       const result = await provider.countTokens({ ...request, countTokens: { exactThresholds: [local.inputTokens] } })

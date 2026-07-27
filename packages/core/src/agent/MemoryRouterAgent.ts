@@ -9,12 +9,12 @@ import {
 } from "@socrates/contracts"
 import type { ModelMessage, ModelProvider, ModelUsage } from "@socrates/providers"
 import { normalizeError, nowIso } from "@socrates/shared"
+import { capabilityCatalog, legacyMemoryRouterRoleManifest } from "../capabilities/CapabilityCatalog"
 import { chunkMarkdown } from "../retrieval"
 import {
   buildPreTurnMemoryRouterUserContent,
   PRE_TURN_MEMORY_ROUTER_SYSTEM_PROMPT,
 } from "../prompts/memoryRoutingPrompt"
-import { createMemoryRouterToolRegistry } from "../tools/registry"
 import type { ToolExecutors } from "../tools/types"
 import { AgentRuntime, type AgentRuntimeStructuredInput } from "./AgentRuntime"
 
@@ -107,7 +107,7 @@ export class MemoryRouterAgent {
         ...(prefetch.warning ? { automaticCoverageWarning: prefetch.warning } : {}),
       }),
       completion: { mode: "structured", schema: memoryRouterPreTurnResultSchema },
-      toolRegistry: createMemoryRouterToolRegistry(),
+      capabilitySet: capabilityCatalog.resolve(legacyMemoryRouterRoleManifest),
       toolExecutors: input.toolExecutors,
       maxToolCalls: MAX_ROUTER_TOOL_CALLS,
       projectId: input.projectId,

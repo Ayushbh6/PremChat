@@ -131,7 +131,7 @@ export const normalizedToolTargetKey = (toolCall: NormalizedToolCall): string | 
     return typeof input.path === "string" ? `edit:${normalizePathKey(input.path)}` : undefined
   }
   if (toolCall.toolName === "apply_patch") {
-    const patchText = typeof input.patchText === "string" ? input.patchText : typeof input.patch === "string" ? input.patch : ""
+    const patchText = typeof input.patchText === "string" ? input.patchText : ""
     const patchPath = firstPatchPath(patchText)
     return patchPath ? `apply_patch:${normalizePathKey(patchPath)}` : `apply_patch:${normalizeTextKey(patchText).slice(0, 200)}`
   }
@@ -148,7 +148,7 @@ export const mutationTargetFor = (toolCall: NormalizedToolCall): string => {
   if (typeof input.path === "string") {
     return normalizePathKey(input.path)
   }
-  const patchText = typeof input.patchText === "string" ? input.patchText : typeof input.patch === "string" ? input.patch : ""
+  const patchText = typeof input.patchText === "string" ? input.patchText : ""
   return firstPatchPath(patchText) ?? "unknown target"
 }
 

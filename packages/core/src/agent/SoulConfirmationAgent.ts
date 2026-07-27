@@ -8,7 +8,6 @@ import {
 import type { ModelProvider, ModelUsage } from "@socrates/providers"
 import { SocratesError } from "@socrates/shared"
 import { buildSoulConfirmationUserContent } from "../prompts/soulConfirmationPrompt"
-import { createSoulConfirmationToolRegistry } from "../tools/registry"
 import { AgentInstance } from "./AgentInstance"
 import { soulConfirmationAgentDefinition } from "./agentDefinitions"
 
@@ -51,7 +50,6 @@ export class SoulConfirmationAgent {
       runtimeConfig: runtimeConfigFor(input.modelSettings),
       promptContext: undefined,
       userContent: buildSoulConfirmationUserContent(input),
-      toolRegistry: createSoulConfirmationToolRegistry(),
       toolExecutors: {},
       projectId: input.projectId,
       conversationId: input.conversationId,

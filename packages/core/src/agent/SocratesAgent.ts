@@ -4,6 +4,7 @@ import {
   waitToolOutputSchema,
   socratesFinalAnswerSchema,
   type SocratesFinalAnswer,
+  type DynamicToolCapabilityRegistration,
   type MemorySearchInput,
   type MemorySearchOutput,
   type ModelToolDefinition,
@@ -24,9 +25,13 @@ import {
   type ContextCompressionRuntime,
 } from "../context/contextCompression"
 import { ToolOutputDispositionLedger } from "../context/toolOutputDisposition"
+import {
+  capabilityCatalog,
+  emptyCapabilitySet,
+  type CapabilityCatalog,
+  type CapabilitySet,
+} from "../capabilities/CapabilityCatalog"
 import { buildSocratesSystemPrompt, type SocratesPromptContext } from "../prompts/socratesPrompt"
-import { createDefaultToolRegistry, type ToolRegistry } from "../tools/registry"
-import { createFinalAnswerToolRegistry } from "../tools/registry"
 import type { ApprovalDecision, ApprovalRequest, CredentialInputDecision, CredentialInputRequest, ToolExecutors, ToolLifecycleEvent } from "../tools/types"
 import {
   MemoryRouterAgent,
@@ -34,11 +39,7 @@ import {
   type MemoryRouterRunRecord,
 } from "./MemoryRouterAgent"
 import { AgentRuntime } from "./AgentRuntime"
-import {
-  assertRoleManifestAllowsDynamicTools,
-  assertRoleManifestMatchesTools,
-  type AgentDefinition,
-} from "./AgentDefinition"
+import type { AgentDefinition } from "./AgentDefinition"
 import { ContextPipeline } from "./ContextPipeline"
 import { socratesMainAgentDefinition, type DynamicSystemPromptContext } from "./agentDefinitions"
 import { buildSocratesFinalAnswerCheckpoint, buildSocratesReconciliationCheckpoint } from "../prompts/socratesFinalAnswerPrompt"
@@ -112,7 +113,7 @@ export type SocratesAgentTurnInput = {
   maxToolCallsPerTurn?: number
   maxConfirmedToolErrorsPerTurn?: number
   maxParallelToolCalls?: number
-  dynamicTools?: ModelToolDefinition[] | (() => ModelToolDefinition[])
+  runtimeCapabilities?: DynamicToolCapabilityRegistration[] | (() => DynamicToolCapabilityRegistration[])
   abortSignal?: AbortSignal
   fileFreshness?: import("../tools/types").FileFreshnessTracker
   reconciliationWatermark?: ReconciliationWatermarkState
@@ -162,22 +163,20 @@ export class SocratesAgent {
   private readonly contextPipeline = new ContextPipeline()
   private readonly runtime = new AgentRuntime(this.contextPipeline)
   private readonly turnLifecycle: SocratesTurnLifecycle
+  private readonly baseCapabilities: CapabilitySet
   private readonly definition: AgentDefinition<DynamicSystemPromptContext, unknown>
   private readonly definitionPromptContext: DynamicSystemPromptContext
 
   constructor(
     private readonly provider: ModelProvider,
-    private readonly toolRegistry: ToolRegistry = createDefaultToolRegistry(),
+    private readonly catalog: CapabilityCatalog = capabilityCatalog,
     definition?: AgentDefinition<DynamicSystemPromptContext, unknown>,
     definitionPromptContext?: DynamicSystemPromptContext,
   ) {
     this.definition = definition ?? socratesMainAgentDefinition
     this.definitionPromptContext = definitionPromptContext ?? { system: buildSocratesSystemPrompt() }
     try {
-      assertRoleManifestMatchesTools(
-        this.definition,
-        toolRegistry.list().map((tool) => tool.name),
-      )
+      this.baseCapabilities = this.catalog.resolve(this.definition.roleManifest)
     } catch (error) {
       throw new SocratesError(
         "agent_role_manifest_mismatch",
@@ -185,7 +184,7 @@ export class SocratesAgent {
       )
     }
     this.memoryRouterAgent = new MemoryRouterAgent(provider)
-    this.turnLifecycle = new SocratesTurnLifecycle(provider, toolRegistry, this.memoryRouterAgent)
+    this.turnLifecycle = new SocratesTurnLifecycle(provider, this.baseCapabilities, this.memoryRouterAgent)
   }
 
   async precomputeContext(input: SocratesAgentContextPrecomputeInput): Promise<ContextCompactionLifecycleEvent[]> {
@@ -303,12 +302,12 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
         })
         await persistReconciliationWatermark()
       }
-      const dynamicTools = typeof input.dynamicTools === "function" ? input.dynamicTools() : input.dynamicTools
+      const runtimeCapabilities = typeof input.runtimeCapabilities === "function"
+        ? input.runtimeCapabilities()
+        : input.runtimeCapabilities
+      let capabilities: CapabilitySet
       try {
-        assertRoleManifestAllowsDynamicTools(
-          this.definition,
-          (dynamicTools ?? []).map((tool) => tool.name),
-        )
+        capabilities = this.catalog.resolve(this.definition.roleManifest, runtimeCapabilities ?? [])
       } catch (error) {
         throw new SocratesError(
           "agent_role_manifest_mismatch",
@@ -325,8 +324,8 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
       const tools =
         forceFinalNoTools || !input.toolExecutors
           ? []
-          : this.toolRegistry
-              .modelDefinitions(dynamicTools)
+          : capabilities
+              .modelDefinitions()
               .filter((tool) => tool.name !== "handover_to_frontier" || handoverAvailable)
       if (forceFinalNoTools && input.completionMode === "main_structured") {
         const finalEvents: ModelEvent[] = []
@@ -345,7 +344,7 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
             }),
           }],
           completion: { mode: "structured", schema: socratesFinalAnswerSchema },
-          toolRegistry: createFinalAnswerToolRegistry(),
+          capabilitySet: emptyCapabilitySet,
           toolExecutors: {},
           maxToolCalls: 0,
           projectId: input.projectId ?? "",
@@ -537,7 +536,7 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
         }
 
         if (modelEvent.type === "model.tool_call.streaming") {
-          const tool = this.toolRegistry.get(modelEvent.toolName as ToolName)
+          const tool = capabilities.get(modelEvent.toolName as ToolName)
           if (tool) {
             const preview = extractStreamingPreview(modelEvent.toolName, modelEvent.argsText)
             yield {
@@ -750,6 +749,7 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
 
       const batch = this.turnLifecycle.executeToolCalls({
         toolCalls,
+        capabilitySet: capabilities,
         context: {
           projectId: input.projectId ?? "",
           conversationId: input.conversationId ?? "",

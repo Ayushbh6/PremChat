@@ -4,7 +4,7 @@ import path from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { WebSocket } from "ws"
 import { type V2ClientCommand, type V2RuntimeConfig, type V2ServerEvent } from "@socrates/contracts"
-import { DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS, createDefaultToolRegistry, routeV2Goal, SocratesAgent } from "@socrates/core"
+import { capabilityCatalog, DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS, routeV2Goal, SocratesAgent, socratesMainAgentDefinition } from "@socrates/core"
 import type { EmbeddingProvider, ModelProvider, StructuredModelRequest, StructuredModelResult } from "@socrates/providers"
 import { createId, nowIso } from "@socrates/shared"
 import { openDatabase, runMigrations, type DatabaseHandle } from "../db/client"
@@ -403,9 +403,9 @@ describe("V2ExecutionRuntime", () => {
       workspacePath: testRuntime.workspace,
     })
     const coreInternalTools = new Set(["handover_to_frontier", "context_disposition"])
-    const sharedExecutorTools = createDefaultToolRegistry()
+    const sharedExecutorTools = capabilityCatalog.resolve(socratesMainAgentDefinition.roleManifest)
       .list()
-      .map((tool) => tool.name)
+      .map((capability) => capability.tool.name)
       .filter((name) => !coreInternalTools.has(name))
 
     expect(sharedExecutorTools).toHaveLength(19)

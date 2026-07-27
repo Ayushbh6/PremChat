@@ -113,7 +113,7 @@ const modelRequest = (): ModelRequest => ({
     approvalMode: "manual",
     sandboxMode: "workspace_write",
   },
-  tools: [{ name: "current_time", description: "Get current time.", inputSchema: z.object({}).strict() }],
+  tools: [{ name: "current_time", description: "Get current time.", inputSchema: z.object({}).strict(), resultSchema: z.unknown(), providerInputSchema: { type: "object", additionalProperties: false, properties: {} } }],
 })
 
 const jsonResponse = (value: unknown): Response =>

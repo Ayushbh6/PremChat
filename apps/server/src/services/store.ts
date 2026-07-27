@@ -389,7 +389,7 @@ export class SocratesStore {
       attachedArchive?: { filename: string; data: Buffer }
     },
   ): Promise<SkillsToolOutput> {
-    const attachedArchive = source.attachedArchive ?? (input.operation === "preview_import" && input.attachmentPath
+    const attachedArchive = source.attachedArchive ?? (input.operation === "preview_import" && "attachmentPath" in input
       ? this.attachments.readCurrentTurnSkillZip({
           projectId,
           conversationId: source.conversationId,

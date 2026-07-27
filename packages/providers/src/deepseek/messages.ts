@@ -1,6 +1,5 @@
 import type { ModelToolDefinition, ProviderMetadata, ThinkingEffort } from "@socrates/contracts"
 import { schemaToJsonSchema } from "../jsonSchema"
-import { toolParametersJsonSchema } from "../toolJsonSchemas"
 import type { ModelMessage, ModelMessageContent, ModelMessagePart, ModelRequest } from "../types"
 import type { DeepSeekChatMessage, DeepSeekChatRequest, DeepSeekTool } from "./types"
 
@@ -172,7 +171,7 @@ const toDeepSeekTool = (definition: ModelToolDefinition): DeepSeekTool => ({
   function: {
     name: definition.name,
     description: definition.description,
-    parameters: toolParametersJsonSchema(definition),
+    parameters: definition.providerInputSchema,
   },
 })
 

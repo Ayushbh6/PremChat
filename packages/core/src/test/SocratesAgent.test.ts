@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { z } from "zod"
-import { SocratesAgent, createDefaultToolRegistry, type SocratesAgentEvent, type ToolExecutors } from "../index"
+import { SocratesAgent, capabilityCatalog, socratesMainAgentDefinition, type SocratesAgentEvent, type ToolExecutors } from "../index"
 import type { ModelEvent, ModelMessage, ModelProvider } from "@socrates/providers"
 import { bashTool } from "../tools/bashTool"
 import { frontierHandoverTool } from "../tools/frontierHandoverTool"
@@ -101,10 +101,15 @@ describe("SocratesAgent", () => {
           sandboxMode: "read_only",
         },
         messages: [{ role: "user", content: "Hi" }],
-        dynamicTools: [{
-          name: "shadow_tool",
+        runtimeCapabilities: [{
+          id: "shadow.tool",
+          kind: "dynamic_tool",
+          name: "mcp__shadow__tool",
           description: "This must not be exposed.",
           inputSchema: z.object({}).strict(),
+          resultSchema: z.unknown(),
+          providerInputSchema: { type: "object", properties: {}, additionalProperties: false },
+          source: { type: "mcp", serverId: "shadow", childName: "tool", scope: "project" },
         }],
       })) {
         // The manifest violation must fail before the provider can emit an event.
@@ -544,7 +549,8 @@ describe("SocratesAgent", () => {
     const executors = emptyToolExecutors()
     executors.project_docs = async (input) => {
       projectDocsInputs.push(input)
-      return projectDocsSectionOutput(input.area, input.sectionId ?? "active_context", "- Dynamic note.")
+      if (input.operation !== "read_section") throw new Error(`Unexpected project_docs operation: ${input.operation}`)
+      return projectDocsSectionOutput(input.area, input.sectionId, "- Dynamic note.")
     }
 
     const events: SocratesAgentEvent[] = []
@@ -652,7 +658,7 @@ describe("SocratesAgent", () => {
   })
 
   it("exposes the base tool set", () => {
-    const tools = createDefaultToolRegistry().modelDefinitions()
+    const tools = capabilityCatalog.resolve(socratesMainAgentDefinition.roleManifest).modelDefinitions()
     expect(tools.map((tool) => tool.name)).toEqual([
       "read",
       "search",
@@ -1840,9 +1846,10 @@ describe("SocratesAgent", () => {
       projectDocsInputs.push(input)
       if (input.operation === "read_section") {
         const content = input.area === "memory" ? "- Add at most 10 short project hard rules here." : "- Existing active context."
-        return projectDocsSectionOutput(input.area, input.sectionId ?? "active_context", content)
+        return projectDocsSectionOutput(input.area, input.sectionId, content)
       }
-      const newText = input.newText ?? ""
+      if (input.operation !== "patch_section") throw new Error(`Unexpected project_docs operation: ${input.operation}`)
+      const newText = input.newText
       return {
         operation: "patch_section",
         area: "notes",
@@ -3386,7 +3393,6 @@ describe("SocratesAgent", () => {
     }
     const result = await mcpRegistryTool.execute({
       operation: "configure",
-      confirmed: true,
       scope: "project",
       server: {
         id: "multi-secret",
@@ -3460,7 +3466,7 @@ describe("SocratesAgent", () => {
         if (streamCalls === 1) {
           yield { type: "model.tool_call.completed", toolCall: { toolCallId: "notes", toolName: "project_docs", input: { operation: "read", area: "notes" } } }
           yield { type: "model.tool_call.completed", toolCall: { toolCallId: "rules", toolName: "repo_docs", input: { operation: "read", path: "REPO_RULES.md" } } }
-          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "patch", toolName: "apply_patch", input: { patch: "*** Begin Patch" } } }
+          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "patch", toolName: "apply_patch", input: { patchText: "*** Begin Patch" } } }
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }

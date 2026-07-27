@@ -1,0 +1,1017 @@
+{
+  "schemaVersion": 1,
+  "generatedFrom": "packages/core/src/capabilities/CapabilityCatalog.ts",
+  "capabilities": [
+    {
+      "id": "tool.read",
+      "kind": "model_tool",
+      "executorBinding": "read",
+      "implementationPath": "packages/workspace/src/tools/readTool.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "packages/workspace/src/workspace.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.search",
+      "kind": "model_tool",
+      "executorBinding": "search",
+      "implementationPath": "packages/workspace/src/tools/searchTool.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "packages/workspace/src/workspace.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.url_fetch",
+      "kind": "model_tool",
+      "executorBinding": "url_fetch",
+      "implementationPath": "apps/server/src/ws/urlFetch.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/ws/urlFetch.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.edit",
+      "kind": "model_tool",
+      "executorBinding": "edit",
+      "implementationPath": "packages/workspace/src/tools/editTool.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "packages/workspace/src/workspace.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.apply_patch",
+      "kind": "model_tool",
+      "executorBinding": "apply_patch",
+      "implementationPath": "packages/workspace/src/tools/patchHelpers.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "packages/workspace/src/workspace.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.bash",
+      "kind": "model_tool",
+      "executorBinding": "bash",
+      "implementationPath": "packages/workspace/src/tools/bashTool.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "packages/workspace/src/workspace.test.ts",
+        "apps/server/src/test/v2TerminalRuntime.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.wait",
+      "kind": "model_tool",
+      "executorBinding": "wait",
+      "implementationPath": "apps/server/src/services/store/agentTaskStore.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/agentTaskStore.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.handover_to_frontier",
+      "kind": "model_tool",
+      "executorBinding": "handover_to_frontier",
+      "implementationPath": "packages/core/src/agent/SocratesAgent.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/SocratesAgent.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.current_time",
+      "kind": "model_tool",
+      "executorBinding": "current_time",
+      "implementationPath": "apps/server/src/services/store/runtimeContext.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts",
+        "apps/server/src/services/store/memoryAgentRunner.ts",
+        "apps/server/src/services/store/skillWriterAgentRunner.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/AgentRuntime.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.trace_retrieve.main",
+      "kind": "model_tool",
+      "executorBinding": "trace_retrieve",
+      "implementationPath": "apps/server/src/services/retrieval/unifiedMainTraceService.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/server.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.trace_retrieve.global",
+      "kind": "model_tool",
+      "executorBinding": "trace_retrieve",
+      "implementationPath": "apps/server/src/services/store/memoryAgentToolExecutors.ts",
+      "callers": [
+        "apps/server/src/services/store/memoryAgentRunner.ts",
+        "apps/server/src/services/store/skillWriterAgentRunner.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/memoryPrompt.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.tool_docs",
+      "kind": "model_tool",
+      "executorBinding": "tool_docs",
+      "implementationPath": "apps/server/src/services/store/toolDocsStore.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts",
+        "apps/server/src/services/store/memoryAgentRunner.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/memoryDocParser.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.skills.manage",
+      "kind": "model_tool",
+      "executorBinding": "skills",
+      "implementationPath": "apps/server/src/services/store/memorySkills.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/memorySkills.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.skills.read",
+      "kind": "model_tool",
+      "executorBinding": "skills",
+      "implementationPath": "apps/server/src/services/store/memorySkills.ts",
+      "callers": [
+        "apps/server/src/services/store/memoryAgentRunner.ts",
+        "apps/server/src/services/store/skillWriterAgentRunner.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/memoryPrompt.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.skill_manager",
+      "kind": "model_tool",
+      "executorBinding": "skill_manager",
+      "implementationPath": "apps/server/src/services/store/memorySkills.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/memorySkills.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.projects",
+      "kind": "model_tool",
+      "executorBinding": "projects",
+      "implementationPath": "apps/server/src/services/store/memoryAgentToolExecutors.ts",
+      "callers": [
+        "apps/server/src/services/store/memoryAgentRunner.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/memoryPrompt.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.edit_files",
+      "kind": "model_tool",
+      "executorBinding": "edit_files",
+      "implementationPath": "apps/server/src/services/store/memoryAgentToolExecutors.ts",
+      "callers": [
+        "apps/server/src/services/store/memoryAgentRunner.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/memoryAgentJournal.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.project_docs",
+      "kind": "model_tool",
+      "executorBinding": "project_docs",
+      "implementationPath": "apps/server/src/services/store/memoryStore.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts",
+        "apps/server/src/services/store/skillWriterAgentRunner.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/memoryDocParser.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.repo_docs",
+      "kind": "model_tool",
+      "executorBinding": "repo_docs",
+      "implementationPath": "apps/server/src/services/store/memoryStore.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts",
+        "apps/server/src/services/store/skillWriterAgentRunner.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/memoryDocParser.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.soul",
+      "kind": "model_tool",
+      "executorBinding": "soul",
+      "implementationPath": "apps/server/src/services/store/memoryStore.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts",
+        "apps/server/src/services/store/memoryAgentRunner.ts",
+        "apps/server/src/services/store/skillWriterAgentRunner.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/memoryDocParser.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.user_profile",
+      "kind": "model_tool",
+      "executorBinding": "user_profile",
+      "implementationPath": "apps/server/src/services/store/memoryStore.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts",
+        "apps/server/src/services/store/memoryAgentRunner.ts",
+        "apps/server/src/services/store/skillWriterAgentRunner.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/memoryDocParser.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.list_project_resources",
+      "kind": "model_tool",
+      "executorBinding": "list_project_resources",
+      "implementationPath": "apps/server/src/services/mainToolExecutors.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/server.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.mcp_registry",
+      "kind": "model_tool",
+      "executorBinding": "mcp_registry",
+      "implementationPath": "packages/mcp/src/index.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "packages/mcp/src/index.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.memory_note",
+      "kind": "model_tool",
+      "executorBinding": "memory_note",
+      "implementationPath": "apps/server/src/services/store/memoryAgentSignals.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/memoryAgentJournal.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.memory_notes",
+      "kind": "model_tool",
+      "executorBinding": "memory_notes",
+      "implementationPath": "apps/server/src/services/store/memoryAgentToolExecutors.ts",
+      "callers": [
+        "apps/server/src/services/store/memoryAgentRunner.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/memoryAgentJournal.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.read_memory_journal",
+      "kind": "model_tool",
+      "executorBinding": "read_memory_journal",
+      "implementationPath": "apps/server/src/services/store/memoryAgentJournal.ts",
+      "callers": [
+        "apps/server/src/services/store/memoryAgentRunner.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/memoryAgentJournal.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.skill_write",
+      "kind": "model_tool",
+      "executorBinding": "skill_write",
+      "implementationPath": "apps/server/src/services/store/skillWriterToolExecutors.ts",
+      "callers": [
+        "apps/server/src/services/store/skillWriterAgentRunner.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/memorySkills.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "tool.context_disposition",
+      "kind": "model_tool",
+      "executorBinding": "context_disposition",
+      "implementationPath": "packages/core/src/context/toolOutputDisposition.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts",
+        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/toolOutputDisposition.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "legacy.tool.goal_search",
+      "kind": "model_tool",
+      "executorBinding": "goal_search",
+      "implementationPath": "apps/server/src/services/v2/flowStore.ts",
+      "callers": [
+        "packages/core/src/agent/GoalRouterAgent.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/v2FlowCore.test.ts"
+      ],
+      "status": "legacy_remove_with_goal_lifecycle"
+    },
+    {
+      "id": "legacy.tool.memory_search",
+      "kind": "model_tool",
+      "executorBinding": "memory_search",
+      "implementationPath": "apps/server/src/services/store/memoryStore.ts",
+      "callers": [
+        "packages/core/src/agent/MemoryRouterAgent.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/MemoryRouterAgent.test.ts"
+      ],
+      "status": "legacy_remove_with_memory_selection"
+    },
+    {
+      "id": "retrieval.goal_candidates",
+      "kind": "automatic_retrieval",
+      "executorBinding": "retrieval.goal_candidates",
+      "implementationPath": "apps/server/src/v2/goalRoutingCoordinator.ts",
+      "callers": [
+        "apps/server/src/v2/goalRoutingCoordinator.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "retrieval.memory_candidates",
+      "kind": "automatic_retrieval",
+      "executorBinding": "retrieval.memory_candidates",
+      "implementationPath": "apps/server/src/services/retrieval/retrievalStore.ts",
+      "callers": [
+        "apps/server/src/services/retrieval/retrievalStore.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "authority.memory_selection",
+      "kind": "deterministic_authority",
+      "executorBinding": "memory.select_exact",
+      "implementationPath": "packages/core/src/agent/prepareTurnContext.ts",
+      "callers": [
+        "packages/core/src/agent/prepareTurnContext.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts"
+      ],
+      "status": "legacy_remove_with_memory_selection"
+    },
+    {
+      "id": "authority.goal_ledger",
+      "kind": "deterministic_authority",
+      "executorBinding": "goal_ledger.transaction",
+      "implementationPath": "apps/server/src/services/v2/flowStore.ts",
+      "callers": [
+        "apps/server/src/services/v2/flowStore.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "authority.finalization",
+      "kind": "deterministic_authority",
+      "executorBinding": "finalization.atomic_commit",
+      "implementationPath": "apps/server/src/services/v2/goalFinalizationStore.ts",
+      "callers": [
+        "apps/server/src/services/v2/goalFinalizationStore.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "context.stable_prompt",
+      "kind": "context_stage",
+      "executorBinding": "context.stable_prompt",
+      "implementationPath": "packages/core/src/agent/ContextPipeline.ts",
+      "callers": [
+        "packages/core/src/agent/ContextPipeline.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/prepareTurnContext.test.ts",
+        "packages/core/src/test/contextCompression.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "context.exact_messages",
+      "kind": "context_stage",
+      "executorBinding": "context.exact_messages",
+      "implementationPath": "packages/core/src/agent/ContextPipeline.ts",
+      "callers": [
+        "packages/core/src/agent/ContextPipeline.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/prepareTurnContext.test.ts",
+        "packages/core/src/test/contextCompression.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "context.runtime_state",
+      "kind": "context_stage",
+      "executorBinding": "context.runtime_state",
+      "implementationPath": "packages/core/src/agent/ContextPipeline.ts",
+      "callers": [
+        "packages/core/src/agent/ContextPipeline.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/prepareTurnContext.test.ts",
+        "packages/core/src/test/contextCompression.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "context.tool_definitions",
+      "kind": "context_stage",
+      "executorBinding": "context.tool_definitions",
+      "implementationPath": "packages/core/src/agent/ContextPipeline.ts",
+      "callers": [
+        "packages/core/src/agent/ContextPipeline.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/prepareTurnContext.test.ts",
+        "packages/core/src/test/contextCompression.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "context.user_approved_compaction",
+      "kind": "context_stage",
+      "executorBinding": "context.compact_with_consent",
+      "implementationPath": "packages/core/src/context/contextCompression.ts",
+      "callers": [
+        "packages/core/src/context/contextCompression.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/prepareTurnContext.test.ts",
+        "packages/core/src/test/contextCompression.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "worker.global_memory",
+      "kind": "structured_worker",
+      "executorBinding": "agent.global_memory",
+      "implementationPath": "apps/server/src/services/store/memoryAgentRunner.ts",
+      "callers": [
+        "apps/server/src/services/store/memoryAgentRunner.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/AgentInstance.test.ts",
+        "packages/core/src/test/AgentRuntime.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "worker.skill_writer",
+      "kind": "structured_worker",
+      "executorBinding": "agent.skill_writer",
+      "implementationPath": "apps/server/src/services/store/skillWriterAgentRunner.ts",
+      "callers": [
+        "apps/server/src/services/store/skillWriterAgentRunner.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/AgentInstance.test.ts",
+        "packages/core/src/test/AgentRuntime.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "worker.title_generator",
+      "kind": "structured_worker",
+      "executorBinding": "agent.title_generator",
+      "implementationPath": "packages/core/src/agent/TitleGeneratorAgent.ts",
+      "callers": [
+        "packages/core/src/agent/TitleGeneratorAgent.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/AgentInstance.test.ts",
+        "packages/core/src/test/AgentRuntime.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "worker.soul_confirmation",
+      "kind": "structured_worker",
+      "executorBinding": "agent.soul_confirmation",
+      "implementationPath": "packages/core/src/agent/SoulConfirmationAgent.ts",
+      "callers": [
+        "packages/core/src/agent/SoulConfirmationAgent.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/AgentInstance.test.ts",
+        "packages/core/src/test/AgentRuntime.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "worker.context_compactor",
+      "kind": "structured_worker",
+      "executorBinding": "agent.context_compactor",
+      "implementationPath": "packages/core/src/agent/CompressorAgent.ts",
+      "callers": [
+        "packages/core/src/agent/CompressorAgent.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/AgentInstance.test.ts",
+        "packages/core/src/test/AgentRuntime.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "runtime.structured_repair",
+      "kind": "deterministic_authority",
+      "executorBinding": "agent_runtime.structured_repair",
+      "implementationPath": "packages/core/src/agent/AgentRuntime.ts",
+      "callers": [
+        "packages/core/src/agent/AgentRuntime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "runtime.frontier_handover",
+      "kind": "deterministic_authority",
+      "executorBinding": "agent_runtime.frontier_handover",
+      "implementationPath": "packages/core/src/agent/SocratesAgent.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.classic.chat.message.send",
+      "kind": "typed_user_command",
+      "executorBinding": "chat.message.send",
+      "implementationPath": "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
+      "callers": [
+        "apps/server/src/ws/commandDispatcher.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/server.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "command.classic.chat.turn.cancel",
+      "kind": "typed_user_command",
+      "executorBinding": "chat.turn.cancel",
+      "implementationPath": "apps/server/src/ws/commandHandlers/chatTurnCancel.ts",
+      "callers": [
+        "apps/server/src/ws/commandDispatcher.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/server.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "command.classic.chat.conversation.subscribe",
+      "kind": "typed_user_command",
+      "executorBinding": "chat.conversation.subscribe",
+      "implementationPath": "apps/server/src/ws/commandDispatcher.ts",
+      "callers": [
+        "apps/server/src/ws/commandDispatcher.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/server.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "command.classic.chat.conversation.unsubscribe",
+      "kind": "typed_user_command",
+      "executorBinding": "chat.conversation.unsubscribe",
+      "implementationPath": "apps/server/src/ws/commandDispatcher.ts",
+      "callers": [
+        "apps/server/src/ws/commandDispatcher.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/server.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "command.classic.approval.decide",
+      "kind": "typed_user_command",
+      "executorBinding": "approval.decide",
+      "implementationPath": "apps/server/src/ws/commandHandlers/approvalDecide.ts",
+      "callers": [
+        "apps/server/src/ws/commandDispatcher.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/server.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "command.classic.credential.input.submit",
+      "kind": "typed_user_command",
+      "executorBinding": "credential.input.submit",
+      "implementationPath": "apps/server/src/ws/commandHandlers/credentialInputSubmit.ts",
+      "callers": [
+        "apps/server/src/ws/commandDispatcher.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/server.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "command.classic.terminal.stop",
+      "kind": "typed_user_command",
+      "executorBinding": "terminal.stop",
+      "implementationPath": "apps/server/src/ws/conversationTerminals.ts",
+      "callers": [
+        "apps/server/src/ws/commandDispatcher.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/server.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "command.classic.terminal.input",
+      "kind": "typed_user_command",
+      "executorBinding": "terminal.input",
+      "implementationPath": "apps/server/src/ws/conversationTerminals.ts",
+      "callers": [
+        "apps/server/src/ws/commandDispatcher.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/server.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "command.classic.terminal.resize",
+      "kind": "typed_user_command",
+      "executorBinding": "terminal.resize",
+      "implementationPath": "apps/server/src/ws/conversationTerminals.ts",
+      "callers": [
+        "apps/server/src/ws/commandDispatcher.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/server.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "command.classic.terminal.rename",
+      "kind": "typed_user_command",
+      "executorBinding": "terminal.rename",
+      "implementationPath": "apps/server/src/ws/conversationTerminals.ts",
+      "callers": [
+        "apps/server/src/ws/commandDispatcher.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/server.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "command.classic.feedback.submit",
+      "kind": "typed_user_command",
+      "executorBinding": "feedback.submit",
+      "implementationPath": "apps/server/src/ws/commandHandlers/feedbackSubmit.ts",
+      "callers": [
+        "apps/server/src/ws/commandDispatcher.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/server.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "migration_compatibility"
+    },
+    {
+      "id": "command.flow.subscribe",
+      "kind": "typed_user_command",
+      "executorBinding": "v2.flow.subscribe",
+      "implementationPath": "apps/server/src/v2/runtime.ts",
+      "callers": [
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.flow.unsubscribe",
+      "kind": "typed_user_command",
+      "executorBinding": "v2.flow.unsubscribe",
+      "implementationPath": "apps/server/src/v2/runtime.ts",
+      "callers": [
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.flow.message.send",
+      "kind": "typed_user_command",
+      "executorBinding": "v2.message.send",
+      "implementationPath": "apps/server/src/v2/runtime.ts",
+      "callers": [
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.flow.routing.clarification.respond",
+      "kind": "typed_user_command",
+      "executorBinding": "v2.routing.clarification.respond",
+      "implementationPath": "apps/server/src/v2/runtime.ts",
+      "callers": [
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.flow.focus.update",
+      "kind": "typed_user_command",
+      "executorBinding": "v2.focus.update",
+      "implementationPath": "apps/server/src/v2/runtime.ts",
+      "callers": [
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.flow.turn.cancel",
+      "kind": "typed_user_command",
+      "executorBinding": "v2.turn.cancel",
+      "implementationPath": "apps/server/src/v2/runtime.ts",
+      "callers": [
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.flow.approval.decide",
+      "kind": "typed_user_command",
+      "executorBinding": "v2.approval.decide",
+      "implementationPath": "apps/server/src/v2/runtime.ts",
+      "callers": [
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.flow.feedback.submit",
+      "kind": "typed_user_command",
+      "executorBinding": "v2.feedback.submit",
+      "implementationPath": "apps/server/src/v2/runtime.ts",
+      "callers": [
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.flow.credential.input.submit",
+      "kind": "typed_user_command",
+      "executorBinding": "v2.credential.input.submit",
+      "implementationPath": "apps/server/src/v2/runtime.ts",
+      "callers": [
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.flow.terminal.stop",
+      "kind": "typed_user_command",
+      "executorBinding": "v2.terminal.stop",
+      "implementationPath": "apps/server/src/v2/runtime.ts",
+      "callers": [
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.flow.terminal.input",
+      "kind": "typed_user_command",
+      "executorBinding": "v2.terminal.input",
+      "implementationPath": "apps/server/src/v2/runtime.ts",
+      "callers": [
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.flow.terminal.resize",
+      "kind": "typed_user_command",
+      "executorBinding": "v2.terminal.resize",
+      "implementationPath": "apps/server/src/v2/runtime.ts",
+      "callers": [
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.flow.terminal.rename",
+      "kind": "typed_user_command",
+      "executorBinding": "v2.terminal.rename",
+      "implementationPath": "apps/server/src/v2/runtime.ts",
+      "callers": [
+        "apps/server/src/v2/runtime.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    }
+  ]
+}

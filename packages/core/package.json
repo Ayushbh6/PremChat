@@ -23,7 +23,8 @@
     "@socrates/contracts": "workspace:*",
     "@socrates/providers": "workspace:*",
     "@socrates/shared": "workspace:*",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@types/node": "^20",

@@ -129,20 +129,24 @@ export class WorkspaceShellSession {
       throw new SocratesError("shell_session_disposed", "The shell session has already ended.")
     }
 
-    const operation = input.operation ?? "run"
-    if (operation === "run") {
-      return await this.runCommand(input, context)
+    if (input.operation === undefined || input.operation === "run") {
+      if ("command" in input) return await this.runCommand(input, context)
+      throw new SocratesError("terminal_argv_session_unsupported", "Direct argv execution does not use a persistent shell session.", { recoverable: true })
     }
-    if (operation === "start") {
+    if (input.operation === "start") {
       return await this.startProcess(input, context)
     }
-    if (operation === "status") {
+    if (input.operation === "status") {
       return this.processStatus(input)
     }
-    if (operation === "output") {
+    if (input.operation === "output") {
       return this.processOutput(input, context)
     }
-    return this.processStop(input, context)
+    if (input.operation === "list") {
+      throw new SocratesError("terminal_list_runtime_required", "Terminal lists are owned by the conversation runtime.", { recoverable: true })
+    }
+    if (input.operation === "stop") return this.processStop(input, context)
+    throw new SocratesError("terminal_operation_invalid", "Unsupported Terminal operation.", { recoverable: true })
   }
 
   private async runCommand(input: BashToolInput, context: ShellRunContext): Promise<BashToolOutput> {

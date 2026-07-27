@@ -660,7 +660,7 @@ describe("workspace tools", () => {
 
     const tracker = new FileFreshnessTracker()
     const read = await readWorkspacePath({ path: "README.md" }, { workspacePath, fileFreshness: tracker })
-    const result = await applyPatchWorkspace({ patch }, { workspacePath, fileFreshness: tracker })
+    const result = await applyPatchWorkspace({ patchText: patch }, { workspacePath, fileFreshness: tracker })
 
     expect(fs.readFileSync(path.join(workspacePath, "README.md"), "utf8")).toBe("hello new world\n")
     expect(result.changedFiles[0]).toMatchObject({
@@ -676,7 +676,7 @@ describe("workspace tools", () => {
     const workspacePath = tempDir()
     const patch = ["--- /dev/null", "+++ b/new-file.txt", "@@ -0,0 +1 @@", "+created", ""].join("\n")
 
-    const result = await applyPatchWorkspace({ patch }, { workspacePath })
+    const result = await applyPatchWorkspace({ patchText: patch }, { workspacePath })
 
     expect(fs.readFileSync(path.join(workspacePath, "new-file.txt"), "utf8")).toBe("created\n")
     expect(result.changedFiles[0]).toMatchObject({
@@ -723,7 +723,7 @@ describe("workspace tools", () => {
     fs.writeFileSync(path.join(workspacePath, ".socrates", "PROJECT_NOTES.md"), "old note\n")
     fs.writeFileSync(path.join(workspacePath, "notes-copy.md"), "copy note\n")
 
-    await expect(applyPatchWorkspace({ patch }, { workspacePath })).rejects.toMatchObject({
+    await expect(applyPatchWorkspace({ patchText: patch }, { workspacePath })).rejects.toMatchObject({
       code: "project_docs_dedicated_tool_required",
       message: expect.stringContaining("project_docs"),
       recoverable: true,
@@ -767,7 +767,7 @@ describe("workspace tools", () => {
     fs.writeFileSync(path.join(workspacePath, ".socrates", "repo_docs", "REPO_RULES.md"), "old rule\n")
     fs.writeFileSync(path.join(workspacePath, "repo-rules-copy.md"), "copy rule\n")
 
-    await expect(applyPatchWorkspace({ patch }, { workspacePath })).rejects.toMatchObject({
+    await expect(applyPatchWorkspace({ patchText: patch }, { workspacePath })).rejects.toMatchObject({
       code: "repo_docs_dedicated_tool_required",
       message: expect.stringContaining("repo_docs"),
       recoverable: true,
@@ -811,7 +811,7 @@ describe("workspace tools", () => {
     fs.writeFileSync(path.join(workspacePath, ".socrates", "skills", "memory-review", "SKILL.md"), "old skill\n")
     fs.writeFileSync(path.join(workspacePath, "skill-copy.md"), "copy skill\n")
 
-    await expect(applyPatchWorkspace({ patch }, { workspacePath })).rejects.toMatchObject({
+    await expect(applyPatchWorkspace({ patchText: patch }, { workspacePath })).rejects.toMatchObject({
       code: "project_skills_dedicated_builder_required",
       message: expect.stringContaining("Skills +"),
       recoverable: true,
@@ -826,7 +826,7 @@ describe("workspace tools", () => {
     const read = await readWorkspacePath({ path: "remove-me.txt" }, { workspacePath, fileFreshness: tracker })
     const patch = ["--- a/remove-me.txt", "+++ /dev/null", "@@ -1 +0,0 @@", "-delete me", ""].join("\n")
 
-    const result = await applyPatchWorkspace({ patch }, { workspacePath, fileFreshness: tracker })
+    const result = await applyPatchWorkspace({ patchText: patch }, { workspacePath, fileFreshness: tracker })
 
     expect(fs.existsSync(path.join(workspacePath, "remove-me.txt"))).toBe(false)
     expect(result.changedFiles[0]).toMatchObject({
@@ -850,7 +850,7 @@ describe("workspace tools", () => {
       "",
     ].join("\n")
 
-    const result = await applyPatchWorkspace({ patch }, { workspacePath, fileFreshness: tracker })
+    const result = await applyPatchWorkspace({ patchText: patch }, { workspacePath, fileFreshness: tracker })
 
     expect(fs.existsSync(path.join(workspacePath, "old-name.txt"))).toBe(false)
     expect(fs.readFileSync(path.join(workspacePath, "new-name.txt"), "utf8")).toBe("same\n")
@@ -880,7 +880,7 @@ describe("workspace tools", () => {
       "",
     ].join("\n")
 
-    const result = await applyPatchWorkspace({ patch }, { workspacePath, fileFreshness: tracker })
+    const result = await applyPatchWorkspace({ patchText: patch }, { workspacePath, fileFreshness: tracker })
 
     expect(fs.existsSync(path.join(workspacePath, "old-name.txt"))).toBe(false)
     expect(fs.readFileSync(path.join(workspacePath, "new-name.txt"), "utf8")).toBe("new\n")
@@ -907,7 +907,7 @@ describe("workspace tools", () => {
       "",
     ].join("\n")
 
-    await expect(applyPatchWorkspace({ patch }, { workspacePath })).rejects.toMatchObject({
+    await expect(applyPatchWorkspace({ patchText: patch }, { workspacePath })).rejects.toMatchObject({
       code: "patch_parse_failed",
       message: expect.stringContaining("hunk line counts"),
       details: expect.objectContaining({
@@ -925,7 +925,7 @@ describe("workspace tools", () => {
     const tracker = await readFreshFiles(workspacePath, "README.md")
     const patch = ["--- a/README.md", "+++ b/README.md", "@@ -1 +1 @@", "-stale", "+next", ""].join("\n")
 
-    await expect(applyPatchWorkspace({ patch }, { workspacePath, fileFreshness: tracker })).rejects.toMatchObject({
+    await expect(applyPatchWorkspace({ patchText: patch }, { workspacePath, fileFreshness: tracker })).rejects.toMatchObject({
       code: "patch_apply_failed",
       message: expect.stringContaining("current disk"),
       details: expect.objectContaining({
@@ -984,7 +984,7 @@ describe("workspace tools", () => {
       "",
     ].join("\n")
 
-    const result = await applyPatchWorkspace({ patch }, { workspacePath, fileFreshness: tracker })
+    const result = await applyPatchWorkspace({ patchText: patch }, { workspacePath, fileFreshness: tracker })
 
     expect(fs.readFileSync(path.join(workspacePath, "app.txt"), "utf8")).toBe("alpha\nbeta\nbeta helper\ngamma\n")
     expect(result.changedFiles[0]).toMatchObject({ path: "app.txt", operation: "patched", verification: "verified" })
@@ -1083,7 +1083,7 @@ describe("workspace tools", () => {
       "",
     ].join("\n")
 
-    const result = await applyPatchWorkspace({ patch }, { workspacePath, fileFreshness: tracker })
+    const result = await applyPatchWorkspace({ patchText: patch }, { workspacePath, fileFreshness: tracker })
 
     expect(fs.readFileSync(path.join(workspacePath, "created.txt"), "utf8")).toBe("created\n")
     expect(fs.existsSync(path.join(workspacePath, "old.txt"))).toBe(false)
@@ -1115,7 +1115,7 @@ describe("workspace tools", () => {
       "",
     ].join("\n")
 
-    const result = await applyPatchWorkspace({ patch }, { workspacePath, fileFreshness: tracker })
+    const result = await applyPatchWorkspace({ patchText: patch }, { workspacePath, fileFreshness: tracker })
 
     expect(fs.readFileSync(path.join(workspacePath, "App.tsx"), "utf8")).toBe("export default function App() { return 'new' }\n")
     expect(fs.readFileSync(path.join(workspacePath, "index.css"), "utf8")).toBe("body { color: blue; }\n")
@@ -1145,7 +1145,7 @@ describe("workspace tools", () => {
       "",
     ].join("\n")
 
-    const result = await applyPatchWorkspace({ patch }, { workspacePath, fileFreshness: tracker })
+    const result = await applyPatchWorkspace({ patchText: patch }, { workspacePath, fileFreshness: tracker })
 
     expect(fs.readFileSync(path.join(workspacePath, "created.txt"), "utf8")).toBe("created without plus\n\n")
     expect(fs.readFileSync(path.join(workspacePath, "app.txt"), "utf8")).toBe("alpha\n\nmiddle\nbeta\n")
@@ -1165,7 +1165,7 @@ describe("workspace tools", () => {
     fs.writeFileSync(path.join(workspacePath, "app.txt"), "alpha\n")
     const patch = ["*** Begin Patch", "*** Update File: app.txt", "@@", "-alpha", "+beta", "*** End Patch", ""].join("\n")
 
-    await expect(applyPatchWorkspace({ patch }, { workspacePath })).rejects.toMatchObject({
+    await expect(applyPatchWorkspace({ patchText: patch }, { workspacePath })).rejects.toMatchObject({
       code: "edit_stale_content",
       message: expect.stringContaining('Call read("app.txt") first'),
     })
@@ -1179,14 +1179,14 @@ describe("workspace tools", () => {
     const firstPatch = ["*** Begin Patch", "*** Update File: app.txt", "@@", "-alpha", "+alpha = 1", "*** End Patch", ""].join("\n")
     const secondPatch = ["*** Begin Patch", "*** Update File: app.txt", "@@", "-beta", "+beta = 2", "*** End Patch", ""].join("\n")
 
-    await applyPatchWorkspace({ patch: firstPatch }, { workspacePath, fileFreshness: tracker })
-    await expect(applyPatchWorkspace({ patch: secondPatch }, { workspacePath, fileFreshness: tracker })).rejects.toMatchObject({
+    await applyPatchWorkspace({ patchText: firstPatch }, { workspacePath, fileFreshness: tracker })
+    await expect(applyPatchWorkspace({ patchText: secondPatch }, { workspacePath, fileFreshness: tracker })).rejects.toMatchObject({
       code: "edit_stale_content",
       message: expect.stringContaining('Call read("app.txt") again'),
     })
 
     await readWorkspacePath({ path: "app.txt" }, { workspacePath, fileFreshness: tracker })
-    await applyPatchWorkspace({ patch: secondPatch }, { workspacePath, fileFreshness: tracker })
+    await applyPatchWorkspace({ patchText: secondPatch }, { workspacePath, fileFreshness: tracker })
     expect(fs.readFileSync(path.join(workspacePath, "app.txt"), "utf8")).toBe("alpha = 1\nbeta = 2\n")
   })
 
@@ -1229,9 +1229,9 @@ describe("workspace tools", () => {
       "",
     ].join("\n")
 
-    await expect(applyPatchWorkspace({ patch: createSensitive }, { workspacePath })).rejects.toMatchObject({ code: "sensitive_path_denied" })
-    await expect(applyPatchWorkspace({ patch: deleteSensitive }, { workspacePath })).rejects.toMatchObject({ code: "sensitive_path_denied" })
-    await expect(applyPatchWorkspace({ patch: renameSensitive }, { workspacePath })).rejects.toMatchObject({ code: "sensitive_path_denied" })
+    await expect(applyPatchWorkspace({ patchText: createSensitive }, { workspacePath })).rejects.toMatchObject({ code: "sensitive_path_denied" })
+    await expect(applyPatchWorkspace({ patchText: deleteSensitive }, { workspacePath })).rejects.toMatchObject({ code: "sensitive_path_denied" })
+    await expect(applyPatchWorkspace({ patchText: renameSensitive }, { workspacePath })).rejects.toMatchObject({ code: "sensitive_path_denied" })
     expect(fs.readFileSync(path.join(workspacePath, ".env"), "utf8")).toBe("TOKEN=secret\n")
     expect(fs.readFileSync(path.join(workspacePath, "safe.txt"), "utf8")).toBe("safe\n")
     expect(fs.existsSync(path.join(workspacePath, "secret.key"))).toBe(false)
@@ -1242,7 +1242,7 @@ describe("workspace tools", () => {
     const workspacePath = tempDir()
     const patch = ["*** Begin Patch", "*** Add File: secret.key", "+secret", "*** End Patch", ""].join("\n")
 
-    await expect(applyPatchWorkspace({ patch }, { workspacePath })).rejects.toMatchObject({ code: "sensitive_path_denied" })
+    await expect(applyPatchWorkspace({ patchText: patch }, { workspacePath })).rejects.toMatchObject({ code: "sensitive_path_denied" })
     expect(fs.existsSync(path.join(workspacePath, "secret.key"))).toBe(false)
   })
 

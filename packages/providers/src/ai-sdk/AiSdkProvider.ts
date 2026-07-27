@@ -12,9 +12,10 @@ import {
   tool,
   type LanguageModel,
   type LanguageModelUsage,
+  type JSONSchema7,
   type ModelMessage as AiModelMessage,
 } from "ai"
-import { normalizeBashModelInput, type ModelToolDefinition, type NormalizedToolCall, type ProviderAuthMode, type ProviderMetadata } from "@socrates/contracts"
+import type { ModelToolDefinition, NormalizedToolCall, ProviderAuthMode, ProviderMetadata } from "@socrates/contracts"
 import { SocratesError } from "@socrates/shared"
 import {
   countModelRequestLocally,
@@ -24,7 +25,6 @@ import {
 import { envProviderCredentialResolver } from "../credentials"
 import { openRouterProviderRoutingForModel } from "../openRouterRouting"
 import { createStreamTimeout } from "../streamTimeout"
-import { bashToolJsonSchema, editToolJsonSchema, traceRetrieveJsonSchema, validateStrictTraceRetrieveInput } from "../toolJsonSchemas"
 import type {
   ModelEvent,
   ModelProvider,
@@ -471,39 +471,12 @@ const toAiTools = (tools: NonNullable<ModelRequest["tools"]>) =>
   )
 
 export const inputSchemaForAiTool = (definition: ModelToolDefinition) => {
-  if (definition.name === "edit") {
-    return jsonSchema(editToolJsonSchema, {
-      validate: (value) => {
-        const parsed = definition.inputSchema.safeParse(value)
-        return parsed.success
-          ? { success: true, value: parsed.data }
-          : { success: false, error: new Error(parsed.error.message) }
-      },
-    })
-  }
-  if (definition.name === "bash") {
-    return jsonSchema(bashToolJsonSchema, {
-      validate: (value) => {
-        const parsed = definition.inputSchema.safeParse(normalizeBashModelInput(value))
-        return parsed.success
-          ? { success: true, value: parsed.data }
-          : { success: false, error: new Error(parsed.error.message) }
-      },
-    })
-  }
-  if (definition.name !== "trace_retrieve") {
-    return definition.inputSchema
-  }
-  return jsonSchema(traceRetrieveJsonSchema, {
+  return jsonSchema(definition.providerInputSchema as JSONSchema7, {
     validate: (value) => {
       const parsed = definition.inputSchema.safeParse(value)
-      if (!parsed.success) {
-        return { success: false, error: new Error(parsed.error.message) }
-      }
-      const strictError = validateStrictTraceRetrieveInput(parsed.data)
-      return strictError
-        ? { success: false, error: new Error(strictError) }
-        : { success: true, value: parsed.data }
+      return parsed.success
+        ? { success: true, value: parsed.data }
+        : { success: false, error: new Error(parsed.error.message) }
     },
   })
 }

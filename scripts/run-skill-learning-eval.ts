@@ -12,7 +12,7 @@ import type {
 } from "@socrates/contracts"
 import {
   buildSocratesSystemPrompt,
-  createDefaultToolRegistry,
+  capabilityCatalog,
   socratesMainAgentDefinition,
   SocratesAgent,
   type SocratesAgentEvent,
@@ -537,7 +537,7 @@ const evaluationJournalSnapshots = (handle: DatabaseHandle): Array<Record<string
 const runHeldoutUse = async (sandbox: Sandbox, candidate: EvalConfig, prompt: string, modelProvider: ModelProvider, signalWords?: string[]) => {
   const agent = new SocratesAgent(
     modelProvider,
-    createDefaultToolRegistry(),
+    capabilityCatalog,
     socratesMainAgentDefinition,
     {
       system: buildSocratesSystemPrompt({

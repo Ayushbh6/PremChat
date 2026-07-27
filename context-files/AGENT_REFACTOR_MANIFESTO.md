@@ -2,6 +2,8 @@
 
 Status: normative architecture authority for the agent-core refactor.
 
+Implementation checkpoint: the shared `AgentDefinition`/`AgentInstance`/`AgentRuntime`/`ContextPipeline` foundation and the shared `CapabilityCatalog` cutover are implemented. The catalog now owns all current static model tools, role attachment, provider projections, runtime MCP child registration, declared retrieval/workers/context/authorities, typed Classic/Flow commands, generated inventories, generated tool guides, and CI drift enforcement. Goal/memory lifecycle convergence and the global seamless UI remain later phases; catalogued legacy entries identify those removal owners and are not permission to create parallel paths.
+
 This manifesto governs every change to Socrates agent orchestration, model-facing capabilities, tools, routing, retrieval, context management, provider execution, and worker-agent construction. Read it and `AGENT_CAPABILITY_WORKFLOW.md` completely before planning, reviewing, or implementing work in those areas. The workflow is the mandatory operational checklist for this manifesto. If an implementation or historical document conflicts with either authority, stop and resolve the conflict in the authority documents before continuing.
 
 ## Why This Refactor Exists
@@ -96,7 +98,7 @@ Before redesigning individual tools, produce a machine-verifiable inventory cove
 - Typed UI commands that mutate agent-owned work state.
 - Provider calls, fallbacks, repair attempts, and handovers.
 
-Counting names in a tool registry is not a capability audit. Hidden deterministic work and model calls are part of the boundary even when the foreground model cannot invoke them directly.
+Counting model-tool names alone is not a capability audit. Hidden deterministic work and model calls are part of the boundary even when the foreground model cannot invoke them directly.
 
 ### 2. Establish The Agent Architecture
 

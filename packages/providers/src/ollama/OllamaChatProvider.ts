@@ -364,7 +364,7 @@ const toOllamaTool = (definition: ModelToolDefinition) => ({
   function: {
     name: definition.name,
     description: definition.description,
-    parameters: schemaToJsonSchema(definition.inputSchema),
+    parameters: definition.providerInputSchema,
   },
 })
 

@@ -1,10 +1,9 @@
 import {
   skillsToolInputSchema,
-  skillsToolModelInputSchema,
   skillsToolOutputSchema,
-  skillsToolReadModelInputSchema,
+  skillsReadOnlyToolInputSchema,
   type SkillsToolOutput,
-  type SkillsToolReadModelInput,
+  type SkillsReadOnlyToolInput,
 } from "@socrates/contracts"
 import type { SocratesTool } from "./types"
 
@@ -13,7 +12,6 @@ export const skillsTool: SocratesTool<typeof skillsToolInputSchema._type, typeof
   description:
     "Discover and use Socrates skills, or import one Agent Skill ZIP from an exact user-supplied public HTTPS URL or ZIP attached to the current user message. Call list before domain tools for a saved workflow, named skill, checklist, recurring procedure, closure/handoff request, or specialized task; use describe with the exact canonical id to load SKILL.md, and use read for referenced supporting files. For imports, call preview_import with exactly one url or attachmentPath, report its metadata, conflicts, file counts, and security warnings, then call commit_import only after the user has asked to install that reviewed preview. Project is the default scope. Importing is not web search: never invent or discover a URL, never use Terminal to bypass preview, and never fake skill results.",
   inputSchema: skillsToolInputSchema,
-  modelInputSchema: skillsToolModelInputSchema,
   resultSchema: skillsToolOutputSchema,
   permission: "mutate",
   executeLane: "mutation",
@@ -61,12 +59,11 @@ export const skillsTool: SocratesTool<typeof skillsToolInputSchema._type, typeof
   }),
 }
 
-export const skillsReadOnlyTool: SocratesTool<SkillsToolReadModelInput, SkillsToolOutput> = {
+export const skillsReadOnlyTool: SocratesTool<SkillsReadOnlyToolInput, SkillsToolOutput> = {
   ...skillsTool,
   description:
     "List, describe, or read supporting files from installed Socrates skills in builtin, global, and project roots. Use list to discover exact ids, describe to load SKILL.md, and read for an exact referenced supporting path. This specialized-agent surface cannot import or mutate skills.",
-  inputSchema: skillsToolReadModelInputSchema,
-  modelInputSchema: skillsToolReadModelInputSchema,
+  inputSchema: skillsReadOnlyToolInputSchema,
   permission: "read",
   executeLane: "parallel",
   decidePolicy: () => ({ type: "auto" }),

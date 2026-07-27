@@ -172,10 +172,9 @@ export type ToolPolicyDecision =
   | { type: "approval_required"; request: Omit<ApprovalRequest, "approvalId" | "toolCallId" | "toolName"> }
   | { type: "denied"; reason: string; code?: string; recoverable?: boolean; details?: SocratesError["details"] }
 
-export type SocratesTool<TInput, TOutput> = ModelToolDefinition & {
+export type SocratesTool<TInput, TOutput> = Omit<ModelToolDefinition, "providerInputSchema"> & {
   name: ToolName
   displayName?: string
-  modelInputSchema?: ModelToolDefinition["inputSchema"]
   resultSchema: NonNullable<ModelToolDefinition["resultSchema"]>
   permission: ToolPermission
   executeLane: "parallel" | "mutation"

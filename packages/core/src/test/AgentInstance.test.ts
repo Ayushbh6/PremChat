@@ -6,8 +6,6 @@ import { defineAgent } from "../agent/AgentDefinition"
 import { AgentRuntime } from "../agent/AgentRuntime"
 import { ContextPipeline } from "../agent/ContextPipeline"
 import { phaseOneAgentDefinitionInventory } from "../agent/agentDefinitions"
-import { currentTimeTool } from "../tools/currentTimeTool"
-import { ToolRegistry } from "../tools/registry"
 import type { ToolExecutors } from "../tools/types"
 
 const runtimeConfig = {
@@ -71,14 +69,18 @@ describe("AgentInstance", () => {
     }
     const definition = defineAgent<{ voice: string }, { ok: true }>({
       id: "phase-one-probe",
-      role: "phase_one_probe",
+      role: "socrates",
       modelRole: "test",
       prompt: { id: "phase-one-probe-v1", buildSystem: (context) => `Voice: ${context.voice}` },
       completion: {
         mode: "streaming_tools_structured_final",
         schema: z.object({ ok: z.literal(true) }).strict(),
       },
-      roleManifest: { id: "phase-one-probe-tools-v1", modelTools: ["current_time"] },
+      roleManifest: {
+        id: "phase-one-probe-capabilities-v2",
+        role: "socrates",
+        capabilityIds: ["tool.current_time", "context.stable_prompt", "context.exact_messages", "context.tool_definitions"],
+      },
       contextProfile: {
         id: "phase-one-probe-context-v1",
         stages: ["stable_prompt", "exact_messages", "tool_definitions"],
@@ -100,7 +102,6 @@ describe("AgentInstance", () => {
       provider,
       promptContext: { voice: "warm and exact" },
       userContent: "Read the current time, then return the strict result.",
-      toolRegistry: new ToolRegistry([currentTimeTool]),
       toolExecutors,
     })
 
@@ -115,7 +116,7 @@ describe("AgentInstance", () => {
     expect(requests[1]).toEqual({ system: "Voice: warm and exact", tools: [] })
   })
 
-  it("rejects a registry that differs from the declared role manifest before provider execution", async () => {
+  it("rejects a capability that is not allowed for the declared role before provider execution", async () => {
     let providerCalled = false
     const provider: ModelProvider = {
       countTokens,
@@ -130,7 +131,7 @@ describe("AgentInstance", () => {
       modelRole: "test",
       prompt: { id: "empty-worker-v1", buildSystem: () => "Return text." },
       completion: { mode: "text" },
-      roleManifest: { id: "empty-worker-tools-v1", modelTools: [] },
+      roleManifest: { id: "empty-worker-capabilities-v1", role: "empty_worker", capabilityIds: ["tool.current_time"] },
       contextProfile: { id: "empty-worker-context-v1", stages: ["stable_prompt", "exact_messages"] },
       limits: { maxToolCalls: 0 },
       persistenceScope: "none",
@@ -141,7 +142,6 @@ describe("AgentInstance", () => {
       provider,
       promptContext: undefined,
       userContent: "hello",
-      toolRegistry: new ToolRegistry([currentTimeTool]),
       toolExecutors: {},
     })).rejects.toMatchObject({ code: "agent_role_manifest_mismatch" })
     expect(providerCalled).toBe(false)
@@ -162,11 +162,11 @@ describe("AgentInstance", () => {
     }
     const definition = defineAgent<undefined, string>({
       id: "timed-worker",
-      role: "timed_worker",
+      role: "socrates",
       modelRole: "test",
       prompt: { id: "timed-worker-v1", buildSystem: () => "Return text." },
       completion: { mode: "text" },
-      roleManifest: { id: "timed-worker-tools-v1", modelTools: [] },
+      roleManifest: { id: "timed-worker-capabilities-v2", role: "socrates", capabilityIds: ["context.stable_prompt", "context.exact_messages"] },
       contextProfile: { id: "timed-worker-context-v1", stages: ["stable_prompt", "exact_messages"] },
       limits: { maxToolCalls: 0, timeoutMs: 20 },
       persistenceScope: "none",
@@ -177,7 +177,6 @@ describe("AgentInstance", () => {
       provider,
       promptContext: undefined,
       userContent: "hello",
-      toolRegistry: new ToolRegistry([]),
       toolExecutors: {},
     })).rejects.toMatchObject({ code: "agent_timeout" })
     expect(providerAborted).toBe(true)
@@ -186,11 +185,11 @@ describe("AgentInstance", () => {
   it("rejects tools that bypass the definition's declared context stages", async () => {
     const definition = defineAgent<undefined, string>({
       id: "missing-tool-context",
-      role: "missing_tool_context",
+      role: "socrates",
       modelRole: "test",
       prompt: { id: "missing-tool-context-v1", buildSystem: () => "Return text." },
       completion: { mode: "text" },
-      roleManifest: { id: "missing-tool-context-tools-v1", modelTools: ["current_time"] },
+      roleManifest: { id: "missing-tool-context-capabilities-v2", role: "socrates", capabilityIds: ["tool.current_time", "context.stable_prompt", "context.exact_messages"] },
       contextProfile: { id: "missing-tool-context-v1", stages: ["stable_prompt", "exact_messages"] },
       limits: { maxToolCalls: 1 },
       persistenceScope: "none",
@@ -201,7 +200,6 @@ describe("AgentInstance", () => {
       provider: { countTokens, async *stream() { yield { type: "model.completed" } } },
       promptContext: undefined,
       userContent: "hello",
-      toolRegistry: new ToolRegistry([currentTimeTool]),
       toolExecutors: {},
     })).rejects.toMatchObject({ code: "agent_context_profile_mismatch" })
   })
@@ -213,20 +211,24 @@ describe("AgentInstance", () => {
       expect.objectContaining({
         id: "socrates-main",
         completionMode: "streaming_tools_structured_final",
-        modelTools: expect.arrayContaining(["read", "bash", "trace_retrieve"]),
-        dynamicToolPrefixes: ["mcp__"],
+        capabilityIds: expect.arrayContaining(["tool.read", "tool.bash", "tool.trace_retrieve.main"]),
+        dynamicCapabilityPrefixes: ["dynamic.mcp."],
         maxOutputRepairAttempts: 1,
       }),
       expect.objectContaining({
         id: "skill-writer",
         completionMode: "text",
-        modelTools: expect.arrayContaining(["trace_retrieve", "skill_write"]),
+        capabilityIds: expect.arrayContaining(["tool.trace_retrieve.global", "tool.skill_write"]),
       }),
-      expect.objectContaining({ id: "title-generator", completionMode: "structured", modelTools: [] }),
+      expect.objectContaining({
+        id: "title-generator",
+        completionMode: "structured",
+        capabilityIds: expect.arrayContaining(["worker.title_generator", "context.stable_prompt", "context.tool_definitions"]),
+      }),
       expect.objectContaining({
         id: "global-memory",
         completionMode: "streaming_tools_structured_final",
-        modelTools: expect.arrayContaining(["trace_retrieve", "memory_notes", "edit_files"]),
+        capabilityIds: expect.arrayContaining(["tool.trace_retrieve.global", "tool.memory_notes", "tool.edit_files"]),
       }),
       expect.objectContaining({ id: "socrates-context-compactor", modelRole: "socrates_context_compactor" }),
     ]))

@@ -3,8 +3,7 @@ import { z } from "zod"
 import type { ModelProvider, StructuredModelRequest } from "@socrates/providers"
 import { SocratesError } from "@socrates/shared"
 import { AgentRuntime } from "../agent/AgentRuntime"
-import { currentTimeTool } from "../tools/currentTimeTool"
-import { ToolRegistry } from "../tools/registry"
+import { capabilityCatalog, emptyCapabilitySet } from "../capabilities/CapabilityCatalog"
 import type { ToolExecutors } from "../tools/types"
 
 const runtimeConfig = {
@@ -38,6 +37,12 @@ const runBase = {
   turnId: "turn_1",
   workspacePath: "/tmp/socrates-structured-runner-test",
 }
+
+const currentTimeCapabilities = capabilityCatalog.resolve({
+  id: "runtime-test-capabilities",
+  role: "socrates",
+  capabilityIds: ["tool.current_time"],
+})
 
 describe("AgentRuntime", () => {
   it("returns schema errors to the model, permits a corrected native tool call, and then validates the final result", async () => {
@@ -77,7 +82,7 @@ describe("AgentRuntime", () => {
       ...runBase,
       provider,
       completion: { mode: "structured", schema: z.object({ ok: z.literal(true) }).strict() },
-      toolRegistry: new ToolRegistry([currentTimeTool]),
+      capabilitySet: currentTimeCapabilities,
       toolExecutors,
       maxToolCalls: 2,
       onToolResult: ({ toolName, input, output }) => toolResults.push({ toolName, input, output }),
@@ -118,7 +123,7 @@ describe("AgentRuntime", () => {
       ...runBase,
       provider,
       completion: { mode: "structured", schema: z.object({ ok: z.literal(true) }).strict(), maxOutputRepairAttempts: 1 },
-      toolRegistry: new ToolRegistry([]),
+      capabilitySet: emptyCapabilitySet,
       toolExecutors: {},
       maxToolCalls: 0,
     })
@@ -150,7 +155,7 @@ describe("AgentRuntime", () => {
       ...runBase,
       provider,
       completion: { mode: "structured", schema: z.object({ ok: z.literal(true) }).strict(), maxOutputRepairAttempts: 1 },
-      toolRegistry: new ToolRegistry([]),
+      capabilitySet: emptyCapabilitySet,
       toolExecutors: {},
       maxToolCalls: 0,
     })
@@ -183,7 +188,7 @@ describe("AgentRuntime", () => {
       ...runBase,
       provider,
       completion: { mode: "structured", schema: z.object({ ok: z.literal(true) }).strict(), maxOutputRepairAttempts: 1 },
-      toolRegistry: new ToolRegistry([]),
+      capabilitySet: emptyCapabilitySet,
       toolExecutors: {},
       maxToolCalls: 0,
     })
@@ -204,7 +209,7 @@ describe("AgentRuntime", () => {
       ...runBase,
       provider,
       completion: { mode: "structured", schema: z.object({ ok: z.literal(true) }).strict() },
-      toolRegistry: new ToolRegistry([]),
+      capabilitySet: emptyCapabilitySet,
       toolExecutors: {},
       maxToolCalls: 0,
     })).rejects.toMatchObject({ code: "structured_generation_unavailable" })
@@ -224,7 +229,7 @@ describe("AgentRuntime", () => {
       ...runBase,
       provider,
       completion: { mode: "text", validate: (text) => text.toUpperCase() },
-      toolRegistry: new ToolRegistry([]),
+      capabilitySet: emptyCapabilitySet,
       toolExecutors: {},
       maxToolCalls: 0,
     })

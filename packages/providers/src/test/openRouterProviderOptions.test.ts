@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { z } from "zod"
 import { readToolInputSchema } from "@socrates/contracts"
 import { createOpenRouterProviderOptions } from "../ai-sdk/AiSdkProvider"
 import { modelCatalog } from "../modelCatalog/modelCatalog"
@@ -141,6 +142,8 @@ describe("OpenRouter provider options", () => {
         name: "read",
         description: "Read a file.",
         inputSchema: readToolInputSchema,
+        resultSchema: z.unknown(),
+        providerInputSchema: { type: "object", additionalProperties: false, required: ["path"], properties: { path: { type: "string" } } },
       },
     ]
     const provider = createOpenRouterProviderOptions(request).openrouter?.provider

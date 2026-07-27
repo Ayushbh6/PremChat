@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "generatedFrom": "packages/mcp/src/index.ts",
+  "registrationContract": "DynamicToolCapabilityRegistration",
+  "runtimeInventoryApi": "CapabilityCatalog.runtimeInventory",
+  "idPrefix": "dynamic.mcp.",
+  "modelNamePrefix": "mcp__",
+  "executionBinding": "mcp_dynamic",
+  "directFallbackExecutionAllowed": false
+}

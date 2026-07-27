@@ -155,7 +155,7 @@ packages/workspace
   -> shared tools and workspace operations, no V2 fork
 ```
 
-There is no second provider layer, workspace layer, duplicate main-tool registry, or duplicate semantic index. Classic and Flow call the same Socrates agent, provider/model catalog, shared executor factory, workspace `.socrates/`, global `~/.Socrates/`, pre-turn Memory Router/global Memory Agent, ZIP skill import, MCP registry, workspace operations, and LanceDB retrieval authority through thin view adapters. Flow-origin Q&A carries `runtimeKind = "v2_flow"` plus `flowId`; Classic homes store projection references and never replacement Q&A. Legacy mirror rows are rollback evidence only and are excluded from active reads. The Goal Router uses its own `goal_router` worker selection through the shared structured-agent runner, while Flow never invokes the Classic title-rewrite service or adds a capsule-writing model.
+There is no second provider layer, workspace layer, duplicate capability catalog, or duplicate semantic index. Classic and Flow call the same Socrates definition/runtime, provider/model catalog, role-scoped capability set, shared executor factory, workspace `.socrates/`, global `~/.Socrates/`, pre-turn Memory Router/global Memory Agent, ZIP skill import, MCP catalog path, workspace operations, and LanceDB retrieval authority through thin view adapters. Flow-origin Q&A carries `runtimeKind = "v2_flow"` plus `flowId`; Classic homes store projection references and never replacement Q&A. Legacy mirror rows are rollback evidence only and are excluded from active reads. The Goal Router uses its own `goal_router` worker selection through the shared runtime while it remains migration debt, and Flow never invokes the Classic title-rewrite service or adds a capsule-writing model.
 
 A directly constructed source server resolves `SOCRATES_V2_FLOW_ENABLED` to false unless it is exactly `true`; only `/api/v2/capabilities` remains mounted to report availability. The ordinary NPM/runtime `scripts/runtime/launcher.mjs` passes an explicit environment value or defaults it to `true`, so the normal packaged web/backend product exposes Classic/Seamless and retains a rollback override. V1 behavior must continue to be regression-tested whenever V2 code changes.
 
@@ -362,9 +362,12 @@ V1 model-visible tools live under `packages/core/src/tools/`.
 Target structure:
 
 ```text
+capabilities/
+  CapabilityDefinition.ts
+  CapabilityCatalog.ts
+  providerProjection.ts
 tools/
   types.ts
-  registry.ts
   readTool.ts
   searchTool.ts
   editTool.ts
@@ -384,11 +387,11 @@ tools/
 Rules for core tool files:
 
 - One model-visible tool per small file.
-- `registry.ts` is the only place that assembles the enabled tool set.
+- `capabilities/CapabilityCatalog.ts` is the only place that declares capability metadata and assembles role eligibility; `RoleManifest` records select capability ids and resolve to a `CapabilitySet`.
 - Tool argument and result schemas come from `packages/contracts`.
 - Tool files handle model-facing descriptions, schema binding, permission metadata, and calls into the owning implementation package.
 - Tool files must not contain raw filesystem, shell, git, patch, PDF, document, slide, or image parsing implementation.
-- Do not create a god `ToolRegistry` class that mixes schemas, permissions, execution, and implementation details.
+- Keep `CapabilityCatalog` declarative. Domain implementations remain in their owning packages, runtime execution remains in `AgentRuntime`, and role selection remains in `RoleManifest`; do not turn the catalog into a god class.
 
 Example responsibility:
 
@@ -510,7 +513,7 @@ model-visible access
 
 Retrieval indexing is server/store work. The implementation converts each visible turn into one canonical Q&A parent, chunks user and assistant roles independently, and incrementally upserts changed parents into the active LanceDB project table. Memory sections use the same chunker and index lifecycle. Compaction summaries, tool calls, shell output, patches, files, and errors are excluded from the semantic corpus and remain available through raw inspect/audit. `packages/workspace` does not own conversation-history indexing because retrieval is over Socrates persistence rather than local filesystem state.
 
-Context compression is a provider-call-boundary concern around the agent/model loop, not ad hoc prompt rewriting inside WebSocket handlers. `packages/core` owns the model-facing context assembly policy, the no-tool `CompressorAgent`, `AgentRuntime` execution, explicit empty tool registry/executor mapping, chat and memory compressor prompts, packing, and budget decisions. `packages/contracts/src/contextCompression.ts` owns the strict structured schemas. `apps/server/src/services/store/contextCompactionStore.ts` owns append-only snapshot persistence, while `traceStore.ts` indexes completed summaries into searchable trace evidence. `apps/server/src/services/store/modelSettingsResolver.ts` resolves the independent `socrates_context_compactor` and `memory_context_compactor` settings against the credential-filtered model list before runtime use. `packages/providers` owns provider/model token counting and structured generation behind the provider interface; provider-specific compression, auth-mode request behavior, or tokenizer behavior must not leak into `apps/web` or route handlers.
+Context compression is a provider-call-boundary concern around the agent/model loop, not ad hoc prompt rewriting inside WebSocket handlers. `packages/core` owns the model-facing context assembly policy, the no-tool `CompressorAgent`, `AgentRuntime` execution, its definition-resolved empty capability set/executor mapping, chat and memory compressor prompts, packing, and budget decisions. `packages/contracts/src/contextCompression.ts` owns the strict structured schemas. `apps/server/src/services/store/contextCompactionStore.ts` owns append-only snapshot persistence, while `traceStore.ts` indexes completed summaries into searchable trace evidence. `apps/server/src/services/store/modelSettingsResolver.ts` resolves the independent `socrates_context_compactor` and `memory_context_compactor` settings against the credential-filtered model list before runtime use. `packages/providers` owns provider/model token counting and structured generation behind the provider interface; provider-specific compression, auth-mode request behavior, or tokenizer behavior must not leak into `apps/web` or route handlers.
 
 `packages/contracts/src/socratesSurfaces.ts` is the single code-owned `.socrates` surface registry. `packages/workspace` derives protected paths and storage roots from it, and `packages/core` renders its bounded model-facing surface map. `packages/contracts/src/attachments.ts` owns inline/count/per-file/combined attachment limits. `apps/web/src/components/chat/ChatComposer.tsx` converts pasted text over 10,000 characters into `pasted-text-<id>.txt`; `apps/server/src/services/store/attachmentStore.ts` validates and persists image/text source attachments with provenance, while `conversationStore.ts` sends compact manifests and includes image bytes only for vision-capable models. These responsibilities must not be duplicated as frontend-only constants or handwritten prompt path maps.
 
@@ -521,7 +524,7 @@ Socrates, the Global Memory Agent, and the Skill Writer Agent should share one p
 ```text
 agent prompt
   -> shared agent runner
-  -> scoped tool registry
+  -> RoleManifest and scoped CapabilitySet
   -> executor mapping
   -> structured validation
   -> typed events and persistence
@@ -529,17 +532,17 @@ agent prompt
 
 Do not add serious model-driven workflows as bespoke provider calls inside routes, stores, or UI handlers. A store method may enqueue work, load context, persist outputs, and apply validated effects, but it should not own a private prompt loop for a capability that behaves like an agent.
 
-Phase 1 places one public `AgentRuntime` in `packages/core` below all model-driven capabilities. Its typed invocation combines prompt/messages, scoped registry/executors, model settings, limits, lifecycle hooks, and discriminated model-step, text, or structured completion modes. `SocratesAgent`, routers, compressors, memory workers, title generation, and soul confirmation no longer own competing provider loops. Internal turn lifecycle, memory, tool, ledger, validation, and telemetry modules remain focused components behind that boundary.
+Phase 1 places one public `AgentRuntime` in `packages/core` below all model-driven capabilities. Its typed invocation combines prompt/messages, a scoped `CapabilitySet`/executors, model settings, limits, lifecycle hooks, and discriminated model-step, text, or structured completion modes. Phase 2 adds the one `CapabilityCatalog`, generated provider projections, role/capability inventories, generated tool guides, and CI drift enforcement. `SocratesAgent`, routers, compressors, memory workers, title generation, and soul confirmation no longer own competing provider loops. Internal turn lifecycle, memory, tool, ledger, validation, and telemetry modules remain focused components behind that boundary.
 
 Role boundaries:
 
-- Memory Router remains a real `MemoryRouterAgent` built through the same prompt -> shared runtime -> scoped tool registry/executor -> strict structured validation -> usage/persistence pattern as other model-driven capabilities. Its only responsibility is the pre-turn `memory_search` phase after goal/task binding, with backend automatic prefetch, a three-call cap, and exact read-only `readTargets`. Same-Socrates milestone/final checkpoints own reconciliation.
+- Memory Router remains a migration `MemoryRouterAgent` built through the same prompt -> shared runtime -> catalog-backed legacy role manifest/capability set -> strict structured validation -> usage/persistence pattern as other model-driven capabilities. Its only current responsibility is the pre-turn `memory_search` phase after goal/task binding, with backend automatic prefetch, a three-call cap, and exact read-only `readTargets`. It must be removed by deterministic memory selection rather than copied. Same-Socrates milestone/final checkpoints own reconciliation.
 - Frontier is not a second conversational agent loop. It is a one-way model selection change inside `SocratesAgent.streamTurn`: after real substantive effort, the default model may request `handover_to_frontier` once; the normal typed approval pipeline always pauses for the user. Approval appends the tool result and complete prior task history, switches provider/model/runtime settings, removes the handover tool, and lets Frontier own the remainder of the task. Rejection persists the rejected call, removes the tool for the turn, and explicitly returns completion responsibility to Socrates. Driver answer deltas are buffered and discarded when an approved handover occurs so only Frontier supplies the user-visible answer.
 - Socrates writes workspace project memory, project notes, and repo docs through `project_docs` and `repo_docs`. It owns project-scoped active context in project notes and may create `memory_note` leads for the Memory Agent, preferably one and never more than two per user-turn. It does not write identity, user profile, or skills.
 - The Global Memory Agent writes global user profile through scoped edits, proposes/applies identity only through the confirmation policy, inspects full skills for freshness, and sends approved skill create/update tasks to the Skill Writer Agent. It uses `AgentRuntime` like Memory Router: normal scoped tool calls first, then one strict Zod journal output. Each successful run persists one `memory_agent_journal` row and refreshes a bounded generated ledger/next-run briefing; `read_memory_journal` provides capped list/read access to older runs without embeddings. It should skip project-local active context for global memory and close each memory note with one of `applied`, `already_represented`, `skipped`, or `proposed_skill` plus a one-line resolution.
 - The Skill Writer Agent receives exact approved evidence ids, inspects every source turn, reads the canonical scoped existing skill for updates, then writes the final `SKILL.md` plus optional bounded supporting files through `skill_write`. It does not decide whether the skill should exist. The write path rejects shallow bodies, traversal, broken links, and no-op updates; one bounded agent retry is allowed when an attempt ends without the required write call.
-- The Title Generator is a real no-tool `TitleGeneratorAgent`: its system prompt lives in `packages/core/src/prompts/titleGeneratorPrompt.ts`, its strict result lives in `packages/contracts/src/conversationTitle.ts`, and it runs through `AgentRuntime` with an explicit empty registry/executor mapping. The server-side conversation-title service may assemble bounded text/image content, enforce timeout/fallback sanitization, record usage, and persist the title; it must not own a provider prompt loop.
-- Chat and memory compression share the named `CompressorAgent` implementation but keep distinct prompt modules, strict schemas, and worker selections. The agent performs draft generation and anchor repair only through `AgentRuntime` with `createCompressorToolRegistry()` and an empty executor mapping. Classic/Flow and V2 maintenance use `socrates_context_compactor`; Global Memory Agent and Skill Writer compression use `memory_context_compactor`.
+- The Title Generator is a real no-tool `TitleGeneratorAgent`: its system prompt lives in `packages/core/src/prompts/titleGeneratorPrompt.ts`, its strict result lives in `packages/contracts/src/conversationTitle.ts`, and it runs through `AgentRuntime` with the empty capability set resolved from its definition. The server-side conversation-title service may assemble bounded text/image content, enforce timeout/fallback sanitization, record usage, and persist the title; it must not own a provider prompt loop.
+- Chat and memory compression share the named `CompressorAgent` implementation but keep distinct prompt modules, strict schemas, and worker selections. Draft generation and anchor repair run only through their declarative definitions, role manifests, and `AgentRuntime`; neither has a private registry or provider loop. Classic/Flow and V2 maintenance use `socrates_context_compactor`; Global Memory Agent and Skill Writer compression use `memory_context_compactor`.
 
 ### `packages/providers`
 

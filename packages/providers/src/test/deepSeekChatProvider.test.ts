@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { z } from "zod"
 import {
-  editToolModelInputSchema,
-  mcpRegistryToolModelInputSchema,
-  projectDocsToolModelInputSchema,
-  repoDocsToolModelInputSchema,
-  skillsToolModelInputSchema,
-  traceRetrieveToolModelInputSchema,
+  editToolInputSchema,
+  mcpRegistryToolInputSchema,
+  projectDocsToolInputSchema,
+  repoDocsToolInputSchema,
+  skillsToolInputSchema,
+  traceRetrieveMainToolInputSchema,
 } from "@socrates/contracts"
 import { DeepSeekChatProvider } from "../deepseek/DeepSeekChatProvider"
 import type { ModelEvent, ModelRequest, ProviderCredentialResolver } from "../types"
@@ -196,98 +196,42 @@ describe("DeepSeek chat provider", () => {
     )
   })
 
-  it("serializes union tool schemas as DeepSeek-accepted object parameters", async () => {
+  it("serializes catalog-projected tool schemas unchanged", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(
       sseResponse([{ id: "ds_resp_tools", model: "deepseek-v4-pro", choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]),
     )
     globalThis.fetch = fetchMock as typeof fetch
 
+    const providerSchemas = ["edit", "trace_retrieve", "skills", "project_docs", "repo_docs", "mcp_registry"].map((name) => ({
+      type: "object",
+      additionalProperties: false,
+      properties: { [`${name}Field`]: { type: "string" } },
+    }))
     const provider = new DeepSeekChatProvider(credentials())
     for await (const _event of provider.stream({
       ...modelRequest(),
       tools: [
-        { name: "edit", description: "Edit a file.", inputSchema: editToolModelInputSchema },
-        { name: "trace_retrieve", description: "Search prior runtime context.", inputSchema: traceRetrieveToolModelInputSchema },
-        { name: "skills", description: "Inspect available skills.", inputSchema: skillsToolModelInputSchema },
-        { name: "project_docs", description: "Read or edit project docs.", inputSchema: projectDocsToolModelInputSchema },
-        { name: "repo_docs", description: "Read or edit repo docs.", inputSchema: repoDocsToolModelInputSchema },
-        { name: "mcp_registry", description: "Inspect MCP registry.", inputSchema: mcpRegistryToolModelInputSchema },
+        { name: "edit", description: "Edit a file.", inputSchema: editToolInputSchema, resultSchema: z.unknown(), providerInputSchema: providerSchemas[0] },
+        { name: "trace_retrieve", description: "Search prior runtime context.", inputSchema: traceRetrieveMainToolInputSchema, resultSchema: z.unknown(), providerInputSchema: providerSchemas[1] },
+        { name: "skills", description: "Inspect available skills.", inputSchema: skillsToolInputSchema, resultSchema: z.unknown(), providerInputSchema: providerSchemas[2] },
+        { name: "project_docs", description: "Read or edit project docs.", inputSchema: projectDocsToolInputSchema, resultSchema: z.unknown(), providerInputSchema: providerSchemas[3] },
+        { name: "repo_docs", description: "Read or edit repo docs.", inputSchema: repoDocsToolInputSchema, resultSchema: z.unknown(), providerInputSchema: providerSchemas[4] },
+        { name: "mcp_registry", description: "Inspect MCP registry.", inputSchema: mcpRegistryToolInputSchema, resultSchema: z.unknown(), providerInputSchema: providerSchemas[5] },
       ],
     })) {
       // Drain stream.
     }
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
-    expect(body.tools).toEqual([
-      expect.objectContaining({
-        function: expect.objectContaining({
-          name: "edit",
-          parameters: expect.objectContaining({
-            type: "object",
-            required: ["path"],
-          }),
-        }),
-      }),
-      expect.objectContaining({
-        function: expect.objectContaining({
-          name: "trace_retrieve",
-          parameters: expect.objectContaining({
-            type: "object",
-            properties: expect.objectContaining({
-              mode: expect.objectContaining({ enum: ["exact", "semantic", "combined", "audit"] }),
-            }),
-          }),
-        }),
-      }),
-      expect.objectContaining({
-        function: expect.objectContaining({
-          name: "skills",
-          parameters: expect.objectContaining({
-            type: "object",
-            required: ["operation"],
-            properties: expect.objectContaining({
-              operation: expect.objectContaining({ enum: expect.arrayContaining(["list", "describe", "read", "preview_import", "commit_import"]) }),
-            }),
-          }),
-        }),
-      }),
-      expect.objectContaining({
-        function: expect.objectContaining({
-          name: "project_docs",
-          parameters: expect.objectContaining({
-            type: "object",
-            required: ["operation", "area"],
-            properties: expect.objectContaining({
-              operation: expect.objectContaining({ enum: expect.arrayContaining(["read", "search", "edit", "patch_section"]) }),
-            }),
-          }),
-        }),
-      }),
-      expect.objectContaining({
-        function: expect.objectContaining({
-          name: "repo_docs",
-          parameters: expect.objectContaining({
-            type: "object",
-            required: ["operation"],
-            properties: expect.objectContaining({
-              operation: expect.objectContaining({ enum: expect.arrayContaining(["read", "search", "edit", "patch_section"]) }),
-            }),
-          }),
-        }),
-      }),
-      expect.objectContaining({
-        function: expect.objectContaining({
-          name: "mcp_registry",
-          parameters: expect.objectContaining({
-            type: "object",
-            required: ["operation"],
-            properties: expect.objectContaining({
-              operation: expect.objectContaining({ enum: expect.arrayContaining(["list", "describe", "check", "configure", "delete"]) }),
-            }),
-          }),
-        }),
-      }),
+    expect(body.tools.map((tool: { function: { name: string; parameters: unknown } }) => tool.function.name)).toEqual([
+      "edit",
+      "trace_retrieve",
+      "skills",
+      "project_docs",
+      "repo_docs",
+      "mcp_registry",
     ])
+    expect(body.tools.map((tool: { function: { parameters: unknown } }) => tool.function.parameters)).toEqual(providerSchemas)
   })
 
   it("generates structured JSON with response_format=json_object", async () => {
@@ -344,7 +288,7 @@ const modelRequest = (): ModelRequest => ({
     approvalMode: "manual",
     sandboxMode: "workspace_write",
   },
-  tools: [{ name: "current_time", description: "Get current time.", inputSchema: z.object({}).strict() }],
+  tools: [{ name: "current_time", description: "Get current time.", inputSchema: z.object({}).strict(), resultSchema: z.unknown(), providerInputSchema: { type: "object", additionalProperties: false, properties: {} } }],
 })
 
 const sseResponse = (values: unknown[]): Response =>

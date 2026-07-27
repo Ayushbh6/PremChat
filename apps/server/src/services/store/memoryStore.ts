@@ -486,7 +486,7 @@ export class MemoryStore extends StoreBase {
     if (input.operation === "preview_import") {
       const preview = attachedArchive
         ? await previewSkillArchive({ socratesHome: this.socratesHome, target, filename: attachedArchive.filename, data: attachedArchive.data })
-        : input.url
+        : "url" in input
           ? await previewSkillArchiveFromUrl({
               socratesHome: this.socratesHome,
               target,
@@ -2957,7 +2957,7 @@ export class MemoryStore extends StoreBase {
     }
   }
 
-  private listSkillsOutput(input: SkillsToolInput, workspacePath: string | undefined): SkillsToolOutput {
+  private listSkillsOutput(input: Extract<SkillsToolInput, { operation: "list" }>, workspacePath: string | undefined): SkillsToolOutput {
     const skills = this.skillInfos(workspacePath, input.scope).map(skillSummary)
     const offset = input.offset ?? 0
     const limit = input.n ?? input.limit ?? DEFAULT_SEARCH_LIMIT
@@ -2977,7 +2977,7 @@ export class MemoryStore extends StoreBase {
     }
   }
 
-  private searchSkills(input: SkillsToolInput, workspacePath: string | undefined): SkillsToolOutput {
+  private searchSkills(input: Extract<SkillsToolInput, { operation: "search" }>, workspacePath: string | undefined): SkillsToolOutput {
     const query = input.query?.trim() ?? ""
     const compiled = compileSearch(query, "keyword_any")
     const matches = this.skillInfos(workspacePath, input.scope).filter((skill) => compiled.score(`${skill.name}\n${skill.description}\n${skill.content}`) > 0)
@@ -2999,24 +2999,26 @@ export class MemoryStore extends StoreBase {
     }
   }
 
-  private readSkill(input: SkillsToolInput, workspacePath: string | undefined): SkillsToolOutput {
-    const skill = this.findSkillByHandle(workspacePath, input, input.scope)
+  private readSkill(input: Extract<SkillsToolInput, { operation: "read" | "describe" }>, workspacePath: string | undefined): SkillsToolOutput {
+    const handle = "id" in input ? { id: input.id } : { name: input.name }
+    const skill = this.findSkillByHandle(workspacePath, handle, input.scope)
     if (!skill) {
       const available = this.skillInfos(workspacePath, input.scope)
         .slice(0, 15)
         .map((item) => ({ id: `${item.scope}:${item.name}`, name: item.name, scope: item.scope, description: item.description }))
       throw new SocratesError("skill_not_found", "Skill was not found. Call skills({ operation: \"list\" }) to see exact skill ids and names, then retry describe with one of those exact handles.", {
         recoverable: true,
-        details: { id: input.id, name: input.name, scope: input.scope, available },
+        details: { ...handle, scope: input.scope, available },
       })
     }
-    const relativePath = input.path?.replaceAll("\\", "/").replace(/^\/+/, "") || "SKILL.md"
+    const requestedPath = "path" in input ? input.path : undefined
+    const relativePath = requestedPath?.replaceAll("\\", "/").replace(/^\/+/, "") || "SKILL.md"
     if (relativePath === ".socrates-skill.json") {
-      throw new SocratesError("skill_file_not_found", "Skill file was not found.", { recoverable: true, details: { name: skill.name, path: input.path } })
+      throw new SocratesError("skill_file_not_found", "Skill file was not found.", { recoverable: true, details: { name: skill.name, path: requestedPath } })
     }
     const targetPath = relativePath === "SKILL.md" ? skill.skillFile : safeJoin(skill.skillDir, relativePath)
     if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isFile()) {
-      throw new SocratesError("skill_file_not_found", "Skill file was not found.", { recoverable: true, details: { name: skill.name, path: input.path } })
+      throw new SocratesError("skill_file_not_found", "Skill file was not found.", { recoverable: true, details: { name: skill.name, path: requestedPath } })
     }
     const content = fs.readFileSync(targetPath, "utf8")
     const charLimit = input.charLimit ?? SKILL_CHAR_LIMIT
@@ -3046,7 +3048,7 @@ export class MemoryStore extends StoreBase {
       .sort((left, right) => `${left.scope}:${left.name}`.localeCompare(`${right.scope}:${right.name}`))
   }
 
-  private findSkillByHandle(workspacePath: string | undefined, input: Pick<SkillsToolInput, "id" | "name">, scope?: SkillScope): SkillInfo | undefined {
+  private findSkillByHandle(workspacePath: string | undefined, input: { id?: string; name?: string }, scope?: SkillScope): SkillInfo | undefined {
     const skills = this.skillInfos(workspacePath, scope)
     const id = input.id?.trim()
     if (id) {

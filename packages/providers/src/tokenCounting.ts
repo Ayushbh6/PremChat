@@ -98,7 +98,7 @@ export const buildCountableModelRequest = (request: ModelRequest, providerOption
   tools: (request.tools ?? []).map((tool) => ({
     name: tool.name,
     description: tool.description,
-    inputSchema: schemaForCounting(tool.inputSchema),
+    inputSchema: schemaForCounting(tool.providerInputSchema),
   })),
   ...(providerOptions === undefined ? {} : { providerOptions }),
 })

@@ -73,7 +73,7 @@ const applyPatchWorkspaceLocked = async (
   context: { workspacePath: string; fileFreshness?: FileFreshnessTracker },
 ): Promise<EditToolOutput> => {
   const dryRun = input.dryRun ?? false
-  const prepared = preparePatch(patchTextFromInput(input), context.workspacePath)
+  const prepared = preparePatch(input.patchText, context.workspacePath)
   const changes = parsePatchFileChanges(prepared.patch)
   validatePatch(changes, context.workspacePath)
   const beforeSnapshots = collectPatchSnapshots(changes, context.workspacePath)
@@ -112,11 +112,6 @@ const applyPatchWorkspaceLocked = async (
     truncation: truncated.truncation,
     ...(warnings.length > 0 ? { warnings } : {}),
   }
-}
-
-const patchTextFromInput = (input: ApplyPatchToolInput): string => {
-  const withLegacyAlias = input as ApplyPatchToolInput & { patchText?: string }
-  return input.patch ?? withLegacyAlias.patchText ?? ""
 }
 
 const preparePatch = (patchText: string, workspacePath: string): PreparedPatch => {

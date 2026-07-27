@@ -3,13 +3,12 @@ import { config as loadEnvFile } from "dotenv"
 import { z } from "zod"
 import {
   AgentInstance,
+  capabilityCatalog,
   defineAgent,
   TitleGeneratorAgent,
-  ToolRegistry,
   type ToolExecutors,
 } from "@socrates/core"
 import { createDefaultModelProvider } from "@socrates/providers"
-import { currentTimeTool } from "../../../packages/core/src/tools/currentTimeTool"
 import { ProviderCredentialStore } from "../src/services/providerCredentials"
 
 const socratesHome = process.env.SOCRATES_HOME?.trim()
@@ -54,44 +53,67 @@ if (!title.output.title.trim()) throw new Error("The production Title Generator 
 
 const acceptanceSchema = z.object({
   observedTimeZone: z.literal("Europe/Vienna"),
+  terminalProbe: z.literal("workspace-ok"),
   runtime: z.literal("shared-agent-core"),
 }).strict()
 const acceptanceDefinition = defineAgent<undefined, z.infer<typeof acceptanceSchema>>({
   id: "agent-core-provider-acceptance",
-  role: "agent_core_provider_acceptance",
+  role: "socrates",
   modelRole: "acceptance",
   prompt: {
     id: "agent-core-provider-acceptance-v1",
     buildSystem: () => [
       "You are verifying the canonical shared Socrates agent core.",
       "Call current_time exactly once with {} before finishing.",
-      "Use its exact timeZone in the strict structured result and set runtime to shared-agent-core.",
+      'Call bash exactly once with {"argv":["pwd"]}; do not send command or any other bash field.',
+      "Use the exact timeZone, set terminalProbe to workspace-ok, and set runtime to shared-agent-core in the strict result.",
     ].join(" "),
   },
   completion: { mode: "streaming_tools_structured_final", schema: acceptanceSchema },
-  roleManifest: { id: "agent-core-provider-acceptance-tools-v1", modelTools: ["current_time"] },
+  roleManifest: {
+    id: "agent-core-provider-acceptance-tools-v3",
+    role: "socrates",
+    capabilityIds: [
+      "context.stable_prompt",
+      "context.exact_messages",
+      "context.tool_definitions",
+      "tool.current_time",
+      "tool.bash",
+    ],
+  },
   contextProfile: {
     id: "agent-core-provider-acceptance-context-v1",
     stages: ["stable_prompt", "exact_messages", "tool_definitions"],
   },
-  limits: { maxToolCalls: 1, timeoutMs: 120_000, maxOutputRepairAttempts: 1 },
+  limits: { maxToolCalls: 2, timeoutMs: 120_000, maxOutputRepairAttempts: 1 },
   persistenceScope: "none",
 })
 const toolResults: unknown[] = []
-const result = await new AgentInstance(acceptanceDefinition).run({
+const result = await new AgentInstance(acceptanceDefinition, undefined, capabilityCatalog).run({
   provider,
   providerId: "openrouter",
   modelId,
   runtimeConfig,
   promptContext: undefined,
   userContent: "Run the shared-agent acceptance check now.",
-  toolRegistry: new ToolRegistry([currentTimeTool]),
   toolExecutors: {
     current_time: async () => ({
       currentDate: "2026-07-27",
       currentDateTime: "2026-07-27T20:00:00.000+02:00",
       timeZone: "Europe/Vienna",
       source: "system" as const,
+    }),
+    bash: async () => ({
+      operation: "run" as const,
+      command: '"pwd"',
+      cwd: socratesHome,
+      exitCode: 0,
+      stdout: "workspace-ok",
+      stderr: "",
+      durationMs: 1,
+      timedOut: false,
+      truncation: { truncated: false, charLimit: 16_000, originalLength: 12, returnedLength: 12 },
+      shell: { platform: process.platform, kind: "direct" as const, executable: "pwd" },
     }),
   } as unknown as ToolExecutors,
   projectId: "agent_core_acceptance",
@@ -104,8 +126,8 @@ const result = await new AgentInstance(acceptanceDefinition).run({
 if (result.mode !== "streaming_tools_structured_final") {
   throw new Error(`Unexpected completion mode: ${result.mode}`)
 }
-if (result.toolCalls !== 1 || toolResults.length !== 1) {
-  throw new Error(`Expected exactly one real model tool call, received ${result.toolCalls}.`)
+if (result.toolCalls !== 2 || toolResults.length !== 2) {
+  throw new Error(`Expected exactly two real model tool calls, received ${result.toolCalls}.`)
 }
 
 console.log(JSON.stringify({

@@ -8,7 +8,6 @@ import {
 import {
   AgentInstance,
   buildMemoryAgentSystemPrompt,
-  createMemoryToolRegistry,
   globalMemoryAgentDefinition,
 } from "@socrates/core"
 import type { ModelEvent, ModelProvider, ModelUsage } from "@socrates/providers"
@@ -64,7 +63,6 @@ export const runMemoryAgentTurn = async (input: MemoryAgentRunInput): Promise<Me
     runtimeConfig,
     promptContext: { system: buildMemoryAgentSystemPrompt({ socratesHome: input.socratesHome }) },
     userContent: input.evidence,
-    toolRegistry: createMemoryToolRegistry(),
     toolExecutors: createMemoryAgentToolExecutors(input.tools),
     projectId: input.projectId,
     conversationId: input.conversationId,

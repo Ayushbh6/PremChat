@@ -5449,7 +5449,7 @@ describe("WebSocket API", () => {
       expect(projectSkills.skills.some((skill) => skill.name === "memory-review")).toBe(true)
       const skillRead = store.runSkillsTool(project.id, { operation: "describe", id: "memory-review", scope: "project" })
       expect(skillRead.content).toContain("Memory Review")
-      expect(() => store.runSkillsTool(project.id, { operation: "describe", id: "memory-review", scope: "project", path: "../outside.md" })).toThrow(/Path must stay inside/)
+      expect(() => store.runSkillsTool(project.id, { operation: "read", id: "memory-review", scope: "project", path: "../outside.md" })).toThrow(/Path must stay inside/)
       const searched = store.runToolDocsTool(project.id, {
         operation: "search",
         area: "tool_usage",

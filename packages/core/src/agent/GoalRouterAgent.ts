@@ -8,8 +8,8 @@ import {
   type WorkerModelSettings,
 } from "@socrates/contracts"
 import type { ModelProvider, ModelUsage } from "@socrates/providers"
+import { capabilityCatalog, legacyGoalRouterRoleManifest } from "../capabilities/CapabilityCatalog"
 import { buildGoalRouterUserContent, GOAL_ROUTER_SYSTEM_PROMPT } from "../prompts/goalRouterPrompt"
-import { createGoalRouterToolRegistry } from "../tools/registry"
 import type { V2GoalRoutingCandidateSet } from "../v2/types"
 import type { ToolExecutors } from "../tools/types"
 import { AgentRuntime } from "./AgentRuntime"
@@ -64,7 +64,7 @@ export class GoalRouterAgent {
         ...(input.clarificationAnswer ? { clarificationAnswer: input.clarificationAnswer } : {}),
       }),
       completion: { mode: "structured", schema: createValidatedGoalRouterOutputSchema(allowedCandidateNumbers) },
-      toolRegistry: createGoalRouterToolRegistry(),
+      capabilitySet: capabilityCatalog.resolve(legacyGoalRouterRoleManifest),
       toolExecutors,
       maxToolCalls: 3,
       projectId: input.projectId,

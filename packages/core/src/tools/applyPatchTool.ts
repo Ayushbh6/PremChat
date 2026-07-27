@@ -1,9 +1,8 @@
-import { applyPatchToolInputSchema, applyPatchToolModelInputSchema, applyPatchToolOutputSchema } from "@socrates/contracts"
+import { applyPatchToolInputSchema, applyPatchToolOutputSchema } from "@socrates/contracts"
 import type { SocratesTool } from "./types"
 
 const previewPatch = (input: typeof applyPatchToolInputSchema._type): string => {
-  const patchText = input.patch ?? (input as typeof input & { patchText?: string }).patchText ?? ""
-  const lines = patchText.split("\n").filter(Boolean).slice(0, 3)
+  const lines = input.patchText.split("\n").filter(Boolean).slice(0, 3)
   return lines.length > 0 ? `patch:\n${lines.join("\n")}` : "patch: workspace"
 }
 
@@ -36,7 +35,6 @@ export const applyPatchTool: SocratesTool<typeof applyPatchToolInputSchema._type
   description:
     "Apply a patch to one or more files in the active project workspace. Call this only after reading existing target files in the current turn. Use patchText with the structured *** Begin Patch format by default: *** Update File, @@ hunks, *** Add File, *** Delete File, and *** Move to. This format does not require unified-diff line counts. Read existing files before patching, deleting, or renaming them, and read a file again before another mutation after a successful edit or patch. Standard unified diffs with ---/+++/@@ headers are accepted only when you already have a valid diff. Use for multi-hunk or multi-file changes.",
   inputSchema: applyPatchToolInputSchema,
-  modelInputSchema: applyPatchToolModelInputSchema,
   resultSchema: applyPatchToolOutputSchema,
   permission: "mutate",
   executeLane: "mutation",

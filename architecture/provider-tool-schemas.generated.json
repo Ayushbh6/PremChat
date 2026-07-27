@@ -1,0 +1,3175 @@
+{
+  "schemaVersion": 1,
+  "generatedFrom": "packages/core/src/capabilities/providerProjection.ts",
+  "tools": [
+    {
+      "capabilityId": "tool.read",
+      "name": "read",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Workspace-relative or Socrates-known resource path to read."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Character offset into extracted output. Use with truncation.nextOffset to continue a large read."
+          },
+          "charLimit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 80000,
+            "description": "Character cap for returned output. Effective output is also bounded by tokenLimit."
+          },
+          "tokenLimit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 6000,
+            "description": "Estimated token cap for returned output. Defaults to 4,000 tokens and cannot exceed 6,000 tokens."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.search",
+      "name": "search",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "files",
+              "text"
+            ]
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "regex": {
+            "type": "boolean"
+          },
+          "caseSensitive": {
+            "type": "boolean"
+          },
+          "includeHidden": {
+            "type": "boolean"
+          },
+          "maxResults": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 50
+          },
+          "charLimit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 80000
+          }
+        },
+        "required": [
+          "mode",
+          "query"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.url_fetch",
+      "name": "url_fetch",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Exact http(s) URL to fetch. This tool does not crawl links, search the web, save files, or download binary bodies."
+          },
+          "charLimit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 80000,
+            "description": "Character cap for returned text. The backend also enforces a byte cap before decoding."
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 30000,
+            "description": "Network timeout in milliseconds. Defaults to 15 seconds."
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.edit",
+      "name": "edit",
+      "schema": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Workspace-relative target path. For deliverables or generated files derived from files in a subfolder, use an explicit path in that same subfolder or nearest relevant existing folder; use the workspace root only when requested or truly project-level."
+              },
+              "oldString": {
+                "type": "string",
+                "minLength": 1
+              },
+              "newString": {
+                "type": "string"
+              },
+              "replaceAll": {
+                "type": "boolean"
+              },
+              "dryRun": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "path",
+              "oldString",
+              "newString"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Workspace-relative target path. For deliverables or generated files derived from files in a subfolder, use an explicit path in that same subfolder or nearest relevant existing folder; use the workspace root only when requested or truly project-level."
+              },
+              "content": {
+                "type": "string"
+              },
+              "overwrite": {
+                "type": "boolean",
+                "const": true
+              },
+              "dryRun": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object"
+      }
+    },
+    {
+      "capabilityId": "tool.apply_patch",
+      "name": "apply_patch",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "patchText": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Patch text to apply. Prefer structured format: *** Begin Patch, then file sections like *** Update File: path with @@ hunks, *** Add File: path, or *** Delete File: path, ending with *** End Patch. In Update hunks, prefix unchanged lines with space, removed lines with -, and added lines with +. Add File content lines should start with +."
+          },
+          "dryRun": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "patchText"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.bash",
+      "name": "bash",
+      "schema": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "run"
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Command to execute. Before commands create files or directories, verify the intended parent directory and use an explicit relative path or cwd so outputs do not accidentally land in the workspace root."
+              },
+              "cwd": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Workspace-relative working directory. Use this for subfolder commands instead of prefixing the command with cd."
+              },
+              "timeoutMs": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 600000
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16000
+              }
+            },
+            "required": [
+              "command"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "run"
+              },
+              "argv": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "maxItems": 32,
+                "description": "Structured executable and literal arguments for a safe foreground diagnostic. This runs without a shell, so it cannot use pipes, redirects, substitutions, or shell syntax. Use only for small diagnostics such as [\"git\", \"status\", \"--short\"] or [\"pwd\"]. Use command for a real shell command, which requires approval outside full-access mode."
+              },
+              "cwd": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Workspace-relative working directory. Use this for subfolder commands instead of prefixing the command with cd."
+              },
+              "timeoutMs": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 600000
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16000
+              }
+            },
+            "required": [
+              "argv"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "start"
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Command to execute. Before commands create files or directories, verify the intended parent directory and use an explicit relative path or cwd so outputs do not accidentally land in the workspace root."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "cwd": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Workspace-relative working directory. Use this for subfolder commands instead of prefixing the command with cd."
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16000
+              },
+              "outputSequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "inputMode": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "user"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "command"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "status"
+              },
+              "processId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "terminalId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "outputSequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16000
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "output"
+              },
+              "processId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "terminalId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "outputSequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16000
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "stop"
+              },
+              "processId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "terminalId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "outputSequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16000
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "list"
+              },
+              "limit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 12
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16000
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object"
+      }
+    },
+    {
+      "capabilityId": "tool.wait",
+      "name": "wait",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "terminalNames": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 96
+            },
+            "minItems": 1,
+            "maxItems": 8
+          },
+          "wakeOn": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "completed",
+                "failed",
+                "input_required"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 3
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "terminalNames",
+          "wakeOn",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.handover_to_frontier",
+      "name": "handover_to_frontier",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "focus": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "description": "Optional compact focus for Frontier; at most 20 words."
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.current_time",
+      "name": "current_time",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.trace_retrieve.main",
+      "name": "trace_retrieve",
+      "schema": {
+        "anyOf": [
+          {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "operation": {
+                    "type": "string",
+                    "const": "search"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "presented_context",
+                      "current_goal",
+                      "project"
+                    ]
+                  },
+                  "conversationTitle": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 240
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "assistant",
+                      "any"
+                    ]
+                  },
+                  "createdAfter": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "createdBefore": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 8
+                  },
+                  "mode": {
+                    "type": "string",
+                    "const": "lexical"
+                  },
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "turnNo": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 10000
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "operation": {
+                    "type": "string",
+                    "const": "search"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "presented_context",
+                      "current_goal",
+                      "project"
+                    ]
+                  },
+                  "conversationTitle": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 240
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "assistant",
+                      "any"
+                    ]
+                  },
+                  "createdAfter": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "createdBefore": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 8
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "semantic",
+                      "combined"
+                    ]
+                  },
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "mode",
+                  "query"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "operation": {
+                    "type": "string",
+                    "const": "search"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "presented_context",
+                      "current_goal",
+                      "project"
+                    ]
+                  },
+                  "conversationTitle": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 240
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "assistant",
+                      "any"
+                    ]
+                  },
+                  "createdAfter": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "createdBefore": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 8
+                  },
+                  "mode": {
+                    "type": "string",
+                    "const": "audit"
+                  },
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  },
+                  "include": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "tool_calls",
+                        "shell",
+                        "files",
+                        "errors"
+                      ]
+                    }
+                  },
+                  "paths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "maxItems": 20
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  },
+                  "toolNames": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "read",
+                            "search",
+                            "url_fetch",
+                            "edit",
+                            "apply_patch",
+                            "bash",
+                            "wait",
+                            "handover_to_frontier",
+                            "current_time",
+                            "trace_retrieve",
+                            "tool_docs",
+                            "skills",
+                            "projects",
+                            "edit_files",
+                            "project_docs",
+                            "repo_docs",
+                            "soul",
+                            "user_profile",
+                            "list_project_resources",
+                            "mcp_registry",
+                            "memory_note",
+                            "memory_notes",
+                            "memory_search",
+                            "goal_search",
+                            "read_memory_journal",
+                            "skill_write",
+                            "skill_manager",
+                            "context_disposition"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^mcp__[a-z0-9_-]+__[a-zA-Z0-9_-]+$"
+                        }
+                      ]
+                    },
+                    "maxItems": 20
+                  }
+                },
+                "required": [
+                  "mode",
+                  "query"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "inspect"
+              },
+              "resultNumber": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 8
+              },
+              "conversationTitle": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              },
+              "turnNo": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 10000
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object"
+      }
+    },
+    {
+      "capabilityId": "tool.trace_retrieve.global",
+      "name": "trace_retrieve",
+      "schema": {
+        "anyOf": [
+          {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "operation": {
+                    "type": "string",
+                    "const": "search"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "project",
+                      "all_projects"
+                    ]
+                  },
+                  "projectId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1,
+                        "maxItems": 20
+                      }
+                    ]
+                  },
+                  "projectTitle": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1,
+                        "maxItems": 20
+                      }
+                    ]
+                  },
+                  "conversationId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "conversationTitle": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 240
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "assistant",
+                      "any"
+                    ]
+                  },
+                  "createdAfter": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "createdBefore": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 8
+                  },
+                  "mode": {
+                    "type": "string",
+                    "const": "lexical"
+                  },
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "turnNo": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 10000
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "operation": {
+                    "type": "string",
+                    "const": "search"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "project",
+                      "all_projects"
+                    ]
+                  },
+                  "projectId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1,
+                        "maxItems": 20
+                      }
+                    ]
+                  },
+                  "projectTitle": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1,
+                        "maxItems": 20
+                      }
+                    ]
+                  },
+                  "conversationId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "conversationTitle": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 240
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "assistant",
+                      "any"
+                    ]
+                  },
+                  "createdAfter": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "createdBefore": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 8
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "semantic",
+                      "combined"
+                    ]
+                  },
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "mode",
+                  "query"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "operation": {
+                    "type": "string",
+                    "const": "search"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "project",
+                      "all_projects"
+                    ]
+                  },
+                  "projectId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1,
+                        "maxItems": 20
+                      }
+                    ]
+                  },
+                  "projectTitle": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1,
+                        "maxItems": 20
+                      }
+                    ]
+                  },
+                  "conversationId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "conversationTitle": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 240
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "assistant",
+                      "any"
+                    ]
+                  },
+                  "createdAfter": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "createdBefore": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 8
+                  },
+                  "mode": {
+                    "type": "string",
+                    "const": "audit"
+                  },
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  },
+                  "include": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "tool_calls",
+                        "shell",
+                        "files",
+                        "errors"
+                      ]
+                    }
+                  },
+                  "paths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "maxItems": 20
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  },
+                  "toolNames": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "read",
+                            "search",
+                            "url_fetch",
+                            "edit",
+                            "apply_patch",
+                            "bash",
+                            "wait",
+                            "handover_to_frontier",
+                            "current_time",
+                            "trace_retrieve",
+                            "tool_docs",
+                            "skills",
+                            "projects",
+                            "edit_files",
+                            "project_docs",
+                            "repo_docs",
+                            "soul",
+                            "user_profile",
+                            "list_project_resources",
+                            "mcp_registry",
+                            "memory_note",
+                            "memory_notes",
+                            "memory_search",
+                            "goal_search",
+                            "read_memory_journal",
+                            "skill_write",
+                            "skill_manager",
+                            "context_disposition"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^mcp__[a-z0-9_-]+__[a-zA-Z0-9_-]+$"
+                        }
+                      ]
+                    },
+                    "maxItems": 20
+                  }
+                },
+                "required": [
+                  "mode",
+                  "query"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "inspect"
+              },
+              "resultNumber": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 8
+              },
+              "turnId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "projectId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "projectTitle": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              },
+              "conversationTitle": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              },
+              "turnNo": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 10000
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object"
+      }
+    },
+    {
+      "capabilityId": "tool.tool_docs",
+      "name": "tool_docs",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "search",
+              "read"
+            ]
+          },
+          "area": {
+            "type": "string",
+            "const": "tool_usage"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1
+          },
+          "searchMode": {
+            "type": "string",
+            "enum": [
+              "exact_phrase",
+              "keyword_all",
+              "keyword_any",
+              "whole_word",
+              "regex"
+            ]
+          },
+          "includeSections": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 20
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "contextLines": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "charLimit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 80000
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.skills.manage",
+      "name": "skills",
+      "schema": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "list"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "n": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 35
+              },
+              "limit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 50
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "search"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "query": {
+                "type": "string",
+                "minLength": 1
+              },
+              "n": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 35
+              },
+              "limit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 50
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "query"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "describe"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Canonical skill id copied from skills list."
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "describe"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Exact listed skill name. Prefer canonical id when available."
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "read"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Canonical skill id copied from skills list."
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240,
+                "description": "Relative supporting file path; defaults to SKILL.md."
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "read"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Exact listed skill name. Prefer canonical id when available."
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240,
+                "description": "Relative supporting file path; defaults to SKILL.md."
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "preview_import"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "project"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "maxLength": 2048
+              }
+            },
+            "required": [
+              "operation",
+              "url"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "preview_import"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "project"
+                ]
+              },
+              "attachmentPath": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240,
+                "pattern": "^\\.socrates\\/attachments\\/[^/]+\\.zip$"
+              }
+            },
+            "required": [
+              "operation",
+              "attachmentPath"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "commit_import"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "project"
+                ]
+              },
+              "previewId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "pattern": "^skillimp_[a-f0-9]{32}$"
+              },
+              "conflictStrategy": {
+                "type": "string",
+                "enum": [
+                  "reject",
+                  "replace"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "previewId"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object"
+      }
+    },
+    {
+      "capabilityId": "tool.skills.read",
+      "name": "skills",
+      "schema": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "list"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "n": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 35
+              },
+              "limit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 50
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "search"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "query": {
+                "type": "string",
+                "minLength": 1
+              },
+              "n": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 35
+              },
+              "limit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 50
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "query"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "describe"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Canonical skill id copied from skills list."
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "describe"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Exact listed skill name. Prefer canonical id when available."
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "read"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Canonical skill id copied from skills list."
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240,
+                "description": "Relative supporting file path; defaults to SKILL.md."
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "read"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Exact listed skill name. Prefer canonical id when available."
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240,
+                "description": "Relative supporting file path; defaults to SKILL.md."
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object"
+      }
+    },
+    {
+      "capabilityId": "tool.skill_manager",
+      "name": "skill_manager",
+      "schema": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "create"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              },
+              "request": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              }
+            },
+            "required": [
+              "operation",
+              "name",
+              "request"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "delete"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              }
+            },
+            "required": [
+              "operation",
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object"
+      }
+    },
+    {
+      "capabilityId": "tool.projects",
+      "name": "projects",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "list_projects",
+              "list_conversations"
+            ]
+          },
+          "projectId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.edit_files",
+      "name": "edit_files",
+      "schema": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string",
+                "enum": [
+                  "identity",
+                  "user_profile",
+                  "skill"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "editMode": {
+                "type": "string",
+                "enum": [
+                  "replace",
+                  "create"
+                ]
+              },
+              "sectionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "oldText": {
+                "type": "string"
+              },
+              "newText": {
+                "type": "string",
+                "minLength": 1
+              },
+              "replaceAll": {
+                "type": "boolean"
+              },
+              "rationale": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sourceTurnIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "maxItems": 12
+              }
+            },
+            "required": [
+              "target",
+              "editMode",
+              "newText"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string",
+                "enum": [
+                  "identity",
+                  "user_profile"
+                ]
+              },
+              "editMode": {
+                "type": "string",
+                "const": "move"
+              },
+              "sourceSectionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "destinationSectionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sourceText": {
+                "type": "string",
+                "minLength": 1
+              },
+              "destinationText": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rationale": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sourceTurnIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "name": {
+                "not": {}
+              },
+              "scope": {
+                "not": {}
+              },
+              "sectionId": {
+                "not": {}
+              },
+              "oldText": {
+                "not": {}
+              },
+              "newText": {
+                "not": {}
+              },
+              "replaceAll": {
+                "not": {}
+              }
+            },
+            "required": [
+              "target",
+              "editMode",
+              "sourceSectionId",
+              "destinationSectionId",
+              "sourceText",
+              "destinationText",
+              "rationale"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object"
+      }
+    },
+    {
+      "capabilityId": "tool.project_docs",
+      "name": "project_docs",
+      "schema": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "read"
+              },
+              "area": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "notes"
+                ]
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "area"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "search"
+              },
+              "area": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "notes"
+                ]
+              },
+              "query": {
+                "type": "string",
+                "minLength": 1
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "area",
+              "query"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "read_index"
+              },
+              "area": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "notes"
+                ]
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "area"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "read_section"
+              },
+              "area": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "notes"
+                ]
+              },
+              "sectionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "area",
+              "sectionId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "patch_section"
+              },
+              "area": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "notes"
+                ]
+              },
+              "sectionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "oldText": {
+                "type": "string"
+              },
+              "newText": {
+                "type": "string"
+              },
+              "replaceAll": {
+                "type": "boolean"
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "area",
+              "sectionId",
+              "oldText",
+              "newText"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "edit"
+              },
+              "area": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "notes"
+                ]
+              },
+              "editMode": {
+                "type": "string",
+                "const": "append"
+              },
+              "text": {
+                "type": "string"
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "area",
+              "editMode",
+              "text"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "edit"
+              },
+              "area": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "notes"
+                ]
+              },
+              "editMode": {
+                "type": "string",
+                "const": "replace"
+              },
+              "oldText": {
+                "type": "string"
+              },
+              "newText": {
+                "type": "string"
+              },
+              "replaceAll": {
+                "type": "boolean"
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "area",
+              "editMode",
+              "oldText",
+              "newText"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object"
+      }
+    },
+    {
+      "capabilityId": "tool.repo_docs",
+      "name": "repo_docs",
+      "schema": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "read"
+              },
+              "path": {
+                "type": "string",
+                "enum": [
+                  "CORE_IDEA.md",
+                  "REPO_NAVIGATION.md",
+                  "REPO_RULES.md",
+                  "CONTRACTS.md"
+                ]
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "search"
+              },
+              "path": {
+                "type": "string",
+                "enum": [
+                  "CORE_IDEA.md",
+                  "REPO_NAVIGATION.md",
+                  "REPO_RULES.md",
+                  "CONTRACTS.md"
+                ]
+              },
+              "query": {
+                "type": "string",
+                "minLength": 1
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "query"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "read_index"
+              },
+              "path": {
+                "type": "string",
+                "enum": [
+                  "CORE_IDEA.md",
+                  "REPO_NAVIGATION.md",
+                  "REPO_RULES.md",
+                  "CONTRACTS.md"
+                ]
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "read_section"
+              },
+              "path": {
+                "type": "string",
+                "enum": [
+                  "CORE_IDEA.md",
+                  "REPO_NAVIGATION.md",
+                  "REPO_RULES.md",
+                  "CONTRACTS.md"
+                ]
+              },
+              "sectionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "path",
+              "sectionId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "patch_section"
+              },
+              "path": {
+                "type": "string",
+                "enum": [
+                  "CORE_IDEA.md",
+                  "REPO_NAVIGATION.md",
+                  "REPO_RULES.md",
+                  "CONTRACTS.md"
+                ]
+              },
+              "sectionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "oldText": {
+                "type": "string"
+              },
+              "newText": {
+                "type": "string"
+              },
+              "replaceAll": {
+                "type": "boolean"
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "path",
+              "sectionId",
+              "oldText",
+              "newText"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "edit"
+              },
+              "path": {
+                "type": "string",
+                "enum": [
+                  "CORE_IDEA.md",
+                  "REPO_NAVIGATION.md",
+                  "REPO_RULES.md",
+                  "CONTRACTS.md"
+                ]
+              },
+              "oldText": {
+                "type": "string"
+              },
+              "newText": {
+                "type": "string"
+              },
+              "replaceAll": {
+                "type": "boolean"
+              },
+              "charLimit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 80000
+              }
+            },
+            "required": [
+              "operation",
+              "path",
+              "oldText",
+              "newText"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object"
+      }
+    },
+    {
+      "capabilityId": "tool.soul",
+      "name": "soul",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "read",
+              "read_index",
+              "read_section"
+            ]
+          },
+          "sectionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "charLimit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 80000
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.user_profile",
+      "name": "user_profile",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "read",
+              "read_index",
+              "read_section"
+            ]
+          },
+          "sectionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "charLimit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 80000
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.list_project_resources",
+      "name": "list_project_resources",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "pdf",
+              "document",
+              "text",
+              "image",
+              "url",
+              "local_file",
+              "note",
+              "other"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.mcp_registry",
+      "name": "mcp_registry",
+      "schema": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "list"
+              },
+              "n": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 35
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "describe"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Canonical MCP id copied from mcp_registry list. Prefer this for describe."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Exact listed MCP display name. Use only when matching by name."
+              },
+              "n": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 35
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "check"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "operation",
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "configure"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "project"
+                ],
+                "default": "project"
+              },
+              "server": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "args": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 40
+                  },
+                  "env": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Non-secret environment values only."
+                  },
+                  "secretBindings": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "envKey": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "user_input",
+                            "workspace_env"
+                          ],
+                          "default": "user_input"
+                        }
+                      },
+                      "required": [
+                        "envKey"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 12,
+                    "description": "Secret key names and sources only. Never provide secret values."
+                  }
+                },
+                "required": [
+                  "id",
+                  "command"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "operation",
+              "server"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "delete"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "project"
+                ],
+                "default": "project"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "operation",
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object"
+      }
+    },
+    {
+      "capabilityId": "tool.memory_note",
+      "name": "memory_note",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "importance": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "high"
+            ]
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.memory_notes",
+      "name": "memory_notes",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "list",
+              "read",
+              "mark_done"
+            ]
+          },
+          "noteNumber": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 10
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "applied",
+              "already_represented",
+              "skipped",
+              "proposed_skill"
+            ]
+          },
+          "resolution": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.read_memory_journal",
+      "name": "read_memory_journal",
+      "schema": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "list"
+              },
+              "limit": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 10
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "charLimit": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 20000
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "read"
+              },
+              "runId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "charLimit": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 20000
+              }
+            },
+            "required": [
+              "operation",
+              "runId"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object"
+      }
+    },
+    {
+      "capabilityId": "tool.skill_write",
+      "name": "skill_write",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "project"
+            ]
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80000
+          },
+          "changeSummary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "evidenceTurnIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 12
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                "content": {
+                  "type": "string",
+                  "maxLength": 80000
+                }
+              },
+              "required": [
+                "path",
+                "content"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 20
+          }
+        },
+        "required": [
+          "scope",
+          "operation",
+          "name",
+          "content",
+          "changeSummary"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "tool.context_disposition",
+      "name": "context_disposition",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "decisions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "result": {
+                  "type": "string",
+                  "pattern": "^result_[1-9]\\d*$"
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "keep_exact",
+                    "distill",
+                    "release",
+                    "unresolved"
+                  ]
+                },
+                "summary": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1200
+                }
+              },
+              "required": [
+                "result",
+                "action"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 8
+          }
+        },
+        "required": [
+          "decisions"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "legacy.tool.goal_search",
+      "name": "goal_search",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "lexical",
+              "semantic",
+              "combined"
+            ],
+            "default": "combined"
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 3,
+            "default": 3
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "capabilityId": "legacy.tool.memory_search",
+      "name": "memory_search",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "lexical",
+              "semantic",
+              "combined"
+            ],
+            "default": "combined"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "project",
+              "all"
+            ],
+            "default": "all"
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 8,
+            "default": 8
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    }
+  ]
+}

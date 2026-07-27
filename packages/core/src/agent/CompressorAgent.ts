@@ -11,7 +11,6 @@ import type { ModelProvider, ModelUsage } from "@socrates/providers"
 import type { ProviderAuthMode, ProviderId, ThinkingEffort } from "@socrates/contracts"
 import { SocratesError } from "@socrates/shared"
 import { SOCRATES_ANCHOR_REPAIR_SYSTEM_PROMPT } from "../prompts/socratesCompressorPrompt"
-import { createCompressorToolRegistry } from "../tools/registry"
 import { AgentInstance } from "./AgentInstance"
 import type { AgentDefinition } from "./AgentDefinition"
 import type { AgentRuntimeStructuredResult } from "./AgentRuntime"
@@ -200,7 +199,6 @@ export class CompressorAgent {
       runtimeConfig: compressorRuntimeConfig(model),
       promptContext: { system },
       userContent,
-      toolRegistry: createCompressorToolRegistry(),
       toolExecutors: {},
       maxOutputRepairAttempts,
       projectId: input.projectId,

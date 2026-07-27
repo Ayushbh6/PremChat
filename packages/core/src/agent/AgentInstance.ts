@@ -7,10 +7,10 @@ import type {
   ModelUsage,
 } from "@socrates/providers"
 import { SocratesError } from "@socrates/shared"
+import { capabilityCatalog, type CapabilityCatalog } from "../capabilities/CapabilityCatalog"
 import type { ContextCompressionRuntime } from "../context/contextCompression"
-import type { ToolRegistry } from "../tools/registry"
 import type { ToolExecutors } from "../tools/types"
-import { assertRoleManifestMatchesTools, type AgentDefinition } from "./AgentDefinition"
+import { assertRoleManifestMatchesCapabilities, type AgentDefinition } from "./AgentDefinition"
 import {
   AgentRuntime,
   type AgentRuntimeResult,
@@ -26,7 +26,6 @@ export type AgentInstanceInput<TPromptContext> = {
   modelId: string
   runtimeConfig: RuntimeConfig
   promptContext: TPromptContext
-  toolRegistry: ToolRegistry
   toolExecutors: ToolExecutors | Record<string, never>
   projectId: string
   conversationId: string
@@ -48,6 +47,7 @@ export class AgentInstance<TPromptContext, TOutput> {
   constructor(
     readonly definition: AgentDefinition<TPromptContext, TOutput>,
     private readonly runtime: AgentRuntime = new AgentRuntime(),
+    private readonly catalog: CapabilityCatalog = capabilityCatalog,
   ) {}
 
   async run(input: AgentInstanceInput<TPromptContext>): Promise<AgentRuntimeResult<TOutput>> {
@@ -57,8 +57,13 @@ export class AgentInstance<TPromptContext, TOutput> {
         `Agent ${this.definition.id} requires exactly one of messages or userContent.`,
       )
     }
-    assertRoleManifestMatchesRegistry(this.definition, input.toolRegistry)
-    assertContextProfileSupportsRun(this.definition, input)
+    const capabilitySet = this.catalog.resolve(this.definition.roleManifest)
+    assertRoleManifestMatchesCapabilities(
+      this.definition,
+      capabilitySet.capabilities.map((capability) => capability.id),
+    )
+    assertContextProfileMatchesCapabilities(this.definition, capabilitySet)
+    assertContextProfileSupportsRun(this.definition, input, capabilitySet)
     const system = this.definition.prompt.buildSystem(input.promptContext)
     if (!system.trim()) {
       throw new SocratesError("agent_prompt_empty", `Agent ${this.definition.id} produced an empty system prompt.`)
@@ -71,7 +76,7 @@ export class AgentInstance<TPromptContext, TOutput> {
       system,
       ...(input.userContent !== undefined ? { userContent: input.userContent } : {}),
       ...(input.messages ? { messages: input.messages } : {}),
-      toolRegistry: input.toolRegistry,
+      capabilitySet,
       toolExecutors: input.toolExecutors,
       maxToolCalls: this.definition.limits.maxToolCalls,
       projectId: input.projectId,
@@ -126,12 +131,37 @@ export class AgentInstance<TPromptContext, TOutput> {
   }
 }
 
+const CONTEXT_STAGE_CAPABILITY_IDS = {
+  stable_prompt: "context.stable_prompt",
+  exact_messages: "context.exact_messages",
+  runtime_context: "context.runtime_state",
+  tool_definitions: "context.tool_definitions",
+  consent_gated_compaction: "context.user_approved_compaction",
+} as const
+
+const assertContextProfileMatchesCapabilities = <TPromptContext, TOutput>(
+  definition: AgentDefinition<TPromptContext, TOutput>,
+  capabilitySet: import("../capabilities/CapabilityCatalog").CapabilitySet,
+): void => {
+  const attachedIds = new Set(capabilitySet.capabilities.map((capability) => capability.id))
+  for (const stage of definition.contextProfile.stages) {
+    const capabilityId = CONTEXT_STAGE_CAPABILITY_IDS[stage]
+    if (!attachedIds.has(capabilityId)) {
+      throw new SocratesError(
+        "agent_context_capability_missing",
+        `Agent ${definition.id} context stage ${stage} is missing catalog capability ${capabilityId}.`,
+      )
+    }
+  }
+}
+
 const assertContextProfileSupportsRun = <TPromptContext, TOutput>(
   definition: AgentDefinition<TPromptContext, TOutput>,
-  input: Pick<AgentInstanceInput<TPromptContext>, "contextCompression" | "toolRegistry">,
+  input: Pick<AgentInstanceInput<TPromptContext>, "contextCompression">,
+  capabilitySet: import("../capabilities/CapabilityCatalog").CapabilitySet,
 ): void => {
   const stages = definition.contextProfile.stages
-  if (input.toolRegistry.list().length > 0 && !stages.includes("tool_definitions")) {
+  if (capabilitySet.list().length > 0 && !stages.includes("tool_definitions")) {
     throw new SocratesError(
       "agent_context_profile_mismatch",
       `Agent ${definition.id} has model tools but context profile ${definition.contextProfile.id} omits tool_definitions.`,
@@ -177,22 +207,5 @@ const runWithAgentDeadline = async <TResult>(
   } finally {
     clearTimeout(handle)
     upstreamSignal?.removeEventListener("abort", forwardAbort)
-  }
-}
-
-const assertRoleManifestMatchesRegistry = <TPromptContext, TOutput>(
-  definition: AgentDefinition<TPromptContext, TOutput>,
-  registry: ToolRegistry,
-): void => {
-  try {
-    assertRoleManifestMatchesTools(
-      definition,
-      registry.list().map((tool) => tool.name),
-    )
-  } catch (error) {
-    throw new SocratesError(
-      "agent_role_manifest_mismatch",
-      error instanceof Error ? error.message : String(error),
-    )
   }
 }

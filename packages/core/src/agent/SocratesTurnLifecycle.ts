@@ -2,11 +2,10 @@ import {
   type NormalizedToolCall,
   type ToolExecutionResult,
   type ToolName,
-  normalizeBashModelInput,
 } from "@socrates/contracts"
 import type { ModelMessage, ModelProvider } from "@socrates/providers"
 import { createId, normalizeError, SocratesError } from "@socrates/shared"
-import type { ToolRegistry } from "../tools/registry"
+import type { CapabilitySet } from "../capabilities/CapabilityCatalog"
 import type { ApprovalRequest, ToolLifecycleEvent, ToolRuntimeContext } from "../tools/types"
 import { MemoryRouterAgent, type ActiveGoalCard } from "./MemoryRouterAgent"
 import type { SocratesAgentTurnInput } from "./SocratesAgent"
@@ -30,7 +29,6 @@ import {
 import {
   TurnDocsLedger,
   docsPreflightError,
-  isDynamicMcpToolName,
   requiresActionDocsPreflight,
   requiresDocsPreflightAfterPolicy,
   toolErrorResult,
@@ -44,12 +42,13 @@ import {
 export class SocratesTurnLifecycle {
   constructor(
     private readonly provider: ModelProvider,
-    private readonly toolRegistry: ToolRegistry,
+    private readonly baseCapabilities: CapabilitySet,
     private readonly memoryRouterAgent: MemoryRouterAgent,
   ) {}
 
   executeToolCalls(input: {
     toolCalls: NormalizedToolCall[]
+    capabilitySet: CapabilitySet
     context: ToolRuntimeContext
     remainingBudget: number
     maxParallelToolCalls: number
@@ -82,13 +81,13 @@ export class SocratesTurnLifecycle {
         runnable.push(toolCall)
       }
 
-      const parallel = runnable.filter((toolCall) => this.toolRegistry.get(toolCall.toolName)?.executeLane === "parallel")
-      const mutation = runnable.filter((toolCall) => this.toolRegistry.get(toolCall.toolName)?.executeLane !== "parallel")
+      const parallel = runnable.filter((toolCall) => input.capabilitySet.get(toolCall.toolName)?.executeLane === "parallel")
+      const mutation = runnable.filter((toolCall) => input.capabilitySet.get(toolCall.toolName)?.executeLane !== "parallel")
 
       for (let index = 0; index < parallel.length; index += input.maxParallelToolCalls) {
         const chunk = parallel.slice(index, index + input.maxParallelToolCalls)
         const chunkResults = await Promise.all(
-          chunk.map((toolCall) => this.executeOneToolCall(toolCall, input.context, queue, input.duplicateTraceRetrieveResults, input.docsLedger)),
+          chunk.map((toolCall) => this.executeOneToolCall(toolCall, input.capabilitySet, input.context, queue, input.duplicateTraceRetrieveResults, input.docsLedger)),
         )
         for (const result of chunkResults) {
           results.set(result.toolCallId, result)
@@ -96,7 +95,7 @@ export class SocratesTurnLifecycle {
       }
 
       for (const toolCall of mutation) {
-        const result = await this.executeOneToolCall(toolCall, input.context, queue, input.duplicateTraceRetrieveResults, input.docsLedger)
+        const result = await this.executeOneToolCall(toolCall, input.capabilitySet, input.context, queue, input.duplicateTraceRetrieveResults, input.docsLedger)
         results.set(result.toolCallId, result)
       }
 
@@ -119,7 +118,7 @@ export class SocratesTurnLifecycle {
     messages: ModelMessage[],
     docsLedger: TurnDocsLedger,
   ): Promise<MemoryLoopRunResult> {
-    if (!input.stableCachePreludeSnapshot && !canLoadStableCachePrelude(input, this.toolRegistry)) {
+    if (!input.stableCachePreludeSnapshot && !canLoadStableCachePrelude(input, this.baseCapabilities)) {
       return emptyMemoryLoopRunResult()
     }
 
@@ -136,7 +135,7 @@ export class SocratesTurnLifecycle {
       ? renderStableCachePreludeSnapshot(input.stableCachePreludeSnapshot)
       : renderStableCachePrelude(records)
 
-    if (!canRunMemoryLoop(this.provider, input, this.toolRegistry)) {
+    if (!canRunMemoryLoop(this.provider, input, this.baseCapabilities)) {
       return {
         events: [],
         records,
@@ -209,6 +208,7 @@ export class SocratesTurnLifecycle {
     }
     const done = this.executeOneToolCall(
       toolCall,
+      this.baseCapabilities,
       {
         projectId: input.projectId ?? "",
         conversationId: input.conversationId ?? "",
@@ -235,17 +235,15 @@ export class SocratesTurnLifecycle {
 
   private async executeOneToolCall(
     toolCall: NormalizedToolCall,
+    capabilitySet: CapabilitySet,
     context: ToolRuntimeContext,
     queue: AsyncEventQueue<ToolLifecycleEvent>,
     duplicateTraceRetrieveResults: Map<string, unknown>,
     docsLedger: TurnDocsLedger,
   ): Promise<ToolExecutionResult> {
     const startedAt = Date.now()
-    const tool = this.toolRegistry.get(toolCall.toolName)
+    const tool = capabilitySet.get(toolCall.toolName)
     if (!tool) {
-      if (isDynamicMcpToolName(toolCall.toolName) && context.executors.mcp_dynamic) {
-        return this.executeDynamicMcpToolCall(toolCall, context, queue, startedAt)
-      }
       const error = new SocratesError("tool_not_found", "Tool is not registered", { details: { toolName: toolCall.toolName } })
       queue.push({
         type: "tool.call.failed",
@@ -259,8 +257,7 @@ export class SocratesTurnLifecycle {
       return toolErrorResult(toolCall, error)
     }
 
-    const executionInput = toolCall.toolName === "bash" ? normalizeBashModelInput(toolCall.input) : toolCall.input
-    const parsed = tool.inputSchema.safeParse(executionInput)
+    const parsed = tool.inputSchema.safeParse(toolCall.input)
     if (!parsed.success) {
       const error = new SocratesError("invalid_tool_input", "Tool input did not match the schema", {
         details: parsed.error.flatten(),
@@ -447,67 +444,4 @@ export class SocratesTurnLifecycle {
     }
   }
 
-  private async executeDynamicMcpToolCall(
-    toolCall: NormalizedToolCall,
-    context: ToolRuntimeContext,
-    queue: AsyncEventQueue<ToolLifecycleEvent>,
-    startedAt: number,
-  ): Promise<ToolExecutionResult> {
-    try {
-      queue.push({
-        type: "tool.call.started",
-        toolCallId: toolCall.toolCallId,
-        providerToolCallId: toolCall.providerToolCallId,
-        toolName: toolCall.toolName,
-        category: "mcp",
-        displayName: toolCall.toolName,
-        argsPreview: previewJson(toolCall.input),
-        input: toolCall.input,
-        requiresApproval: false,
-        modelCallId: context.modelCallId,
-        stepIndex: context.stepIndex,
-      })
-      const output = await context.executors.mcp_dynamic?.(
-        { dynamicName: toolCall.toolName, input: toolCall.input },
-        {
-          ...context,
-          toolCallId: toolCall.toolCallId,
-          onOutput: (output) =>
-            queue.push({
-              type: "tool.call.output",
-              toolCallId: toolCall.toolCallId,
-              providerToolCallId: toolCall.providerToolCallId,
-              modelCallId: context.modelCallId,
-              stepIndex: context.stepIndex,
-              ...output,
-            }),
-        },
-      )
-      queue.push({
-        type: "tool.call.completed",
-        toolCallId: toolCall.toolCallId,
-        providerToolCallId: toolCall.providerToolCallId,
-        toolName: toolCall.toolName,
-        output,
-        summary: `${toolCall.toolName} completed.`,
-        resultPreview: output === undefined ? "" : previewJson(output),
-        durationMs: Date.now() - startedAt,
-        modelCallId: context.modelCallId,
-        stepIndex: context.stepIndex,
-      })
-      return { toolCallId: toolCall.toolCallId, providerToolCallId: toolCall.providerToolCallId, toolName: toolCall.toolName, ok: true, output }
-    } catch (error) {
-      const normalized = normalizeError(error)
-      queue.push({
-        type: "tool.call.failed",
-        toolCallId: toolCall.toolCallId,
-        providerToolCallId: toolCall.providerToolCallId,
-        toolName: toolCall.toolName,
-        error: normalized,
-        modelCallId: context.modelCallId,
-        stepIndex: context.stepIndex,
-      })
-      return toolErrorResult(toolCall, normalized)
-    }
-  }
 }

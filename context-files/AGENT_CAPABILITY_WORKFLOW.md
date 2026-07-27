@@ -58,6 +58,20 @@ Phase 1 of the agent-core rebuild establishes these concrete owners:
 
 The architecture check inventories the released Goal Router and Memory Router as explicit legacy removal debt. Do not migrate them into new definitions: remove them with the owning goal-resolution and deterministic-memory-selection cutovers.
 
+### Implemented Capability-Catalog Owners
+
+Phase 2 establishes these concrete owners and removes the replaced paths:
+
+- `packages/core/src/capabilities/CapabilityDefinition.ts` owns the immutable capability contract and inventory projection.
+- `packages/core/src/capabilities/CapabilityCatalog.ts` is the sole static capability inventory, role resolver, dynamic MCP registration boundary, typed-command inventory, and documentation metadata owner.
+- `packages/core/src/capabilities/providerProjection.ts` derives provider-facing JSON Schema once from each canonical runtime schema; adapters consume the supplied projection unchanged.
+- `packages/core/src/agent/agentDefinitions.ts` owns exact role capability ids; `AgentInstance` validates each definition's context stages and capability scope before dispatch.
+- `architecture/capabilities.generated.json`, `architecture/role-capability-matrix.generated.json`, `architecture/provider-tool-schemas.generated.json`, `architecture/capability-executor-tests.generated.json`, and `architecture/runtime-mcp-capabilities.generated.json` are reproducible evidence, not hand-edited authority.
+- `apps/server/src/memory/defaults/primary/tool_usage/` is generated from catalog descriptions and catalog-owned behavioral guidance. The generated Markdown is not a schema copy.
+- `pnpm generate:agent-architecture` writes these artifacts. `pnpm check:agent-architecture` verifies exact regeneration, ownership paths, role resolution, provider-schema shape, removed authority names, and the absence of ad hoc runtime tool attachment; CI runs the check.
+
+The former `packages/core/src/tools/registry.ts`, provider schema-copy module, provider tool-name schema branches, model-only input schemas, malformed-call normalizer, and direct dynamic-tool injection path are deleted. They must not be recreated under aliases.
+
 ## 3. Complete Capability Classification
 
 Before changing behavior, classify it as exactly one catalogued capability kind:
@@ -240,6 +254,8 @@ The refactor must produce these generated views from code-owned authority:
 - Tool usage Markdown.
 - Capability-to-executor and capability-to-test map.
 - Dynamic MCP child inventory at runtime.
+
+The committed Phase 2 views are the five `architecture/*capabilit*.generated.json`/matrix/schema artifacts named above plus `architecture/agent-definitions.generated.json` and generated tool guides. Runtime MCP children also appear through `CapabilityCatalog.runtimeInventory`; `architecture/runtime-mcp-capabilities.generated.json` records that dynamic registration contract and forbids direct fallback execution.
 
 Generated artifacts must contain a source marker and must be reproducible. CI fails if regeneration changes the worktree.
 

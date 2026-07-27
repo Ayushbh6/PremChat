@@ -1,6 +1,5 @@
 import {
   mcpRegistryToolInputSchema,
-  mcpRegistryToolModelInputSchema,
   mcpRegistryToolOutputSchema,
   type McpRegistryToolInput,
   type McpRegistryToolOutput,
@@ -13,14 +12,13 @@ export const mcpRegistryTool: SocratesTool<McpRegistryToolInput, McpRegistryTool
   description:
     "Discover, validate, add, or delete Model Context Protocol servers. When a user asks for a helper, extension, server, integration, or custom capability, use list then describe with the canonical id. When the user explicitly asks to add a server and provides its trusted command/config, configure saves it disabled, checks the handshake/tools, and enables only on success. Declare required secret key names in secretBindings; never read, request, infer, or provide secret values yourself. Use source=workspace_env only when the user explicitly asked to reuse that exact key from a workspace .env file; otherwise use source=user_input so Socrates can collect it privately. Use delete only after an explicit user request. Do not invent packages, commands, URLs, or credentials.",
   inputSchema: mcpRegistryToolInputSchema,
-  modelInputSchema: mcpRegistryToolModelInputSchema,
   resultSchema: mcpRegistryToolOutputSchema,
   permission: "mutate",
   executeLane: "mutation",
   category: "mcp",
   decidePolicy: (input) => {
     if (input.operation !== "configure" && input.operation !== "delete") return { type: "auto" }
-    const id = input.server?.id ?? input.id ?? "MCP server"
+    const id = input.operation === "configure" ? input.server.id : input.id
     return {
       type: "approval_required",
       request: {

@@ -1,4 +1,4 @@
-import { normalizeBashModelInput, type RuntimeConfig } from "@socrates/contracts"
+import type { RuntimeConfig } from "@socrates/contracts"
 import type {
   ModelEvent,
   ModelMessage,
@@ -10,7 +10,7 @@ import type {
 } from "@socrates/providers"
 import { createId, SocratesError } from "@socrates/shared"
 import type { ContextCompressionRuntime } from "../context/contextCompression"
-import { ToolRegistry } from "../tools/registry"
+import type { CapabilitySet } from "../capabilities/CapabilityCatalog"
 import type { ToolExecutors } from "../tools/types"
 import type { AgentStructuredOutputSchema } from "./AgentDefinition"
 import { ContextPipeline, type AgentContextPipeline } from "./ContextPipeline"
@@ -23,7 +23,7 @@ type AgentRuntimeBaseInput = {
   system: string
   userContent?: ModelMessageContent
   messages?: ModelMessage[]
-  toolRegistry: ToolRegistry
+  capabilitySet: CapabilitySet
   toolExecutors: ToolExecutors | Record<string, never>
   maxToolCalls: number
   projectId: string
@@ -42,7 +42,7 @@ type AgentRuntimeBaseInput = {
     messages: ModelMessage[]
     estimatedTokens: number
     tokenCount: Awaited<ReturnType<ModelProvider["countTokens"]>>
-    tools: ReturnType<ToolRegistry["modelDefinitions"]>
+    tools: ReturnType<CapabilitySet["modelDefinitions"]>
     attempt: number
   }) => string | undefined
 }
@@ -69,7 +69,7 @@ export type AgentRuntimeModelStepInput = {
   runtimeConfig: RuntimeConfig
   system: string
   messages: ModelMessage[]
-  tools: ReturnType<ToolRegistry["modelDefinitions"]>
+  tools: ReturnType<CapabilitySet["modelDefinitions"]>
   sessionId?: string
   cacheKey?: string
   modelCallId?: string
@@ -166,7 +166,7 @@ const runToolLoop = async <TOutput>(
     const assistantParts: ModelMessagePart[] = []
     const toolCalls: NativeToolCall[] = []
     let answerText = ""
-    const tools = input.toolRegistry.modelDefinitions()
+    const tools = input.capabilitySet.modelDefinitions()
     const prepared = await contextPipeline.prepare({
       provider: input.provider,
       providerId: input.providerId,
@@ -216,7 +216,7 @@ const runToolLoop = async <TOutput>(
   async function* streamModel(
     runtimeInput: AgentRuntimeTextInput | AgentRuntimeStructuredInput<TOutput>,
     currentMessages: ModelMessage[],
-    tools: ReturnType<ToolRegistry["modelDefinitions"]>,
+    tools: ReturnType<CapabilitySet["modelDefinitions"]>,
   ): AsyncIterable<ModelEvent> {
     for await (const event of runtimeInput.provider.stream({
       providerId: runtimeInput.providerId,
@@ -395,7 +395,7 @@ const executeScopedTool = async <TOutput>(
   input: AgentRuntimeTextInput | AgentRuntimeStructuredInput<TOutput>,
   toolCall: NativeToolCall,
 ): Promise<{ toolCallId: string; toolName: string; output: unknown }> => {
-  const tool = input.toolRegistry.get(toolCall.toolName)
+  const tool = input.capabilitySet.get(toolCall.toolName)
   if (!tool) {
     return {
       toolCallId: toolCall.toolCallId,
@@ -403,8 +403,7 @@ const executeScopedTool = async <TOutput>(
       output: { error: { code: "tool_not_found", message: "Tool is not registered." } },
     }
   }
-  const executionInput = toolCall.toolName === "bash" ? normalizeBashModelInput(toolCall.input) : toolCall.input
-  const parsed = tool.inputSchema.safeParse(executionInput)
+  const parsed = tool.inputSchema.safeParse(toolCall.input)
   if (!parsed.success) {
     return {
       toolCallId: toolCall.toolCallId,

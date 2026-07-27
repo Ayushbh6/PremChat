@@ -21,18 +21,19 @@ import {
   type V2FlowContextMessage,
   type V2Goal,
 } from "../v2"
-import { createDefaultToolRegistry, createGoalRouterToolRegistry } from "../tools/registry"
+import { capabilityCatalog, legacyGoalRouterRoleManifest } from "../capabilities/CapabilityCatalog"
+import { socratesMainAgentDefinition } from "../agent/agentDefinitions"
 
 const flowId = "flow_1"
 
 describe("V2 Flow goal routing", () => {
-  it("uses one main Socrates tool registry without mutable goal authority", () => {
-    const mainTools = createDefaultToolRegistry().list().map((tool) => tool.name)
+  it("uses one main Socrates capability catalog without mutable goal authority", () => {
+    const mainTools = capabilityCatalog.resolve(socratesMainAgentDefinition.roleManifest).list().map((capability) => capability.tool.name)
     expect(mainTools).toContain("handover_to_frontier")
     expect(mainTools).toContain("trace_retrieve")
     expect(mainTools).not.toContain("focus_ledger")
     expect(mainTools).not.toContain("turn_evidence")
-    expect(createGoalRouterToolRegistry().list().map((tool) => tool.name)).toEqual(["goal_search"])
+    expect(capabilityCatalog.resolve(legacyGoalRouterRoleManifest).list().map((capability) => capability.tool.name)).toEqual(["goal_search"])
   })
 
   it("bounds a 30-goal Flow to five cards and honors retrieved goal ids without deciding semantically", () => {

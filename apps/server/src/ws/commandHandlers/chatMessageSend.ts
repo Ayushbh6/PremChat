@@ -293,8 +293,8 @@ export const handleChatMessageSend = async (
         exposeMcpServer: (serverId) => exposedMcpServers.add(serverId),
         ...(activeGoal ? { goalId: activeGoal.goalId } : {}),
       }),
-      dynamicTools: () =>
-        mcpRuntime ? [...exposedMcpServers].flatMap((serverId) => mcpRuntime.getDynamicToolDefinitions(serverId, { workspacePath })) : [],
+      runtimeCapabilities: () =>
+        mcpRuntime ? [...exposedMcpServers].flatMap((serverId) => mcpRuntime.getDynamicCapabilityDefinitions(serverId, { workspacePath })) : [],
       contextCompression: createClassicContextCompressionRuntime(store, projectId, conversationId, created.sessionId, created.turnId),
       maxParallelToolCalls: 5,
       maxToolCallsPerTurn: 80,

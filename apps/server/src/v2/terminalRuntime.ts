@@ -150,7 +150,7 @@ export class V2TerminalRuntime {
     if (this.lifecycle !== "open" || context.abortSignal?.aborted) {
       throw new SocratesError("terminal_runtime_closing", "Terminal runtime is shutting down.", { recoverable: true })
     }
-    if (input.argv) return runWorkspaceArgv(input, context)
+    if ("argv" in input) return runWorkspaceArgv(input, context)
     const operation = input.operation ?? "run"
     if (operation === "list") return this.list(scope, input.limit, input.charLimit)
     if (operation === "status") return this.status(input, scope, context)

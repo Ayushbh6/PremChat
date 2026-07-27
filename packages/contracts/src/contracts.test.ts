@@ -134,15 +134,11 @@ import {
   agentAnswerDeltaEventSchema,
   agentThinkingDeltaEventSchema,
   bashToolInputSchema,
-  bashToolModelInputSchema,
-  normalizeBashModelInput,
   waitToolInputSchema,
   currentTimeToolInputSchema,
   currentTimeToolOutputSchema,
   applyPatchToolInputSchema,
-  applyPatchToolModelInputSchema,
   editToolInputSchema,
-  editToolModelInputSchema,
   editFilesToolInputSchema,
   editFilesToolOutputSchema,
   listProjectResourcesToolInputSchema,
@@ -155,10 +151,8 @@ import {
   memorySearchOutputSchema,
   baseToolNameSchema,
   mcpRegistryToolInputSchema,
-  mcpRegistryToolModelInputSchema,
   mcpRegistryToolOutputSchema,
   normalizedToolCallSchema,
-  skillsToolModelInputSchema,
   skillsToolInputSchema,
   skillsToolOutputSchema,
   skillWriteToolInputSchema,
@@ -166,12 +160,10 @@ import {
   toolDocsToolInputSchema,
   toolDocsToolOutputSchema,
   projectDocsToolInputSchema,
-  projectDocsToolModelInputSchema,
   projectDocsToolOutputSchema,
   projectsToolInputSchema,
   projectsToolOutputSchema,
   repoDocsToolInputSchema,
-  repoDocsToolModelInputSchema,
   repoDocsToolOutputSchema,
   readToolInputSchema,
   readToolOutputSchema,
@@ -184,7 +176,6 @@ import {
   userProfileToolOutputSchema,
   toolExecutionResultSchema,
   traceRetrieveToolInputSchema,
-  traceRetrieveToolModelInputSchema,
   traceRetrieveToolOutputSchema,
   traceRetrieveGlobalToolInputSchema,
   traceRetrieveGlobalToolOutputSchema,
@@ -1490,16 +1481,9 @@ describe("tool contracts", () => {
     expect(editToolInputSchema.safeParse({ path: "README.md", oldString: "old", newString: "new", overwrite: true }).success).toBe(false)
     expect(editToolInputSchema.safeParse({ path: "README.md", oldString: "old", newString: "new", replaceAll: true }).success).toBe(true)
     expect(editToolInputSchema.safeParse({ path: "README.md" }).success).toBe(false)
-    expect(editToolModelInputSchema.safeParse({ path: "README.md", oldString: "old", newString: "new" }).success).toBe(true)
-    expect(editToolModelInputSchema.safeParse({ path: "README.md", content: "new" }).success).toBe(true)
-    expect(editToolModelInputSchema.safeParse({ path: "README.md", content: "new", overwrite: true }).success).toBe(true)
-    expect(editToolModelInputSchema.safeParse({ path: "README.md", oldString: "old", newString: "new", overwrite: true }).success).toBe(false)
-    expect(editToolModelInputSchema.safeParse({ path: "README.md", content: "new", oldString: "old", newString: "new" }).success).toBe(false)
-    expect(applyPatchToolInputSchema.safeParse({ patch: "--- a/README.md\n+++ b/README.md\n" }).success).toBe(true)
+    expect(applyPatchToolInputSchema.safeParse({ patch: "--- a/README.md\n+++ b/README.md\n" }).success).toBe(false)
     expect(applyPatchToolInputSchema.safeParse({ patchText: "*** Begin Patch\n*** End Patch" }).success).toBe(true)
     expect(applyPatchToolInputSchema.safeParse({ patch: "one", patchText: "two" }).success).toBe(false)
-    expect(applyPatchToolModelInputSchema.safeParse({ patchText: "*** Begin Patch\n*** End Patch" }).success).toBe(true)
-    expect(applyPatchToolModelInputSchema.safeParse({ patch: "--- a/README.md\n+++ b/README.md\n" }).success).toBe(false)
     expect(
       readToolOutputSchema.safeParse({
         path: "README.md",
@@ -1558,18 +1542,6 @@ describe("tool contracts", () => {
     expect(bashToolInputSchema.safeParse({ operation: "list", charLimit: 16_001 }).success).toBe(false)
     expect(bashToolInputSchema.safeParse({ operation: "status", name: "dev-server" }).success).toBe(true)
     expect(bashToolInputSchema.safeParse({ operation: "output", target: "frontend" }).success).toBe(true)
-    expect(bashToolModelInputSchema.safeParse({ operation: "stop" }).success).toBe(true)
-    expect(bashToolModelInputSchema.safeParse({ argv: ["pwd"] }).success).toBe(true)
-    expect(bashToolModelInputSchema.safeParse({ operation: "start", argv: ["pwd"] }).success).toBe(false)
-    expect(bashToolModelInputSchema.safeParse({ operation: "stop", name: "dev-server" }).success).toBe(true)
-    expect(bashToolModelInputSchema.safeParse({ operation: "stop", terminalId: "term_1" }).success).toBe(false)
-    expect(bashToolModelInputSchema.safeParse({ operation: "output", processId: "proc_1" }).success).toBe(false)
-    expect(bashToolModelInputSchema.safeParse({ operation: "output", outputSequence: 0 }).success).toBe(false)
-    expect(normalizeBashModelInput({ command: "pnpm run build", argv: ["pnpm", "run", "build"] })).toEqual({ command: "pnpm run build" })
-    expect(normalizeBashModelInput({ argv: ["pwd"] })).toEqual({ argv: ["pwd"] })
-    expect(normalizeBashModelInput({ operation: "output", command: "placeholder", name: "placeholder", target: "ai-dpa-vite" })).toEqual({ operation: "output", target: "ai-dpa-vite" })
-    expect(normalizeBashModelInput({ operation: "output", name: "placeholder" })).toEqual({ operation: "output" })
-    expect(normalizeBashModelInput({ operation: "run", command: "pnpm run build", name: "x", target: "x" })).toEqual({ operation: "run", command: "pnpm run build" })
     expect(waitToolInputSchema.safeParse({ terminalNames: ["tests"], wakeOn: ["completed", "failed"], reason: "Waiting for integration test results" }).success).toBe(true)
     expect(waitToolInputSchema.safeParse({ terminalNames: ["tests"], wakeOn: ["completed"], reason: "one two three four five six seven eight" }).success).toBe(false)
     expect(waitToolInputSchema.safeParse({ terminalNames: ["tests"], wakeOn: ["completed"], reason: "x".repeat(65) }).success).toBe(false)
@@ -1602,52 +1574,6 @@ describe("tool contracts", () => {
     expect(
       traceRetrieveToolInputSchema.safeParse({ operation: "inspect", handle: "tdoc_1", startTurnNo: 2, turnLimit: 5 }).success,
     ).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ operation: "inspect", resultNumber: 1 }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ operation: "inspect", query: "README", role: "assistant" }).success).toBe(true)
-    expect(
-      traceRetrieveToolModelInputSchema.safeParse({ query: "previous screenshots", command: "", paths: [], include: [], createdAfter: "" }).success,
-    ).toBe(true)
-    expect(
-      traceRetrieveToolModelInputSchema.safeParse({ query: "previous screenshots", messageId: "msg_1", conversationId: "conv_1", mode: "exact" })
-        .success,
-    ).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ messageId: "msg_1" }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ mode: "audit", toolId: "tcall_1" }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ toolId: "tcall_1" }).success).toBe(false)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "exact", conversationTitle: "apply patch fix", conversationLimit: 10 }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "exact", scope: "all_projects", projectTitle: ["Socrates"], conversationId: ["conv_1", "conv_2"] }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "exact", conversationId: "conv_1" }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ mode: "exact", conversationLimit: 3, conversationOffset: 1, perConversationLimit: 5, updatedAfter: timestamp, updatedBefore: timestamp }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "exact", turnNo: 2 }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ turnNo: 2, role: "assistant", conversationTitle: "apply patch fix" }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "exact", role: "assistant", entryType: "assistant_response", hasAttachment: true, createdAfter: timestamp, createdBefore: timestamp }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "semantic" }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "semantic", scope: "project", conversationTitle: "Trace source", conversationId: "conv_1", role: "user", entryType: "user_query", hasAttachment: false, createdAfter: timestamp, createdBefore: timestamp, limit: 10 }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "semantic", conversationLimit: 50 }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "semantic", turnNo: 2 }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "semantic", charLimit: 1000 }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "combined" }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "combined", scope: "project", limit: 10 }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "combined", conversationLimit: 50 }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "exact", include: ["messages"] }).success).toBe(false)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "combined", paths: ["README.md"] }).success).toBe(false)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "semantic", command: "npm test" }).success).toBe(false)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "audit", include: ["tool_calls"] }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ query: "README", mode: "audit", paths: ["README.md"], command: "npm test" }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ operation: "inspect", handle: "tdoc_1" }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ operation: "inspect", messageId: "msg_1" }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ operation: "inspect", messageId: "msg_1", command: "npm test" }).success).toBe(false)
-    expect(
-      traceRetrieveToolModelInputSchema.safeParse({
-        operation: "inspect",
-        messageId: "msg_1",
-        scope: "project",
-        mode: "exact",
-        conversationLimit: 10,
-      }).success,
-    ).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ operation: "inspect", conversationId: "conv_1", startTurnNo: 2 }).success).toBe(true)
-    expect(traceRetrieveToolModelInputSchema.safeParse({ operation: "inspect", startTurnNo: 2 }).success).toBe(false)
     expect(traceRetrieveGlobalToolInputSchema.safeParse({ query: "slow mode", mode: "lexical", scope: "all_projects" }).success).toBe(true)
     expect(traceRetrieveGlobalToolInputSchema.safeParse({ query: "how does slow mode work", mode: "semantic", projectTitle: ["Socrates", "AI DPA"] }).success).toBe(true)
     expect(traceRetrieveGlobalToolInputSchema.safeParse({ query: "slow mode", mode: "combined", projectId: "project_1", conversationId: "conv_1" }).success).toBe(true)
@@ -1671,14 +1597,13 @@ describe("tool contracts", () => {
       }],
       totalMatches: 1,
     }).success).toBe(true)
-    expect(mcpRegistryToolModelInputSchema.safeParse({ operation: "list", n: 15 }).success).toBe(true)
-    expect(mcpRegistryToolModelInputSchema.safeParse({ operation: "list", id: "playwright" }).success).toBe(false)
-    expect(mcpRegistryToolInputSchema.safeParse({ operation: "list", id: "playwright" }).success).toBe(true)
-    expect(mcpRegistryToolModelInputSchema.safeParse({ operation: "describe", id: "playwright" }).success).toBe(true)
-    expect(mcpRegistryToolModelInputSchema.safeParse({ operation: "check", serverName: "playwright" }).success).toBe(false)
-    expect(mcpRegistryToolModelInputSchema.safeParse({ operation: "check", id: "playwright" }).success).toBe(true)
-    expect(mcpRegistryToolModelInputSchema.safeParse({ operation: "configure", scope: "project", server: { id: "time", command: "uvx", args: ["mcp-server-time"] } }).success).toBe(true)
-    expect(mcpRegistryToolModelInputSchema.safeParse({
+    expect(mcpRegistryToolInputSchema.safeParse({ operation: "list", n: 15 }).success).toBe(true)
+    expect(mcpRegistryToolInputSchema.safeParse({ operation: "list", id: "playwright" }).success).toBe(false)
+    expect(mcpRegistryToolInputSchema.safeParse({ operation: "describe", id: "playwright" }).success).toBe(true)
+    expect(mcpRegistryToolInputSchema.safeParse({ operation: "check", serverName: "playwright" }).success).toBe(false)
+    expect(mcpRegistryToolInputSchema.safeParse({ operation: "check", id: "playwright" }).success).toBe(true)
+    expect(mcpRegistryToolInputSchema.safeParse({ operation: "configure", scope: "project", server: { id: "time", command: "uvx", args: ["mcp-server-time"] } }).success).toBe(true)
+    expect(mcpRegistryToolInputSchema.safeParse({
       operation: "configure",
       scope: "project",
       server: {
@@ -1690,14 +1615,14 @@ describe("tool contracts", () => {
         ],
       },
     }).success).toBe(true)
-    expect(mcpRegistryToolModelInputSchema.safeParse({
+    expect(mcpRegistryToolInputSchema.safeParse({
       operation: "configure",
       scope: "project",
       server: { id: "search", command: "trusted-search-mcp", secretEnv: { API_KEY: "plaintext-must-be-rejected" } },
     }).success).toBe(false)
-    expect(mcpRegistryToolModelInputSchema.safeParse({ operation: "configure", server: { id: "time" } }).success).toBe(false)
-    expect(mcpRegistryToolModelInputSchema.safeParse({ operation: "delete", scope: "global", id: "time" }).success).toBe(true)
-    expect(mcpRegistryToolModelInputSchema.safeParse({ operation: "describe" }).success).toBe(false)
+    expect(mcpRegistryToolInputSchema.safeParse({ operation: "configure", server: { id: "time" } }).success).toBe(false)
+    expect(mcpRegistryToolInputSchema.safeParse({ operation: "delete", scope: "global", id: "time" }).success).toBe(true)
+    expect(mcpRegistryToolInputSchema.safeParse({ operation: "describe" }).success).toBe(false)
     expect(
       mcpRegistryToolOutputSchema.safeParse({
         operation: "list",
@@ -1790,24 +1715,10 @@ describe("tool contracts", () => {
       }).success,
     ).toBe(true)
     expect(skillsToolInputSchema.safeParse({ operation: "list", scope: "project" }).success).toBe(true)
-    expect(skillsToolInputSchema.safeParse({ operation: "list", id: "memory-review" }).success).toBe(true)
+    expect(skillsToolInputSchema.safeParse({ operation: "list", id: "memory-review" }).success).toBe(false)
     expect(skillsToolInputSchema.safeParse({ operation: "search", query: "memory" }).success).toBe(true)
     expect(skillsToolInputSchema.safeParse({ operation: "read", name: "memory-review", path: "SKILL.md" }).success).toBe(true)
     expect(skillsToolInputSchema.safeParse({ operation: "read" }).success).toBe(false)
-    expect(skillsToolModelInputSchema.safeParse({ operation: "list", n: 15 }).success).toBe(true)
-    expect(skillsToolModelInputSchema.safeParse({ operation: "list", id: "memory-review" }).success).toBe(false)
-    expect(skillsToolModelInputSchema.safeParse({ operation: "describe", id: "memory-review" }).success).toBe(true)
-    expect(skillsToolModelInputSchema.safeParse({ operation: "read", id: "global:memory-review", path: "references/checklist.md" }).success).toBe(true)
-    expect(skillsToolModelInputSchema.safeParse({ operation: "read", id: "global:memory-review" }).success).toBe(false)
-    expect(skillsToolModelInputSchema.safeParse({ operation: "preview_import", url: "https://example.com/memory-review.zip" }).success).toBe(true)
-    expect(skillsToolModelInputSchema.safeParse({ operation: "preview_import", attachmentPath: ".socrates/attachments/memory-review.zip" }).success).toBe(true)
-    expect(skillsToolModelInputSchema.safeParse({ operation: "preview_import", url: "https://example.com/memory-review.zip", attachmentPath: ".socrates/attachments/memory-review.zip" }).success).toBe(false)
-    expect(skillsToolModelInputSchema.safeParse({ operation: "preview_import", url: "http://example.com/memory-review.zip" }).success).toBe(false)
-    expect(skillsToolModelInputSchema.safeParse({ operation: "preview_import", scope: "builtin", url: "https://example.com/memory-review.zip" }).success).toBe(false)
-    expect(skillsToolModelInputSchema.safeParse({ operation: "commit_import", scope: "global", previewId: `skillimp_${"a".repeat(32)}` }).success).toBe(true)
-    expect(skillsToolModelInputSchema.safeParse({ operation: "commit_import", previewId: "skillimp_short" }).success).toBe(false)
-    expect(skillsToolModelInputSchema.safeParse({ operation: "search", query: "memory" }).success).toBe(false)
-    expect(skillsToolModelInputSchema.safeParse({ operation: "describe" }).success).toBe(false)
     expect(skillsToolOutputSchema.safeParse({ operation: "list", skills: [skill], totalMatches: 1, truncation: { truncated: false, charLimit: 20_000, returnedLength: 200 } }).success).toBe(true)
     expect(
       skillsToolOutputSchema.safeParse({
@@ -1943,12 +1854,6 @@ describe("tool contracts", () => {
     expect(projectDocsToolInputSchema.safeParse({ operation: "read_section", area: "memory", sectionId: "handoff" }).success).toBe(true)
     expect(projectDocsToolInputSchema.safeParse({ operation: "patch_section", area: "memory", sectionId: "handoff", oldText: "old", newText: "new" }).success).toBe(true)
     expect(projectDocsToolInputSchema.safeParse({ operation: "patch_section", area: "memory", oldText: "old", newText: "new" }).success).toBe(false)
-    expect(projectDocsToolModelInputSchema.safeParse({ operation: "read_index", area: "notes" }).success).toBe(true)
-    expect(projectDocsToolModelInputSchema.safeParse({ operation: "edit", area: "notes", editMode: "append", text: "- note" }).success).toBe(true)
-    expect(projectDocsToolModelInputSchema.safeParse({ operation: "edit", area: "memory", editMode: "replace", oldText: "old", newText: "new" }).success).toBe(true)
-    expect(projectDocsToolModelInputSchema.safeParse({ operation: "patch_section", area: "memory", sectionId: "handoff", oldText: "old", newText: "new" }).success).toBe(true)
-    expect(projectDocsToolModelInputSchema.safeParse({ operation: "patch_section", area: "memory", sectionId: "handoff", text: "new" }).success).toBe(false)
-    expect(projectDocsToolModelInputSchema.safeParse({ operation: "edit", area: "notes", editMode: "append", oldText: "old", newText: "new" }).success).toBe(false)
     expect(currentTimeToolInputSchema.safeParse({}).success).toBe(true)
     expect(currentTimeToolOutputSchema.safeParse({ currentDate: "2026-06-19", currentDateTime: timestamp, timeZone: "Europe/Vienna", source: "system" }).success).toBe(true)
     expect(editFilesToolInputSchema.safeParse({ target: "user_profile", editMode: "replace", oldText: "old", newText: "new" }).success).toBe(true)
@@ -1986,11 +1891,6 @@ describe("tool contracts", () => {
     expect(repoDocsToolInputSchema.safeParse({ operation: "patch_section", sectionId: "hard_rules", oldText: "old", newText: "new" }).success).toBe(false)
     expect(repoDocsToolInputSchema.safeParse({ operation: "edit", oldText: "old", newText: "new" }).success).toBe(false)
     expect(repoDocsToolInputSchema.safeParse({ operation: "read", path: "../README.md" }).success).toBe(false)
-    expect(repoDocsToolModelInputSchema.safeParse({ operation: "read_index", path: "REPO_RULES.md" }).success).toBe(true)
-    expect(repoDocsToolModelInputSchema.safeParse({ operation: "edit", path: "CORE_IDEA.md", oldText: "old", newText: "new" }).success).toBe(true)
-    expect(repoDocsToolModelInputSchema.safeParse({ operation: "patch_section", path: "REPO_RULES.md", sectionId: "hard_rules", oldText: "old", newText: "new" }).success).toBe(true)
-    expect(repoDocsToolModelInputSchema.safeParse({ operation: "patch_section", path: "REPO_RULES.md", sectionId: "hard_rules", text: "new" }).success).toBe(false)
-    expect(repoDocsToolModelInputSchema.safeParse({ operation: "read_section", sectionId: "hard_rules" }).success).toBe(false)
     expect(
       repoDocsToolOutputSchema.safeParse({
         operation: "search",

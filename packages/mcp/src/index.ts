@@ -5,7 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import { z } from "zod"
 import { parse as parseToml } from "smol-toml"
-import type { McpRegistryToolInput, McpRegistryToolOutput, McpServerScope, ModelToolDefinition } from "@socrates/contracts"
+import type { DynamicToolCapabilityRegistration, McpRegistryToolInput, McpRegistryToolOutput, McpServerScope } from "@socrates/contracts"
 import { SocratesError } from "@socrates/shared"
 
 const mcpServerConfigSchema = z
@@ -59,6 +59,9 @@ type McpTool = {
   description?: string
   inputSchema?: unknown
 }
+
+type McpRegistryLookup = Extract<McpRegistryToolInput, { operation: "describe" | "check" }>
+type McpRegistryDescription = Extract<McpRegistryToolInput, { operation: "describe" }>
 
 type McpStatusCache = {
   status: "available" | "failed"
@@ -170,8 +173,8 @@ export class McpRuntime {
           ...(result.warnings ? { warnings: result.warnings } : {}),
         }))
       case "configure":
-        if (input.server) {
-          const scope = input.scope ?? "project"
+        {
+          const scope = input.scope
           const server = this.upsertManagedServer(
             scope,
             {
@@ -200,25 +203,22 @@ export class McpRuntime {
             ...(checked.warnings ? { warnings: checked.warnings } : {}),
           }))
         }
-        return Promise.resolve(this.configure(input.preset ?? input.id ?? input.serverId ?? input.name ?? input.serverName ?? "playwright"))
       case "delete": {
-        const scope = input.scope ?? "project"
-        const id = input.id ?? input.serverId
-        if (!id) throw new SocratesError("mcp_server_id_required", "Deleting an MCP server requires its exact id.", { recoverable: true })
-        this.deleteManagedServer(scope, id, options)
+        const scope = input.scope
+        this.deleteManagedServer(scope, input.id, options)
         const paths = this.pathsForScope(scope, options.workspacePath)
         return Promise.resolve({
           operation: "delete",
           configPath: paths.configPath,
           envPath: paths.envPath,
           configured: false,
-          summary: `Deleted ${scope} MCP server ${id}.`,
+          summary: `Deleted ${scope} MCP server ${input.id}.`,
         })
       }
     }
   }
 
-  getDynamicToolDefinitions(serverId = "playwright", options: { workspacePath?: string | undefined } = {}): ModelToolDefinition[] {
+  getDynamicCapabilityDefinitions(serverId = "playwright", options: { workspacePath?: string | undefined } = {}): DynamicToolCapabilityRegistration[] {
     this.ensureDefaults()
     const resolved = this.resolveServer(serverId, options)
     if (!resolved?.config.enabled) {
@@ -226,9 +226,19 @@ export class McpRuntime {
     }
     const cached = this.readCachedTools(resolved.id, resolved.paths)
     return cached.map((tool) => ({
+      id: `dynamic.mcp.${resolved.id}.${tool.name}`,
+      kind: "dynamic_tool" as const,
       name: dynamicToolName(resolved.id, tool.name),
       description: tool.description ?? `Run the ${tool.name} tool from the ${resolved.id} MCP server.`,
       inputSchema: jsonSchemaToZod(tool.inputSchema),
+      resultSchema: z.unknown(),
+      providerInputSchema: providerMcpInputSchema(tool.inputSchema),
+      source: {
+        type: "mcp" as const,
+        serverId: resolved.id,
+        childName: tool.name,
+        scope: resolved.scope,
+      },
     }))
   }
 
@@ -411,14 +421,14 @@ export class McpRuntime {
     }
   }
 
-  private async describe(input: McpRegistryToolInput, options: { workspacePath?: string | undefined }): Promise<McpRegistryToolOutput> {
+  private async describe(input: McpRegistryDescription, options: { workspacePath?: string | undefined }): Promise<McpRegistryToolOutput> {
     const conflict = this.describeHandleConflict(input, options)
     if (conflict) {
       return conflict
     }
     const resolved = this.resolveRegistryServer(input, options)
     if (!resolved) {
-      const handles = [input.id, input.serverId, input.name, input.serverName, input.preset].filter((item): item is string => Boolean(item?.trim()))
+      const handles = [input.id, input.name].filter((item): item is string => Boolean(item?.trim()))
       const servers = this.scopedServers(options).slice(0, 15).map((server) => this.serverSummaryWithCachedTools(server))
       return {
         operation: "describe",
@@ -507,39 +517,6 @@ export class McpRuntime {
         usageHint: "If needed, call mcp_registry list again and retry describe with the exact canonical id.",
         warnings: [message],
       }
-    }
-  }
-
-  private configure(preset: string): McpRegistryToolOutput {
-    if (preset !== "playwright") {
-      return {
-        operation: "configure",
-        configPath: this.configPath,
-        envPath: this.envPath,
-        configured: false,
-        summary: `${preset} does not have a built-in no-secret preset yet.`,
-        warnings: [`Add custom MCP config manually to ${this.configPath} and secrets to ${this.envPath}.`],
-      }
-    }
-    const paths = this.globalPaths()
-    const config = this.readConfig(paths)
-    const next: McpConfig = {
-      ...config,
-      servers: {
-        ...(config.servers ?? {}),
-        playwright: defaultPlaywrightConfig(),
-      },
-    }
-    this.writeConfig(next, paths)
-    this.closeServerClients("playwright")
-    this.ensureRegistryDocs()
-    return {
-      operation: "configure",
-      configPath: this.configPath,
-      envPath: this.envPath,
-      configured: true,
-      server: this.serverSummary("playwright", next.servers?.playwright as McpServerConfig, "unknown", 0, "global", paths),
-      summary: `Configured Playwright MCP at ${this.configPath}. It does not require secrets.`,
     }
   }
 
@@ -812,21 +789,18 @@ export class McpRuntime {
     return servers
   }
 
-  private registryServerLookup(input: McpRegistryToolInput, options: { scope?: McpServerScope | undefined; workspacePath?: string | undefined }): string {
+  private registryServerLookup(input: McpRegistryLookup, options: { scope?: McpServerScope | undefined; workspacePath?: string | undefined }): string {
     const resolved = this.resolveRegistryServer(input, options)
     if (resolved) {
       return resolved.id
     }
-    return input.id?.trim() ?? input.serverId?.trim() ?? input.name?.trim() ?? input.serverName?.trim() ?? input.preset ?? "playwright"
+    return input.id?.trim() ?? ("name" in input ? input.name?.trim() : undefined) ?? "playwright"
   }
 
-  private resolveRegistryServer(input: McpRegistryToolInput, options: { scope?: McpServerScope | undefined; workspacePath?: string | undefined }): ScopedServer | undefined {
+  private resolveRegistryServer(input: McpRegistryLookup, options: { scope?: McpServerScope | undefined; workspacePath?: string | undefined }): ScopedServer | undefined {
     const handles: Array<{ kind: "id" | "name"; value: string | undefined }> = [
       { kind: "id", value: input.id },
-      { kind: "id", value: input.serverId },
-      { kind: "name", value: input.name },
-      { kind: "name", value: input.serverName },
-      { kind: "id", value: input.preset },
+      { kind: "name", value: "name" in input ? input.name : undefined },
     ]
     for (const handle of handles) {
       const value = handle.value?.trim()
@@ -838,11 +812,11 @@ export class McpRuntime {
   }
 
   private describeHandleConflict(
-    input: McpRegistryToolInput,
+    input: McpRegistryDescription,
     options: { scope?: McpServerScope | undefined; workspacePath?: string | undefined },
   ): McpRegistryToolOutput | undefined {
-    const idHandle = input.id?.trim() || input.serverId?.trim() || input.preset
-    const nameHandle = input.name?.trim() || input.serverName?.trim()
+    const idHandle = input.id?.trim()
+    const nameHandle = input.name?.trim()
     if (!idHandle || !nameHandle) {
       return undefined
     }
@@ -1102,6 +1076,13 @@ const jsonSchemaToZod = (schema: unknown): z.ZodTypeAny => {
     shape[key] = required.has(key) ? field : field.optional()
   }
   return z.object(shape).passthrough()
+}
+
+const providerMcpInputSchema = (schema: unknown): unknown => {
+  const record = asRecord(schema)
+  return record?.type === "object"
+    ? record
+    : { type: "object", properties: {}, additionalProperties: true }
 }
 
 const zodForJsonSchema = (schema: unknown): z.ZodTypeAny => {

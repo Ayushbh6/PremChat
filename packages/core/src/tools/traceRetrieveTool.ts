@@ -14,7 +14,6 @@ export const traceRetrieveTool: SocratesTool<typeof traceRetrieveMainToolInputSc
   description:
     "Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Results expose numbered human context; use inspect with resultNumber for the full Q&A parent. Internal conversation, Flow, goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.",
   inputSchema: traceRetrieveMainToolInputSchema,
-  modelInputSchema: traceRetrieveMainToolInputSchema,
   resultSchema: traceRetrieveMainToolOutputSchema,
   permission: "read",
   executeLane: "parallel",
@@ -33,7 +32,6 @@ export const globalTraceRetrieveTool: SocratesTool<typeof traceRetrieveGlobalToo
   description:
     "Recall any prior visible conversation across Socrates projects. This uses the same retrieval behavior as the main agent: lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Search all projects by default or select projects by id/title. Results include project titles and numbered human context; use inspect with resultNumber, turnId, or project/conversation/turn coordinates for the full Q&A parent.",
   inputSchema: traceRetrieveGlobalToolInputSchema,
-  modelInputSchema: traceRetrieveGlobalToolInputSchema,
   resultSchema: traceRetrieveGlobalToolOutputSchema,
   permission: "read",
   executeLane: "parallel",

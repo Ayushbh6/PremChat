@@ -7,7 +7,7 @@ import type { ProviderAuthMode, ProviderId, RuntimeConfig, ThinkingEffort, Trace
 import {
   CompressorAgent,
   SocratesAgent,
-  ToolRegistry,
+  capabilityCatalog,
   buildSocratesSystemPrompt,
   buildSocratesCompressorUserContent,
   defineAgent,
@@ -27,9 +27,6 @@ import {
 } from "@socrates/providers"
 import { createId } from "@socrates/shared"
 import { ProviderCredentialStore } from "../apps/server/src/services/providerCredentials"
-import { traceRetrieveTool } from "../packages/core/src/tools/traceRetrieveTool"
-import { readTool } from "../packages/core/src/tools/readTool"
-import { projectDocsTool } from "../packages/core/src/tools/projectDocsTool"
 import type { ToolExecutors } from "../packages/core/src/tools/types"
 
 type GoldenTurn = { turnNo: number; turnId: string; user: string; assistant: string; source: "codex_session" | "synthetic_canary" }
@@ -47,13 +44,22 @@ type DownstreamSeed = { finalSummary: string; rounds: unknown[] }
 
 const memoryHarnessAgentDefinition = defineAgent<{ system: string }, string>({
   id: "memory-harness-evaluation",
-  role: "memory_harness_evaluation",
+  role: "socrates",
   modelRole: "evaluation",
   prompt: { id: "memory-harness-evaluation-v1", buildSystem: (context) => context.system },
   completion: { mode: "text" },
   roleManifest: {
-    id: "memory-harness-evaluation-tools-v1",
-    modelTools: ["trace_retrieve", "read", "project_docs"],
+    id: "memory-harness-evaluation-capabilities-v2",
+    role: "socrates",
+    capabilityIds: [
+      "tool.trace_retrieve.main",
+      "tool.read",
+      "tool.project_docs",
+      "context.stable_prompt",
+      "context.exact_messages",
+      "context.tool_definitions",
+      "context.user_approved_compaction",
+    ],
   },
   contextProfile: {
     id: "memory-harness-evaluation-context-v1",
@@ -188,9 +194,8 @@ async function runConfiguration(baseProvider: ModelProvider, evalConfig: EvalCon
 }
 
 async function runDownstreamHarness(provider: ModelProvider, evalConfig: EvalConfig, summary: string, golden: GoldenDataset) {
-  const registry = new ToolRegistry([traceRetrieveTool, readTool, projectDocsTool])
   const promptContext = { system: buildSocratesSystemPrompt() }
-  const agent = new SocratesAgent(provider, registry, memoryHarnessAgentDefinition, promptContext)
+  const agent = new SocratesAgent(provider, capabilityCatalog, memoryHarnessAgentDefinition, promptContext)
   let answer = ""
   const tools: string[] = []
   const attachmentPath = ".socrates/attachments/pasted-text-eval.txt"
@@ -287,7 +292,7 @@ async function runDownstreamHarness(provider: ModelProvider, evalConfig: EvalCon
   }
   let freshAnswer = ""
   const freshTools: string[] = []
-  const freshAgent = new SocratesAgent(provider, registry, memoryHarnessAgentDefinition, promptContext)
+  const freshAgent = new SocratesAgent(provider, capabilityCatalog, memoryHarnessAgentDefinition, promptContext)
   for await (const event of freshAgent.streamTurn({
     providerId: evalConfig.model.providerId,
     modelId: evalConfig.model.modelId,

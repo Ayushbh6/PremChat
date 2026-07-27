@@ -56,15 +56,13 @@ const editWorkspaceLocked = async (
 
   const relativePath = toWorkspaceRelativePath(context.workspacePath, absolutePath)
   const before = readFileSnapshot(absolutePath, { includeText: true })
-  const isReplace = input.oldString !== undefined
-
-  if (isReplace) {
+  if ("oldString" in input) {
     if (!before.exists) {
       throw new SocratesError("file_not_found", "Replace edit target does not exist", { details: { path: input.path } })
     }
     validateFreshness(context, absolutePath, before.contentHash)
-    const oldString = input.oldString ?? ""
-    const newString = input.newString ?? ""
+    const oldString = input.oldString
+    const newString = input.newString
     const occurrences = before.content?.split(oldString).length ?? 0
     const actualOccurrences = Math.max(occurrences - 1, 0)
     const replaceAll = input.replaceAll ?? false
@@ -93,7 +91,7 @@ const editWorkspaceLocked = async (
     })
   }
 
-  const content = input.content ?? ""
+  const content = input.content
   if (before.exists) {
     if (!input.overwrite) {
       throw new SocratesError(

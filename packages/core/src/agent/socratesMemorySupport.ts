@@ -10,8 +10,8 @@ import type { ModelEvent, ModelMessage, ModelProvider } from "@socrates/provider
 import { SocratesError } from "@socrates/shared"
 import { renderSocratesSurfaceMap } from "@socrates/contracts"
 import { buildSocratesDynamicContext, type SocratesPromptContext } from "../prompts/socratesPrompt"
+import type { CapabilitySet } from "../capabilities/CapabilityCatalog"
 import type { ToolLifecycleEvent } from "../tools/types"
-import type { ToolRegistry } from "../tools/registry"
 import type { SocratesAgentTurnInput, StableCachePreludeSnapshot, MemoryRouterModelSettings, FrontierModelSettings } from "./SocratesAgent"
 import type { ActiveGoalCard } from "./MemoryRouterAgent"
 
@@ -52,12 +52,12 @@ export const insertDynamicPromptContext = (messages: ModelMessage[], context?: S
   messages.splice(insertIndex, 0, { role: "developer", content })
 }
 
-export const canRunMemoryLoop = (provider: ModelProvider, input: SocratesAgentTurnInput, toolRegistry: ToolRegistry): boolean =>
+export const canRunMemoryLoop = (provider: ModelProvider, input: SocratesAgentTurnInput, capabilities: CapabilitySet): boolean =>
   typeof provider.generateStructured === "function" &&
-  Boolean(toolRegistry.get("memory_note")) &&
+  Boolean(capabilities.get("memory_note")) &&
   Boolean(input.toolExecutors && input.workspacePath && input.requestApproval && input.projectId && input.conversationId && input.sessionId && input.turnId)
 
-export const canLoadStableCachePrelude = (input: SocratesAgentTurnInput, toolRegistry: ToolRegistry): boolean =>
+export const canLoadStableCachePrelude = (input: SocratesAgentTurnInput, capabilities: CapabilitySet): boolean =>
   Boolean(
     input.toolExecutors &&
       input.workspacePath &&
@@ -66,9 +66,9 @@ export const canLoadStableCachePrelude = (input: SocratesAgentTurnInput, toolReg
       input.conversationId &&
       input.sessionId &&
       input.turnId &&
-      toolRegistry.get("project_docs") &&
-      toolRegistry.get("user_profile") &&
-      toolRegistry.get("soul"),
+      capabilities.get("project_docs") &&
+      capabilities.get("user_profile") &&
+      capabilities.get("soul"),
   )
 
 export const memoryRouterModelSettingsFor = (input: SocratesAgentTurnInput): MemoryRouterModelSettings =>

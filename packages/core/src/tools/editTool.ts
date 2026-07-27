@@ -1,8 +1,8 @@
-import { editToolInputSchema, editToolModelInputSchema, editToolOutputSchema } from "@socrates/contracts"
+import { editToolInputSchema, editToolOutputSchema } from "@socrates/contracts"
 import type { SocratesTool } from "./types"
 
 const previewEdit = (input: typeof editToolInputSchema._type): string => {
-  if (input.content !== undefined) {
+  if ("content" in input) {
     return `write: ${input.path}`
   }
   return `replace: ${input.path}`
@@ -39,7 +39,6 @@ export const editTool: SocratesTool<typeof editToolInputSchema._type, typeof edi
   description:
     "Create or modify one file in the active project workspace. Path is workspace-relative. Call this only after reading existing target files in the current turn. When creating a deliverable, scratch file, or generated file derived from files in a subfolder, use an explicit path in that same subfolder or nearest relevant existing folder; do not default to the workspace root unless the user asks or the artifact is truly project-level. For existing files, use oldString and newString for targeted multiline replacement; set replaceAll only when every occurrence should change. Use content for new files. Use content with overwrite: true only for a deliberate full-file rewrite of an existing file.",
   inputSchema: editToolInputSchema,
-  modelInputSchema: editToolModelInputSchema,
   resultSchema: editToolOutputSchema,
   permission: "mutate",
   executeLane: "mutation",

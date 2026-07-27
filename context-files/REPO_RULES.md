@@ -485,7 +485,8 @@ Examples:
 
 ```text
 AgentRuntime
-ToolRegistry
+CapabilityCatalog
+CapabilitySet
 ModelProvider
 Workspace
 ApprovalStore
@@ -537,13 +538,14 @@ Required pattern:
 ```text
 prompt
   -> shared runner
-  -> scoped tool registry
+  -> RoleManifest resolved through CapabilityCatalog
+  -> scoped CapabilitySet
   -> executor mapping
   -> structured validation
   -> typed events and persistence
 ```
 
-The target public execution boundary is one provider-neutral `AgentRuntime` entrypoint reused by the interactive main agent and every structured worker. It accepts a typed configuration object rather than positional arguments or boolean combinations: prompt/messages, scoped `ToolRegistry` and executors, multimodal message parts, model/runtime settings, limits, hooks, and a discriminated completion mode (`text`, `structured`, or `streaming_tools_structured_final`). It returns one typed event stream plus one final typed result.
+The target public execution boundary is one provider-neutral `AgentRuntime` entrypoint reused by the interactive main agent and every structured worker. It accepts a typed configuration object rather than positional arguments or boolean combinations: prompt/messages, a role-scoped `CapabilitySet` and executors, multimodal message parts, model/runtime settings, limits, hooks, and a discriminated completion mode (`text`, `structured`, or `streaming_tools_structured_final`). It returns one typed event stream plus one final typed result.
 
 `AgentRuntime` is the single released provider-execution abstraction. `SocratesAgent` owns interactive turn policy while focused internal lifecycle modules own retrieval, deterministic memory selection, tools, ledgers, approvals, and recovery. The same-Socrates goal-resolution phase configures the same definition and prompt core; it is not another agent role. Do not reintroduce a second runner, direct provider orchestration, or divergent behavior behind similarly named wrappers.
 
@@ -556,7 +558,7 @@ This is a non-negotiable creation invariant for every new model-driven agent, ro
 - The prompt lives in the owning package's designated `prompts/` folder; do not leave production system prompts inline in routes, stores, runtimes, or orchestration helpers.
 - The capability has a clearly named agent/router module owned by the correct package and initialized through the shared runner. Do not call `provider.generateStructured()` directly from a feature runtime as a substitute for an agent.
 - Input, output, and cross-boundary contracts use strict Zod schemas in `packages/contracts` when shared between packages or persisted; package-private schemas must still be strict, named, and reusable.
-- The runner receives an explicitly scoped `ToolRegistry` plus executor mapping. A router that needs no tools uses an intentionally empty scoped registry; it does not invent tools or bypass the runner.
+- The runner receives an explicitly scoped `CapabilitySet` resolved from a declared `RoleManifest`, plus its executor mapping. A role that needs no model tools resolves to an intentionally empty set; it does not invent tools or bypass the catalog.
 - Structured output gets strict validation, one bounded repair attempt where recovery is safe, and an explicit bounded fallback or typed failure policy.
 - Provider, auth mode, model, and thinking settings resolve through a dedicated worker role whenever the capability is independently configurable. Do not alias an unrelated worker's setting to avoid adding the role.
 - Model calls, usage, failures, and durable effects use the repository's typed telemetry, event, persistence, and error paths.

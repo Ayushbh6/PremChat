@@ -126,7 +126,7 @@ export const createMainToolExecutors = (input: MainToolExecutorsInput): ToolExec
         ...(resolvedSecretEnv ? { resolvedSecretEnv } : {}),
       })
       if (output.tools && output.tools.length > 0) {
-        input.exposeMcpServer?.(output.server?.id ?? toolInput.id ?? toolInput.serverId ?? toolInput.name ?? toolInput.serverName ?? toolInput.preset ?? "playwright")
+        input.exposeMcpServer?.(output.server?.id ?? ("id" in toolInput ? toolInput.id : undefined) ?? ("name" in toolInput ? toolInput.name : undefined) ?? "playwright")
       }
       return output
     },

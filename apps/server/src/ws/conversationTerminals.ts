@@ -211,7 +211,7 @@ export class ConversationTerminalManager {
       throw new SocratesError("terminal_runtime_closing", "Terminal runtime is shutting down and cannot accept new operations.", { recoverable: true })
     }
     const operation = input.operation ?? "run"
-    if (input.argv) {
+    if ("argv" in input) {
       return runWorkspaceArgv(input, context)
     }
     if (operation === "start") {

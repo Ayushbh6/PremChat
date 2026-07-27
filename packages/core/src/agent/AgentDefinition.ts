@@ -1,5 +1,3 @@
-import type { ToolName } from "@socrates/contracts"
-
 export type AgentStructuredOutputSchema<TOutput> = {
   safeParse(value: unknown):
     | { success: true; data: TOutput }
@@ -30,8 +28,9 @@ export type ContextProfile = Readonly<{
 
 export type RoleManifest = Readonly<{
   id: string
-  modelTools: readonly ToolName[]
-  dynamicToolPrefixes?: readonly string[]
+  role: string
+  capabilityIds: readonly string[]
+  dynamicCapabilityPrefixes?: readonly string[]
 }>
 
 export type AgentLimits = Readonly<{
@@ -61,13 +60,14 @@ export type AgentDefinition<TPromptContext = undefined, TOutput = string> = Read
 
 export const defineRoleManifest = (manifest: RoleManifest): RoleManifest => {
   assertNonEmpty(manifest.id, "RoleManifest id")
-  assertUnique(manifest.modelTools, `RoleManifest ${manifest.id} model tools`)
-  assertUnique(manifest.dynamicToolPrefixes ?? [], `RoleManifest ${manifest.id} dynamic tool prefixes`)
+  assertNonEmpty(manifest.role, `RoleManifest ${manifest.id} role`)
+  assertUnique(manifest.capabilityIds, `RoleManifest ${manifest.id} capabilities`)
+  assertUnique(manifest.dynamicCapabilityPrefixes ?? [], `RoleManifest ${manifest.id} dynamic capability prefixes`)
   return Object.freeze({
     ...manifest,
-    modelTools: Object.freeze([...manifest.modelTools]),
-    ...(manifest.dynamicToolPrefixes
-      ? { dynamicToolPrefixes: Object.freeze([...manifest.dynamicToolPrefixes]) }
+    capabilityIds: Object.freeze([...manifest.capabilityIds]),
+    ...(manifest.dynamicCapabilityPrefixes
+      ? { dynamicCapabilityPrefixes: Object.freeze([...manifest.dynamicCapabilityPrefixes]) }
       : {}),
   })
 }
@@ -122,8 +122,8 @@ export type AgentDefinitionInventoryEntry = Readonly<{
   promptId: string
   completionMode: AgentCompletionDefinition<unknown>["mode"]
   roleManifestId: string
-  modelTools: readonly string[]
-  dynamicToolPrefixes: readonly string[]
+  capabilityIds: readonly string[]
+  dynamicCapabilityPrefixes: readonly string[]
   contextProfileId: string
   contextStages: readonly AgentContextStage[]
   maxToolCalls: number
@@ -141,8 +141,8 @@ export const describeAgentDefinition = (
   promptId: definition.prompt.id,
   completionMode: definition.completion.mode,
   roleManifestId: definition.roleManifest.id,
-  modelTools: [...definition.roleManifest.modelTools],
-  dynamicToolPrefixes: [...(definition.roleManifest.dynamicToolPrefixes ?? [])],
+  capabilityIds: [...definition.roleManifest.capabilityIds],
+  dynamicCapabilityPrefixes: [...(definition.roleManifest.dynamicCapabilityPrefixes ?? [])],
   contextProfileId: definition.contextProfile.id,
   contextStages: [...definition.contextProfile.stages],
   maxToolCalls: definition.limits.maxToolCalls,
@@ -155,30 +155,16 @@ export const describeAgentDefinition = (
   persistenceScope: definition.persistenceScope,
 })
 
-export const assertRoleManifestMatchesTools = (
+export const assertRoleManifestMatchesCapabilities = (
   definition: Readonly<{ id: string; roleManifest: RoleManifest }>,
-  toolNames: readonly ToolName[],
+  capabilityIds: readonly string[],
 ): void => {
-  const expected = [...definition.roleManifest.modelTools].sort()
-  const actual = [...toolNames].sort()
+  const expected = [...definition.roleManifest.capabilityIds].sort()
+  const actual = [...capabilityIds].sort()
   if (expected.length === actual.length && expected.every((name, index) => name === actual[index])) return
   throw new Error(
-    `Agent ${definition.id} tool scope does not match role manifest ${definition.roleManifest.id}. `
+    `Agent ${definition.id} capability scope does not match role manifest ${definition.roleManifest.id}. `
     + `Expected [${expected.join(", ")}], received [${actual.join(", ")}].`,
-  )
-}
-
-export const assertRoleManifestAllowsDynamicTools = (
-  definition: Readonly<{ id: string; roleManifest: RoleManifest }>,
-  toolNames: readonly string[],
-): void => {
-  assertUnique(toolNames, `Agent ${definition.id} dynamic tools`)
-  const prefixes = definition.roleManifest.dynamicToolPrefixes ?? []
-  const disallowed = toolNames.filter((name) => !prefixes.some((prefix) => name.startsWith(prefix)))
-  if (disallowed.length === 0) return
-  throw new Error(
-    `Agent ${definition.id} received dynamic tools outside role manifest ${definition.roleManifest.id}: `
-    + `[${disallowed.sort().join(", ")}]. Allowed prefixes: [${prefixes.join(", ")}].`,
   )
 }
 

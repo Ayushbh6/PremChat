@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { z } from "zod"
 import { chatCompactionSchema, readToolInputSchema, type ModelToolDefinition, type ProviderId, type RuntimeConfig } from "@socrates/contracts"
 import { AiSdkProvider } from "../ai-sdk/AiSdkProvider"
 import type { ModelEvent, ModelRequest } from "../types"
@@ -605,6 +606,8 @@ const readTool: ModelToolDefinition = {
   name: "read",
   description: "Read a project file.",
   inputSchema: readToolInputSchema,
+  resultSchema: z.unknown(),
+  providerInputSchema: { type: "object", additionalProperties: false, required: ["path"], properties: { path: { type: "string" } } },
 }
 
 const modelRequest = (providerId: ProviderId, modelId: string): ModelRequest => ({

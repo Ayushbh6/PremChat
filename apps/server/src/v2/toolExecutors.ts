@@ -56,7 +56,7 @@ export const createV2ToolExecutors = (input: V2ToolExecutorsInput) => createMain
     }),
     traceScope: () => ({ presentedConversationId: input.flowId, goalId: input.goalId }),
     runSkills: async (toolInput, context) => {
-      const attachedArchive = toolInput.operation === "preview_import" && toolInput.attachmentPath
+      const attachedArchive = toolInput.operation === "preview_import" && "attachmentPath" in toolInput
         ? input.flowStore.readCurrentTurnSkillZip({
             projectId: input.projectId,
             flowId: input.flowId,

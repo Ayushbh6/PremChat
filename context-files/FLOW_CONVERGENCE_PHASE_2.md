@@ -43,7 +43,7 @@ Each routed turn retains immutable goal ownership. A new adjacent goal receives 
 
 ## Shared-Agent Homogeneity
 
-The Goal Router remains a real structured agent using `AgentRuntime`, the prompt in `packages/core/src/prompts/goalRouterPrompt.ts`, strict contracts in `packages/contracts`, a scoped tool registry, bounded validation repair/fallback, worker settings, and persisted telemetry. Classic and Flow use the same router implementation and `goal_router` worker model. The Memory Router remains the same shared agent in both views and runs only after goal binding.
+The Goal Router remains a real structured agent using `AgentRuntime`, the prompt in `packages/core/src/prompts/goalRouterPrompt.ts`, strict contracts in `packages/contracts`, a catalog-backed legacy role manifest/capability set, bounded validation repair/fallback, worker settings, and persisted telemetry. Classic and Flow use the same router implementation and `goal_router` worker model. This is migration behavior scheduled for removal by the goal-resolution phase; it must not become a second catalog or runtime. The Memory Router remains the same shared migration agent in both views and runs only after goal binding.
 
 Flow routing orchestration was extracted from `apps/server/src/v2/runtime.ts` into `goalRoutingCoordinator.ts`, keeping the runtime below 1,000 lines. New goal-search, Classic routing, and latency-eval modules are focused files. The pre-existing `V2FlowStore` remains migration debt; Phase 2 adds focused methods without creating a parallel store or duplicate state authority.
 

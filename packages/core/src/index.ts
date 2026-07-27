@@ -26,7 +26,7 @@ export {
   type AgentInstanceInput,
 } from "./agent/AgentInstance"
 export {
-  assertRoleManifestMatchesTools,
+  assertRoleManifestMatchesCapabilities,
   defineAgent,
   defineContextProfile,
   defineRoleManifest,
@@ -142,7 +142,23 @@ export {
   renderMemoryCompactionMarkdown,
   type MemoryAgentCompressorUserPromptInput,
 } from "./prompts/memoryAgentCompressorPrompt"
-export { createCompressorToolRegistry, createDefaultToolRegistry, createFinalAnswerToolRegistry, createGoalRouterToolRegistry, createMemoryRouterToolRegistry, createMemoryToolRegistry, createSkillWriterToolRegistry, createSoulConfirmationToolRegistry, createTitleGeneratorToolRegistry, ToolRegistry } from "./tools/registry"
+export {
+  CapabilityCatalog,
+  CapabilitySet,
+  capabilityCatalog,
+  capabilityInventory,
+  canonicalCapabilities,
+  emptyCapabilitySet,
+  legacyGoalRouterRoleManifest,
+  legacyMemoryRouterRoleManifest,
+} from "./capabilities/CapabilityCatalog"
+export type {
+  CapabilityDefinition,
+  CapabilityInventoryEntry,
+  CapabilityKind,
+  ModelToolCapabilityDefinition,
+} from "./capabilities/CapabilityDefinition"
+export { canonicalProviderInputSchema, projectModelTool } from "./capabilities/providerProjection"
 export type { ApprovalDecision, ApprovalRequest, ToolExecutorContext, ToolExecutors, ToolLifecycleEvent } from "./tools/types"
 export * from "./retrieval"
 export * from "./v2"

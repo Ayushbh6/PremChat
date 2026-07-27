@@ -1,9 +1,8 @@
 import path from "node:path"
 import { config as loadEnvFile } from "dotenv"
 import { z } from "zod"
-import { AgentRuntime, SocratesAgent, ToolRegistry, type ToolExecutors } from "@socrates/core"
+import { AgentRuntime, capabilityCatalog, SocratesAgent, socratesMainAgentDefinition, type ToolExecutors } from "@socrates/core"
 import { createDefaultModelProvider } from "@socrates/providers"
-import { currentTimeTool } from "../../../packages/core/src/tools/currentTimeTool"
 import { ProviderCredentialStore } from "../src/services/providerCredentials"
 
 const socratesHome = process.env.SOCRATES_HOME?.trim()
@@ -45,7 +44,11 @@ const malformedRecovery = await new AgentRuntime().run({
     mode: "structured",
     schema: z.object({ recovered: z.literal(true), observedTimeZone: z.string().min(1) }).strict(),
   },
-  toolRegistry: new ToolRegistry([currentTimeTool]),
+  capabilitySet: capabilityCatalog.resolve({
+    id: "flow-phase6-provider-acceptance-v2",
+    role: socratesMainAgentDefinition.roleManifest.role,
+    capabilityIds: ["tool.current_time"],
+  }),
   toolExecutors: {
     current_time: async () => ({
       currentDate: "2026-07-26",

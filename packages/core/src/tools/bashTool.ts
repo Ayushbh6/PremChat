@@ -1,4 +1,4 @@
-import { bashToolInputSchema, bashToolModelInputSchema, bashToolOutputSchema } from "@socrates/contracts"
+import { bashToolInputSchema, bashToolOutputSchema } from "@socrates/contracts"
 import type { SocratesTool, ToolPolicyDecision } from "./types"
 
 const highRiskCommandPattern =
@@ -13,7 +13,7 @@ const decideBashPolicy: SocratesTool<typeof bashToolInputSchema._type, typeof ba
     return { type: "auto" }
   }
 
-  const rawCommand = input.command
+  const rawCommand = "command" in input ? input.command : undefined
   const command = rawCommand?.trim()
   if (rawCommand !== undefined && isNoopTerminalCommand(rawCommand)) {
     return {
@@ -24,7 +24,7 @@ const decideBashPolicy: SocratesTool<typeof bashToolInputSchema._type, typeof ba
     }
   }
 
-  if (input.argv) {
+  if ("argv" in input) {
     return decideArgvPolicy(input.argv, context)
   }
 
@@ -143,7 +143,6 @@ export const bashTool: SocratesTool<typeof bashToolInputSchema._type, typeof bas
   description:
     "Terminal command execution tool. This current definition is authoritative: interactive start/input and persistent Terminal controls are available even if stale project memory claims otherwise. The compatibility tool id is bash, but product copy should call it Terminal. Behavior is platform-native: POSIX on macOS/Linux and PowerShell/cmd on Windows. Use operation=list first when several conversation Terminals may exist; it returns a compact bounded inventory. For a small no-shell diagnostic allowlist, prefer argv such as [\"git\", \"status\", \"--short\"] or [\"pwd\"]; argv runs a literal executable with literal arguments and cannot use shell operators. Use command for a real shell command, script, test, build, local server, REPL, or bounded one-off script; raw shell commands require approval outside full-access mode. For any program that must accept user input, use operation=start, inputMode=user, a clear name, and a portable program (prefer a small Node.js or Python stdin program). inputMode is the explicit reliable signal; prompt wording alone is not. Never assume Bash-specific syntax such as read -p on POSIX because the actual shell may be zsh. The user alone types raw input in the visible Terminal; keep the process alive until all answers are received, then wait on completed/failed when the task depends on its result. Foreground raw runs complete normally when quick, otherwise automatically become a named background Terminal after the configured foreground window without being killed or restarted. Supports run plus conversation-scoped start/status/output/stop/list operations. Returned output and list rows are bounded; charLimit is at most 16000 and list limit is at most 12. Prefer read/search/edit/url_fetch for exact structured reads, but use Terminal when a real command, test, build, local server, CLI, or bounded one-off script is needed. For status/output/stop, omit the target when there is exactly one active Terminal, or use the Terminal name shown in context.",
   inputSchema: bashToolInputSchema,
-  modelInputSchema: bashToolModelInputSchema,
   resultSchema: bashToolOutputSchema,
   permission: "execute",
   executeLane: "mutation",

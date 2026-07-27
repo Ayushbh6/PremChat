@@ -68,7 +68,7 @@ describe("McpRuntime", () => {
       `${JSON.stringify([{ name: "noop", description: "No input schema." }], null, 2)}\n`,
     )
 
-    const [tool] = runtime.getDynamicToolDefinitions("playwright")
+    const [tool] = runtime.getDynamicCapabilityDefinitions("playwright")
     expect(tool?.name).toBe("mcp__playwright__noop")
     expect(tool?.inputSchema._def.typeName).toBe("ZodObject")
     expect(tool?.inputSchema.safeParse({ unexpected: "allowed" }).success).toBe(true)
@@ -125,8 +125,8 @@ describe("McpRuntime", () => {
     const servers = runtime.listManagedServers({ workspacePath: workspace })
     expect(servers.some((server) => server.id === "projectfake" && server.scope === "project")).toBe(true)
     expect(fs.existsSync(path.join(workspace, ".socrates", "mcp.json"))).toBe(true)
-    expect(runtime.getDynamicToolDefinitions("projectfake", { workspacePath: workspace })[0]?.name).toBe("mcp__projectfake__noop")
-    expect(runtime.getDynamicToolDefinitions("projectfake")).toEqual([])
+    expect(runtime.getDynamicCapabilityDefinitions("projectfake", { workspacePath: workspace })[0]?.name).toBe("mcp__projectfake__noop")
+    expect(runtime.getDynamicCapabilityDefinitions("projectfake")).toEqual([])
   })
 
   it("stores secrets outside mcp.json, checks in the workspace cwd, persists status, and cleans owned secrets", async () => {
@@ -161,20 +161,20 @@ describe("McpRuntime", () => {
     const workspace = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "socrates-mcp-chat-")))
     const runtime = new McpRuntime({ socratesHome: home })
     const scriptPath = writeFakeMcpScript(workspace)
-    const configured = await runtime.handleRegistryTool({ operation: "configure", confirmed: true, scope: "project", server: { id: "chatfake", command: process.execPath, args: [path.basename(scriptPath)], enabled: true } }, { workspacePath: workspace })
+    const configured = await runtime.handleRegistryTool({ operation: "configure", scope: "project", server: { id: "chatfake", command: process.execPath, args: [path.basename(scriptPath)] } }, { workspacePath: workspace })
     expect(configured.server).toMatchObject({ id: "chatfake", status: "available", enabled: true, scope: "project" })
     expect(configured.tools).toHaveLength(2)
     const checked = await runtime.handleRegistryTool({ operation: "check", id: "chatfake" }, { workspacePath: workspace })
     expect(checked.server).toMatchObject({ status: "available", enabled: true })
-    expect(runtime.getDynamicToolDefinitions("chatfake", { workspacePath: workspace })).toHaveLength(2)
-    const deleted = await runtime.handleRegistryTool({ operation: "delete", confirmed: true, scope: "project", id: "chatfake" }, { workspacePath: workspace })
+    expect(runtime.getDynamicCapabilityDefinitions("chatfake", { workspacePath: workspace })).toHaveLength(2)
+    const deleted = await runtime.handleRegistryTool({ operation: "delete", scope: "project", id: "chatfake" }, { workspacePath: workspace })
     expect(deleted.summary).toContain("Deleted project MCP server chatfake")
     expect(runtime.listManagedServers({ workspacePath: workspace }).some((server) => server.id === "chatfake")).toBe(false)
 
-    const globalConfigured = await runtime.handleRegistryTool({ operation: "configure", confirmed: true, scope: "global", server: { id: "globalfake", command: process.execPath, args: [scriptPath] } }, { workspacePath: workspace })
+    const globalConfigured = await runtime.handleRegistryTool({ operation: "configure", scope: "global", server: { id: "globalfake", command: process.execPath, args: [scriptPath] } }, { workspacePath: workspace })
     expect(globalConfigured.server).toMatchObject({ status: "available", enabled: true, scope: "global" })
     expect(runtime.listManagedServers({ workspacePath: workspace }).some((server) => server.id === "globalfake" && server.scope === "global")).toBe(true)
-    await runtime.handleRegistryTool({ operation: "delete", confirmed: true, scope: "global", id: "globalfake" }, { workspacePath: workspace })
+    await runtime.handleRegistryTool({ operation: "delete", scope: "global", id: "globalfake" }, { workspacePath: workspace })
     expect(runtime.listManagedServers({ workspacePath: workspace }).some((server) => server.id === "globalfake")).toBe(false)
   })
 
@@ -229,7 +229,7 @@ describe("McpRuntime", () => {
     expect(fs.existsSync(path.join(workspace, ".socrates", "mcp", "registry", "projectfake.tools.json"))).toBe(true)
     expect(fs.existsSync(path.join(workspace, ".socrates", "mcp", "registry", "Project Fake MCP.tools.json"))).toBe(false)
 
-    const [dynamicTool] = runtime.getDynamicToolDefinitions("Project Fake MCP", { workspacePath: workspace })
+    const [dynamicTool] = runtime.getDynamicCapabilityDefinitions("Project Fake MCP", { workspacePath: workspace })
     expect(dynamicTool?.name).toBe("mcp__projectfake__record")
 
     const byIdAndName = await runtime.handleRegistryTool({ operation: "describe", id: "projectfake", name: "Project Fake MCP" }, { workspacePath: workspace })

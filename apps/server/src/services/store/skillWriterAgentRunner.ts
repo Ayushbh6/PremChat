@@ -7,7 +7,7 @@ import type {
 } from "@socrates/contracts"
 import {
   buildSkillWriterSystemPrompt,
-  createSkillWriterToolRegistry,
+  capabilityCatalog,
   skillWriterAgentDefinition,
   SocratesAgent,
   type SocratesAgentEvent,
@@ -60,7 +60,7 @@ export const runSkillWriterTurn = async (input: SkillWriterRunInput): Promise<st
   })
   const agent = new SocratesAgent(
     input.provider,
-    createSkillWriterToolRegistry(),
+    capabilityCatalog,
     skillWriterAgentDefinition,
     { system: systemPrompt },
   )

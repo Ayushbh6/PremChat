@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest"
 import type { Schema } from "ai"
+import { z } from "zod"
 import {
-  applyPatchToolInputSchema,
-  applyPatchToolModelInputSchema,
-  bashToolModelInputSchema,
+  bashToolInputSchema,
   editToolInputSchema,
-  editToolModelInputSchema,
-  traceRetrieveToolModelInputSchema,
+  traceRetrieveMainToolInputSchema,
 } from "@socrates/contracts"
 import { inputSchemaForAiTool, mapUsage, normalizeAiSdkToolCallPart, toAiModelMessage } from "../ai-sdk/AiSdkProvider"
 
@@ -157,36 +155,34 @@ describe("AI SDK provider metadata", () => {
     expect(usage.raw).toMatchObject({ prompt_tokens: 1000 })
   })
 
-  it("keeps runtime schemas flat while exposing model-friendly schemas", () => {
-    const editObject = editToolInputSchema._def.schema
-    expect(editObject._def.typeName).toBe("ZodObject")
-    expect(editToolModelInputSchema._def.typeName).toBe("ZodUnion")
-    expect(editToolModelInputSchema.safeParse({ path: "README.md", content: "new", oldString: "old", newString: "new" }).success).toBe(false)
-    expect("operations" in editObject.shape).toBe(false)
-    expect(editObject.shape.path).toBeDefined()
-    expect(applyPatchToolInputSchema.safeParse({ patch: "--- a/README.md\n+++ b/README.md\n" }).success).toBe(true)
-    expect(applyPatchToolInputSchema.safeParse({ patchText: "*** Begin Patch\n*** End Patch" }).success).toBe(true)
-    expect(applyPatchToolModelInputSchema._def.typeName).toBe("ZodObject")
-    expect(applyPatchToolModelInputSchema.shape.patchText).toBeDefined()
-    expect("patch" in applyPatchToolModelInputSchema.shape).toBe(false)
+  it("uses the catalog projection while retaining the canonical runtime schema", () => {
+    expect(editToolInputSchema.safeParse({ path: "README.md", oldString: "old", newString: "new" }).success).toBe(true)
+    expect(editToolInputSchema.safeParse({ path: "README.md", content: "new" }).success).toBe(true)
+    expect(editToolInputSchema.safeParse({ path: "README.md", content: "new", oldString: "old", newString: "new" }).success).toBe(false)
   })
 
-  it("exposes edit as an object JSON schema for OpenAI-compatible providers", async () => {
-    const schema = inputSchemaForAiTool({
-      name: "edit",
-      description: "Create or modify one file.",
-      inputSchema: editToolModelInputSchema,
-    }) as Schema
-
-    expect(schema.jsonSchema).toMatchObject({
+  it("passes the exact catalog schema to AI SDK and validates with the canonical schema", async () => {
+    const providerInputSchema = {
       type: "object",
       additionalProperties: false,
       required: ["path"],
-    })
-    expect(JSON.stringify(schema.jsonSchema)).not.toContain('"None"')
-    expect(JSON.stringify(schema.jsonSchema)).not.toContain('"anyOf"')
-    expect(JSON.stringify(schema.jsonSchema)).not.toContain('"oneOf"')
-    expect(JSON.stringify(schema.jsonSchema)).toContain('"enum":[true]')
+      properties: {
+        path: { type: "string" },
+        oldString: { type: "string" },
+        newString: { type: "string" },
+        content: { type: "string" },
+        overwrite: { enum: [true] },
+      },
+    }
+    const schema = inputSchemaForAiTool({
+      name: "edit",
+      description: "Create or modify one file.",
+      inputSchema: editToolInputSchema,
+      resultSchema: z.unknown(),
+      providerInputSchema,
+    }) as Schema
+
+    expect(schema.jsonSchema).toBe(providerInputSchema)
 
     await expect(Promise.resolve(schema.validate?.({ path: "README.md", oldString: "old", newString: "new" }))).resolves.toEqual({
       success: true,
@@ -201,135 +197,42 @@ describe("AI SDK provider metadata", () => {
     expect(invalid?.success).toBe(false)
   })
 
-  it("exposes a flat Terminal schema and recovers a redundant model invocation form", async () => {
+  it("rejects malformed Terminal calls instead of repairing provider output", async () => {
+    const providerInputSchema = { type: "object", additionalProperties: false, properties: { command: { type: "string" }, argv: { type: "array", items: { type: "string" } } } }
     const schema = inputSchemaForAiTool({
       name: "bash",
       description: "Run a Terminal command.",
-      inputSchema: bashToolModelInputSchema,
+      inputSchema: bashToolInputSchema,
+      resultSchema: z.unknown(),
+      providerInputSchema,
     }) as Schema
 
-    expect(schema.jsonSchema).toMatchObject({
-      type: "object",
-      additionalProperties: false,
-    })
-    const serialized = JSON.stringify(schema.jsonSchema)
-    expect(serialized).not.toContain('"oneOf"')
-    expect(serialized).not.toContain('"anyOf"')
-    expect(serialized).toContain("never both")
-
-    await expect(Promise.resolve(schema.validate?.({ command: "pnpm run build", argv: ["pnpm", "run", "build"] }))).resolves.toEqual({
-      success: true,
-      value: { command: "pnpm run build" },
-    })
-    await expect(Promise.resolve(schema.validate?.({ operation: "output", command: "placeholder", name: "placeholder", target: "ai-dpa-vite" }))).resolves.toEqual({
-      success: true,
-      value: { operation: "output", target: "ai-dpa-vite" },
-    })
-    await expect(Promise.resolve(schema.validate?.({ operation: "run", command: "pnpm run build", name: "x", target: "x" }))).resolves.toEqual({
-      success: true,
-      value: { operation: "run", command: "pnpm run build" },
-    })
+    expect(schema.jsonSchema).toBe(providerInputSchema)
+    await expect(Promise.resolve(schema.validate?.({ command: "pnpm run build", argv: ["pnpm", "run", "build"] }))).resolves.toMatchObject({ success: false })
     await expect(Promise.resolve(schema.validate?.({ operation: "start", argv: ["pnpm", "dev"] }))).resolves.toMatchObject({ success: false })
   })
 
-  it("exposes trace_retrieve as an object JSON schema for strict providers", async () => {
+  it("keeps provider projection separate from canonical trace validation", async () => {
+    const providerInputSchema = { type: "object", additionalProperties: false, properties: { query: { type: "string" }, operation: { type: "string" }, messageId: { type: "string" } } }
     const schema = inputSchemaForAiTool({
       name: "trace_retrieve",
       description: "Search or inspect previous trace documents.",
-      inputSchema: traceRetrieveToolModelInputSchema,
+      inputSchema: traceRetrieveMainToolInputSchema,
+      resultSchema: z.unknown(),
+      providerInputSchema,
     }) as Schema
 
-    expect(schema.jsonSchema).toMatchObject({
-      type: "object",
-      additionalProperties: false,
-    })
-    const serialized = JSON.stringify(schema.jsonSchema)
-    expect(serialized).not.toContain('"None"')
-    expect(serialized).not.toContain('"oneOf"')
-    expect(serialized).not.toContain('"anyOf"')
-    expect(serialized).toContain("handle")
-    expect(serialized).toContain("conversationId")
-    expect(serialized).toContain("turnId")
-    expect(serialized).toContain("messageId")
-    expect(serialized).toContain("toolId")
-    expect(serialized).toContain("toolCallId")
-    expect(serialized).toContain("conversationLimit")
-    expect(serialized).toContain("conversationTitle")
-    expect(serialized).toContain("audit")
-    expect(serialized).not.toContain("conversationHint")
-    expect(serialized).not.toContain("includeRaw")
+    expect(schema.jsonSchema).toBe(providerInputSchema)
 
     await expect(Promise.resolve(schema.validate?.({ query: "screenshot" }))).resolves.toEqual({
       success: true,
       value: { query: "screenshot" },
     })
-    await expect(Promise.resolve(schema.validate?.({ query: "terminal output", mode: "audit", include: ["shell"], conversationLimit: 25 }))).resolves.toEqual({
-      success: true,
-      value: { query: "terminal output", mode: "audit", include: ["shell"], conversationLimit: 25 },
-    })
-    await expect(Promise.resolve(schema.validate?.({ query: "old decision", mode: "semantic", scope: "project", limit: 8 }))).resolves.toEqual({
-      success: true,
-      value: { query: "old decision", mode: "semantic", scope: "project", limit: 8 },
-    })
-    expect((await Promise.resolve(schema.validate?.({ query: "old decision", mode: "semantic", conversationLimit: 25 })))?.success).toBe(false)
-    expect((await Promise.resolve(schema.validate?.({ query: "old decision", mode: "combined", conversationLimit: 25 })))?.success).toBe(false)
-    expect((await Promise.resolve(schema.validate?.({ query: "README", mode: "exact", include: ["messages"] })))?.success).toBe(false)
-    await expect(
-      Promise.resolve(
-        schema.validate?.({
-          query: "previous screenshots",
-          command: "",
-          paths: [],
-          include: [],
-          handle: "",
-          conversationId: "",
-        }),
-      ),
-    ).resolves.toEqual({
-      success: true,
-      value: { query: "previous screenshots" },
-    })
-    await expect(
-      Promise.resolve(
-        schema.validate?.({
-          query: "previous screenshots",
-          conversationId: "conv_1",
-          messageId: "msg_1",
-          mode: "exact",
-        }),
-      ),
-    ).resolves.toEqual({
-      success: true,
-      value: { operation: "inspect", messageId: "msg_1" },
-    })
-    await expect(Promise.resolve(schema.validate?.({ messageId: "msg_1" }))).resolves.toEqual({
-      success: true,
-      value: { operation: "inspect", messageId: "msg_1" },
-    })
-    await expect(Promise.resolve(schema.validate?.({ mode: "audit", toolId: "tcall_1" }))).resolves.toEqual({
-      success: true,
-      value: { operation: "inspect", toolCallId: "tcall_1" },
-    })
-    expect((await Promise.resolve(schema.validate?.({ toolId: "tcall_1" })))?.success).toBe(false)
     const invalid = await Promise.resolve(schema.validate?.({ operation: "inspect" }))
     expect(invalid?.success).toBe(false)
-    await expect(Promise.resolve(schema.validate?.({ operation: "inspect", messageId: "msg_1" }))).resolves.toEqual({
+    await expect(Promise.resolve(schema.validate?.({ operation: "inspect", resultNumber: 1 }))).resolves.toEqual({
       success: true,
-      value: { operation: "inspect", messageId: "msg_1" },
-    })
-    await expect(
-      Promise.resolve(
-        schema.validate?.({
-          operation: "inspect",
-          messageId: "msg_1",
-          scope: "project",
-          mode: "exact",
-          conversationLimit: 25,
-        }),
-      ),
-    ).resolves.toEqual({
-      success: true,
-      value: { operation: "inspect", messageId: "msg_1" },
+      value: { operation: "inspect", resultNumber: 1 },
     })
   })
 })

@@ -583,8 +583,8 @@ export class V2ExecutionRuntime {
           workspacePath,
         }),
         toolExecutors,
-        dynamicTools: () => this.deps.mcpRuntime
-          ? [...exposedMcpServers].flatMap((serverId) => this.deps.mcpRuntime!.getDynamicToolDefinitions(serverId, { workspacePath }))
+        runtimeCapabilities: () => this.deps.mcpRuntime
+          ? [...exposedMcpServers].flatMap((serverId) => this.deps.mcpRuntime!.getDynamicCapabilityDefinitions(serverId, { workspacePath }))
           : [],
         maxParallelToolCalls: 5,
         maxToolCallsPerTurn: 80,

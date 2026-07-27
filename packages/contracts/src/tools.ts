@@ -370,107 +370,42 @@ const terminalCwdDescription =
 const terminalArgvDescription =
   "Structured executable and literal arguments for a safe foreground diagnostic. This runs without a shell, so it cannot use pipes, redirects, substitutions, or shell syntax. Use only for small diagnostics such as [\"git\", \"status\", \"--short\"] or [\"pwd\"]. Use command for a real shell command, which requires approval outside full-access mode."
 
-export const editToolInputSchema = z
+const editWholeFileInputSchema = z
   .object({
     path: z.string().min(1).describe(editTargetPathDescription),
-    content: z.string().optional(),
-    oldString: z.string().min(1).optional(),
-    newString: z.string().optional(),
-    replaceAll: z.boolean().optional(),
+    content: z.string(),
     overwrite: z.literal(true).optional(),
     dryRun: z.boolean().optional(),
   })
   .strict()
-  .superRefine((value, ctx) => {
-    const hasContent = value.content !== undefined
-    const hasReplace = value.oldString !== undefined || value.newString !== undefined
-    if (hasContent === hasReplace) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Provide either content for a whole-file write or oldString/newString for a targeted replace, but not both.",
-      })
-      return
-    }
-    if (!hasContent && !hasReplace) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Provide content for a whole-file write or oldString/newString for a targeted replace.",
-      })
-      return
-    }
-    if (hasReplace) {
-      if (value.overwrite) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "overwrite is only valid with content whole-file writes." })
-      }
-      if (value.oldString === undefined) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "oldString is required for a targeted replace." })
-      }
-      if (value.newString === undefined) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "newString is required for a targeted replace." })
-      }
-    }
+const editTargetedReplaceInputSchema = z
+  .object({
+    path: z.string().min(1).describe(editTargetPathDescription),
+    oldString: z.string().min(1),
+    newString: z.string(),
+    replaceAll: z.boolean().optional(),
+    dryRun: z.boolean().optional(),
   })
-export type EditToolInput = z.infer<typeof editToolInputSchema>
+  .strict()
 
-export const editToolModelInputSchema = z.union([
-  z
-    .object({
-      path: z.string().min(1).describe(editTargetPathDescription),
-      oldString: z.string().min(1),
-      newString: z.string(),
-      replaceAll: z.boolean().optional(),
-      dryRun: z.boolean().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      path: z.string().min(1).describe(editTargetPathDescription),
-      content: z.string(),
-      overwrite: z.literal(true).optional(),
-      dryRun: z.boolean().optional(),
-    })
-    .strict(),
+export const editToolInputSchema = z.union([
+  editTargetedReplaceInputSchema,
+  editWholeFileInputSchema,
 ])
+export type EditToolInput = z.infer<typeof editToolInputSchema>
 
 export const applyPatchToolInputSchema = z
   .object({
-    patch: z.string().min(1).optional(),
     patchText: z
       .string()
       .min(1)
       .describe(
         "Patch text to apply. Prefer structured format: *** Begin Patch, then file sections like *** Update File: path with @@ hunks, *** Add File: path, or *** Delete File: path, ending with *** End Patch. In Update hunks, prefix unchanged lines with space, removed lines with -, and added lines with +. Add File content lines should start with +.",
-      )
-      .optional(),
-    dryRun: z.boolean().optional(),
-  })
-  .strict()
-  .superRefine((value, ctx) => {
-    if (value.patch === undefined && value.patchText === undefined) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide patchText." })
-    }
-    if (value.patch !== undefined && value.patchText !== undefined) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide either patchText or patch, not both." })
-    }
-  })
-  .transform((value) => ({
-    patch: value.patch ?? value.patchText ?? "",
-    ...(value.dryRun === undefined ? {} : { dryRun: value.dryRun }),
-  }))
-export type ApplyPatchToolInput = z.input<typeof applyPatchToolInputSchema>
-export type NormalizedApplyPatchToolInput = z.output<typeof applyPatchToolInputSchema>
-
-export const applyPatchToolModelInputSchema = z
-  .object({
-    patchText: z
-      .string()
-      .min(1)
-      .describe(
-        "Patch text to apply. Prefer structured format: *** Begin Patch, then file sections like *** Update File: path with @@ hunks, *** Add File: path, or *** Delete File: path, ending with *** End Patch. In Update hunks, prefix unchanged lines with space, removed lines with -, and added lines with +. Add File content lines should start with +. Read existing files before patching them.",
       ),
     dryRun: z.boolean().optional(),
   })
   .strict()
+export type ApplyPatchToolInput = z.infer<typeof applyPatchToolInputSchema>
 
 export const editToolOutputSchema = z
   .object({
@@ -519,124 +454,73 @@ export const bashTerminalMetadataSchema = z
   .strict()
 export type BashTerminalMetadata = z.infer<typeof bashTerminalMetadataSchema>
 
-export const bashToolInputSchema = z
-  .object({
-    operation: z.enum(["run", "start", "status", "output", "stop", "list"]).optional(),
-    command: z.string().min(1).optional().describe(terminalCommandDescription),
-    argv: z.array(z.string().min(1)).min(1).max(32).optional().describe(terminalArgvDescription),
+const terminalSelectorShape = {
     processId: z.string().min(1).optional(),
     terminalId: z.string().min(1).optional(),
     name: z.string().min(1).optional(),
     target: z.string().min(1).optional(),
-    outputSequence: z.number().int().nonnegative().optional(),
+}
+const terminalRunCommandInputSchema = z
+  .object({
+    operation: z.literal("run").optional(),
+    command: z.string().min(1).describe(terminalCommandDescription),
     cwd: z.string().min(1).optional().describe(terminalCwdDescription),
     timeoutMs: z.number().int().positive().max(600_000).optional(),
     charLimit: z.number().int().positive().max(16_000).optional(),
-    limit: z.number().int().positive().max(12).optional(),
+  })
+  .strict()
+const terminalRunArgvInputSchema = z
+  .object({
+    operation: z.literal("run").optional(),
+    argv: z.array(z.string().min(1)).min(1).max(32).describe(terminalArgvDescription),
+    cwd: z.string().min(1).optional().describe(terminalCwdDescription),
+    timeoutMs: z.number().int().positive().max(600_000).optional(),
+    charLimit: z.number().int().positive().max(16_000).optional(),
+  })
+  .strict()
+const terminalStartInputSchema = z
+  .object({
+    operation: z.literal("start"),
+    command: z.string().min(1).describe(terminalCommandDescription),
+    name: z.string().min(1).optional(),
+    cwd: z.string().min(1).optional().describe(terminalCwdDescription),
+    charLimit: z.number().int().positive().max(16_000).optional(),
+    outputSequence: z.number().int().nonnegative().optional(),
     inputMode: z.enum(["none", "user"]).optional(),
   })
   .strict()
-  .superRefine((input, context) => {
-    const operation = input.operation ?? "run"
-    if (input.command && input.argv) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "Provide command or argv, not both." })
-    }
-    if ((operation === "run" || operation === "start") && !input.command && !input.argv) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["command"],
-        message: "command or argv is required for run and start operations",
-      })
-    }
-    if (input.argv && operation !== "run") {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["argv"], message: "argv is only supported for foreground run operations." })
-    }
-    if (input.inputMode === "user" && operation !== "start") {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["inputMode"], message: "inputMode=user is only supported for start operations." })
-    }
-  })
-export type BashToolInput = z.infer<typeof bashToolInputSchema>
+const terminalStatusInputSchema = z.object({ operation: z.literal("status"), ...terminalSelectorShape, outputSequence: z.number().int().nonnegative().optional(), charLimit: z.number().int().positive().max(16_000).optional() }).strict()
+const terminalOutputInputSchema = z.object({ operation: z.literal("output"), ...terminalSelectorShape, outputSequence: z.number().int().nonnegative().optional(), charLimit: z.number().int().positive().max(16_000).optional() }).strict()
+const terminalStopInputSchema = z.object({ operation: z.literal("stop"), ...terminalSelectorShape, outputSequence: z.number().int().nonnegative().optional(), charLimit: z.number().int().positive().max(16_000).optional() }).strict()
+const terminalListInputSchema = z.object({ operation: z.literal("list"), limit: z.number().int().positive().max(12).optional(), charLimit: z.number().int().positive().max(16_000).optional() }).strict()
 
-/**
- * Models occasionally redundantly emit both Terminal invocation forms even
- * though they describe the same intended action. Keep the public runtime
- * contract strict, but make model-originated calls resilient by selecting the
- * raw command and removing operation-incompatible placeholder fields. Raw
- * commands retain the stricter approval policy, so this cannot turn an
- * approval-required command into an auto-approved argv call.
- */
-export const normalizeBashModelInput = (value: unknown): unknown => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return value
-  }
-  const input = value as Record<string, unknown>
-  const operation = typeof input.operation === "string" ? input.operation : "run"
-  if (operation === "status" || operation === "output" || operation === "stop") {
-    const target = preferredTerminalTarget(input.target, input.name)
-    const { command: _command, argv: _argv, name: _name, target: _target, cwd: _cwd, timeoutMs: _timeoutMs, inputMode: _inputMode, ...controlInput } = input
-    return target ? { ...controlInput, target } : controlInput
-  }
-  if (operation === "list") {
-    const { command: _command, argv: _argv, name: _name, target: _target, cwd: _cwd, timeoutMs: _timeoutMs, inputMode: _inputMode, ...listInput } = input
-    return listInput
-  }
-  if (operation === "start") {
-    const { argv: _argv, target: _target, ...startInput } = input
-    return startInput
-  }
-  if (operation === "run") {
-    const { name: _name, target: _target, inputMode: _inputMode, ...runInput } = input
-    if (typeof runInput.command === "string" && Array.isArray(runInput.argv)) {
-      const { argv: _argv, ...commandInput } = runInput
-      return commandInput
-    }
-    return runInput
-  }
-  return value
+export const bashToolInputSchema = z.union([
+  terminalRunCommandInputSchema,
+  terminalRunArgvInputSchema,
+  terminalStartInputSchema,
+  terminalStatusInputSchema,
+  terminalOutputInputSchema,
+  terminalStopInputSchema,
+  terminalListInputSchema,
+])
+// Internal Terminal supervisors build requests in stages. The runtime schema above
+// remains the sole validation and provider authority; this structural type keeps
+// those already-validated internal transitions ergonomic without duplicating a schema.
+export type BashToolInput = {
+  operation?: "run" | "start" | "status" | "output" | "stop" | "list" | undefined
+  command?: string | undefined
+  argv?: string[] | undefined
+  processId?: string | undefined
+  terminalId?: string | undefined
+  name?: string | undefined
+  target?: string | undefined
+  outputSequence?: number | undefined
+  cwd?: string | undefined
+  timeoutMs?: number | undefined
+  charLimit?: number | undefined
+  limit?: number | undefined
+  inputMode?: "none" | "user" | undefined
 }
-
-const preferredTerminalTarget = (target: unknown, legacyName: unknown): string | undefined => {
-  for (const candidate of [target, legacyName]) {
-    if (typeof candidate !== "string") continue
-    const value = candidate.trim()
-    if (value && !/^placeholder$/i.test(value)) return value
-  }
-  return undefined
-}
-
-export const bashToolModelInputSchema = z
-  .object({
-    operation: z.enum(["run", "start", "status", "output", "stop", "list"]).optional(),
-    command: z.string().min(1).optional().describe(terminalCommandDescription),
-    argv: z.array(z.string().min(1)).min(1).max(32).optional().describe(terminalArgvDescription),
-    name: z.string().min(1).optional(),
-    target: z.string().min(1).optional(),
-    cwd: z.string().min(1).optional().describe(terminalCwdDescription),
-    timeoutMs: z.number().int().positive().max(600_000).optional(),
-    charLimit: z.number().int().positive().max(16_000).optional(),
-    limit: z.number().int().positive().max(12).optional(),
-    inputMode: z.enum(["none", "user"]).optional().describe("Set to user only when the started program intentionally needs live user input."),
-  })
-  .strict()
-  .superRefine((input, context) => {
-    const operation = input.operation ?? "run"
-    if (input.command && input.argv) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "Provide command or argv, not both." })
-    }
-    if ((operation === "run" || operation === "start") && !input.command && !input.argv) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["command"],
-        message: "command or argv is required for run and start operations",
-      })
-    }
-    if (input.argv && operation !== "run") {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["argv"], message: "argv is only supported for foreground run operations." })
-    }
-    if (input.inputMode === "user" && operation !== "start") {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["inputMode"], message: "inputMode=user is only supported for start operations." })
-    }
-  })
 
 export const bashToolOutputSchema = z
   .object({
@@ -1157,137 +1041,6 @@ export const traceRetrieveToolInputSchema = z.preprocess(
 )
 export type TraceRetrieveToolInput = z.infer<typeof traceRetrieveToolInputSchema>
 
-const traceRetrieveModelExactSearchInputSchema = z
-  .object({
-    operation: z.literal("search").optional(),
-    mode: z.literal("exact").optional(),
-    query: z.string().min(1).optional(),
-    scope: traceRetrieveScopeSchema.optional(),
-    projectId: traceRetrieveSelectorSchema.optional(),
-    projectTitle: traceRetrieveSelectorSchema.optional(),
-    conversationTitle: traceRetrieveSelectorSchema.optional(),
-    conversationId: traceRetrieveSelectorSchema.optional(),
-    conversationLimit: z.number().int().positive().max(50).optional(),
-    conversationOffset: z.number().int().nonnegative().max(10_000).optional(),
-    perConversationLimit: z.number().int().positive().max(20).optional(),
-    turnNo: z.number().int().positive().max(10_000).optional(),
-    role: traceRetrieveRoleSchema.optional(),
-    entryType: traceRetrieveEntryTypeSchema.optional(),
-    hasAttachment: z.boolean().optional(),
-    createdAfter: z.string().min(1).optional(),
-    createdBefore: z.string().min(1).optional(),
-    updatedAfter: z.string().min(1).optional(),
-    updatedBefore: z.string().min(1).optional(),
-    limit: z.number().int().positive().max(20).optional(),
-    charLimit: z.number().int().positive().max(80_000).optional(),
-  })
-  .strict()
-  .superRefine((input, context) => {
-    const hasQuery = input.query !== undefined
-    const hasTurnNo = input.turnNo !== undefined
-    if (!hasQuery && !hasTurnNo && input.mode !== undefined && input.mode !== "exact") {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Queryless browse is exact-only.",
-      })
-    }
-  })
-
-const traceRetrieveModelSemanticSearchInputSchema = z
-  .object({
-    operation: z.literal("search").optional(),
-    mode: z.enum(["semantic", "combined"]),
-    query: z.string().min(1),
-    scope: traceRetrieveScopeSchema.optional(),
-    projectId: traceRetrieveSelectorSchema.optional(),
-    projectTitle: traceRetrieveSelectorSchema.optional(),
-    conversationTitle: traceRetrieveSelectorSchema.optional(),
-    conversationId: traceRetrieveSelectorSchema.optional(),
-    conversationLimit: z.number().int().positive().max(50).optional(),
-    conversationOffset: z.number().int().nonnegative().max(10_000).optional(),
-    limit: z.number().int().positive().max(20).optional(),
-    turnNo: z.number().int().positive().max(10_000).optional(),
-    role: traceRetrieveRoleSchema.optional(),
-    entryType: traceRetrieveEntryTypeSchema.optional(),
-    hasAttachment: z.boolean().optional(),
-    createdAfter: z.string().min(1).optional(),
-    createdBefore: z.string().min(1).optional(),
-    updatedAfter: z.string().min(1).optional(),
-    updatedBefore: z.string().min(1).optional(),
-    charLimit: z.number().int().positive().max(80_000).optional(),
-  })
-  .strict()
-
-const traceRetrieveModelAuditSearchInputSchema = z
-  .object({
-    operation: z.literal("search").optional(),
-    mode: z.literal("audit"),
-    query: z.string().min(1),
-    scope: traceRetrieveScopeSchema.optional(),
-    projectId: traceRetrieveSelectorSchema.optional(),
-    projectTitle: traceRetrieveSelectorSchema.optional(),
-    conversationTitle: traceRetrieveSelectorSchema.optional(),
-    conversationId: traceRetrieveSelectorSchema.optional(),
-    conversationLimit: z.number().int().positive().max(50).optional(),
-    turnNo: z.number().int().positive().max(10_000).optional(),
-    role: traceRetrieveRoleSchema.optional(),
-    entryType: traceRetrieveEntryTypeSchema.optional(),
-    hasAttachment: z.boolean().optional(),
-    include: z.array(traceRetrieveIncludeSchema).optional(),
-    paths: z.array(z.string().min(1)).max(20).optional(),
-    command: z.string().min(1).optional(),
-    toolId: z.string().min(1).optional(),
-    limit: z.number().int().positive().max(20).optional(),
-    charLimit: z.number().int().positive().max(80_000).optional(),
-  })
-  .strict()
-
-export const traceRetrieveModelSearchInputSchema = z.union([
-  traceRetrieveModelExactSearchInputSchema,
-  traceRetrieveModelSemanticSearchInputSchema,
-  traceRetrieveModelAuditSearchInputSchema,
-])
-
-export const traceRetrieveModelInspectInputSchema = z
-  .object({
-    operation: z.literal("inspect"),
-    resultNumber: z.number().int().positive().max(20).optional(),
-    query: z.string().min(1).optional(),
-    turnNo: z.number().int().positive().max(10_000).optional(),
-    role: traceRetrieveRoleSchema.optional(),
-    handle: z.string().min(1).optional(),
-    conversationId: z.string().min(1).optional(),
-    turnId: z.string().min(1).optional(),
-    messageId: z.string().min(1).optional(),
-    toolId: z.string().min(1).optional(),
-    toolCallId: z.string().min(1).optional(),
-    startTurnNo: z.number().int().positive().max(10_000).optional(),
-    turnLimit: z.number().int().positive().max(100).optional(),
-    charLimit: z.number().int().positive().max(80_000).optional(),
-  })
-  .strict()
-  .refine(
-    (input) =>
-      Boolean(
-        input.resultNumber ??
-          input.query ??
-          input.turnNo ??
-          input.handle ??
-          input.conversationId ??
-          input.turnId ??
-          input.messageId ??
-          input.toolId ??
-          input.toolCallId,
-      ),
-    {
-      message: "inspect requires resultNumber, natural filters, handle, conversationId, turnId, messageId, or toolCallId",
-    },
-  )
-export const traceRetrieveToolModelInputSchema = z.preprocess(
-  normalizeTraceRetrieveInput,
-  z.union([traceRetrieveModelSearchInputSchema, traceRetrieveModelInspectInputSchema]),
-)
-
 export const traceRetrieveSourceSchema = z
   .object({
     table: z.string().min(1),
@@ -1501,121 +1254,106 @@ const skillImportAttachmentPathSchema = z
   .max(240)
   .regex(/^\.socrates\/attachments\/[^/]+\.zip$/i, "Use the exact attached ZIP path shown in the current user message.")
 
-export const skillsToolInputSchema = z
+const skillsListInputSchema = z
   .object({
-    operation: z.enum(["list", "describe", "search", "read", "preview_import", "commit_import"]),
+    operation: z.literal("list"),
     scope: skillScopeSchema.optional(),
-    id: z.string().min(1).optional().describe("Canonical skill id copied from skills list. Prefer this for describe."),
-    name: z.string().min(1).optional().describe("Exact listed display/name handle. Use only when matching by name; do not copy a name into id."),
-    path: z.string().min(1).optional(),
-    query: z.string().min(1).optional(),
     n: z.number().int().positive().max(35).optional(),
     limit: z.number().int().positive().max(50).optional(),
     offset: z.number().int().nonnegative().optional(),
     charLimit: z.number().int().positive().max(80_000).optional(),
-    url: skillImportUrlSchema.optional(),
-    attachmentPath: skillImportAttachmentPathSchema.optional(),
-    previewId: skillImportPreviewIdSchema.optional(),
+  })
+  .strict()
+const skillsSearchInputSchema = z
+  .object({
+    operation: z.literal("search"),
+    scope: skillScopeSchema.optional(),
+    query: z.string().min(1),
+    n: z.number().int().positive().max(35).optional(),
+    limit: z.number().int().positive().max(50).optional(),
+    offset: z.number().int().nonnegative().optional(),
+    charLimit: z.number().int().positive().max(80_000).optional(),
+  })
+  .strict()
+const skillsDescribeByIdInputSchema = z
+  .object({
+    operation: z.literal("describe"),
+    scope: skillScopeSchema.optional(),
+    id: z.string().min(1).describe("Canonical skill id copied from skills list."),
+    charLimit: z.number().int().positive().max(80_000).optional(),
+  })
+  .strict()
+const skillsDescribeByNameInputSchema = z
+  .object({
+    operation: z.literal("describe"),
+    scope: skillScopeSchema.optional(),
+    name: z.string().min(1).describe("Exact listed skill name. Prefer canonical id when available."),
+    charLimit: z.number().int().positive().max(80_000).optional(),
+  })
+  .strict()
+const skillsReadByIdInputSchema = z
+  .object({
+    operation: z.literal("read"),
+    scope: skillScopeSchema.optional(),
+    id: z.string().min(1).describe("Canonical skill id copied from skills list."),
+    path: z.string().min(1).max(240).optional().describe("Relative supporting file path; defaults to SKILL.md."),
+    charLimit: z.number().int().positive().max(80_000).optional(),
+  })
+  .strict()
+const skillsReadByNameInputSchema = z
+  .object({
+    operation: z.literal("read"),
+    scope: skillScopeSchema.optional(),
+    name: z.string().min(1).describe("Exact listed skill name. Prefer canonical id when available."),
+    path: z.string().min(1).max(240).optional().describe("Relative supporting file path; defaults to SKILL.md."),
+    charLimit: z.number().int().positive().max(80_000).optional(),
+  })
+  .strict()
+const skillsPreviewUrlInputSchema = z
+  .object({
+    operation: z.literal("preview_import"),
+    scope: skillImportToolScopeSchema.optional(),
+    url: skillImportUrlSchema,
+  })
+  .strict()
+const skillsPreviewAttachmentInputSchema = z
+  .object({
+    operation: z.literal("preview_import"),
+    scope: skillImportToolScopeSchema.optional(),
+    attachmentPath: skillImportAttachmentPathSchema,
+  })
+  .strict()
+const skillsCommitImportInputSchema = z
+  .object({
+    operation: z.literal("commit_import"),
+    scope: skillImportToolScopeSchema.optional(),
+    previewId: skillImportPreviewIdSchema,
     conflictStrategy: z.enum(["reject", "replace"]).optional(),
   })
   .strict()
-  .superRefine((input, context) => {
-    if (input.operation === "search" && !input.query) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["query"], message: "search requires query." })
-    }
-    if ((input.operation === "read" || input.operation === "describe") && !input.id && !input.name) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["id"], message: `${input.operation} requires id or name.` })
-    }
-    if (input.operation === "preview_import") {
-      if (Boolean(input.url) === Boolean(input.attachmentPath)) context.addIssue({ code: z.ZodIssueCode.custom, message: "preview_import requires exactly one URL or current-message attachmentPath." })
-      if (input.scope === "builtin") context.addIssue({ code: z.ZodIssueCode.custom, path: ["scope"], message: "Skills cannot be imported into builtin scope." })
-    }
-    if (input.operation === "commit_import") {
-      if (!input.previewId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["previewId"], message: "commit_import requires previewId." })
-      if (input.scope === "builtin") context.addIssue({ code: z.ZodIssueCode.custom, path: ["scope"], message: "Skills cannot be imported into builtin scope." })
-    }
-  })
+
+export const skillsToolInputSchema = z.union([
+  skillsListInputSchema,
+  skillsSearchInputSchema,
+  skillsDescribeByIdInputSchema,
+  skillsDescribeByNameInputSchema,
+  skillsReadByIdInputSchema,
+  skillsReadByNameInputSchema,
+  skillsPreviewUrlInputSchema,
+  skillsPreviewAttachmentInputSchema,
+  skillsCommitImportInputSchema,
+])
 export type SkillsToolInput = z.infer<typeof skillsToolInputSchema>
 
-const skillsListModelInputSchema = z
-    .object({
-      operation: z.literal("list"),
-      scope: skillScopeSchema.optional(),
-      n: z.number().int().positive().max(35).optional(),
-      charLimit: z.number().int().positive().max(80_000).optional(),
-    })
-    .strict()
-const skillsDescribeModelInputSchema = z
-    .object({
-      operation: z.literal("describe"),
-      scope: skillScopeSchema.optional(),
-      id: z.string().min(1).optional().describe("Canonical skill id copied from skills list. Prefer this for describe."),
-      name: z.string().min(1).optional().describe("Exact listed display/name handle. Use only when matching by name; do not copy a name into id."),
-      n: z.number().int().positive().max(35).optional(),
-      charLimit: z.number().int().positive().max(80_000).optional(),
-    })
-    .strict()
-const skillsReadModelInputSchema = z
-    .object({
-      operation: z.literal("read"),
-      scope: skillScopeSchema.optional(),
-      id: z.string().min(1).optional().describe("Canonical skill id copied from skills list."),
-      name: z.string().min(1).optional().describe("Exact listed skill name."),
-      path: z.string().min(1).max(240).describe("Relative supporting file path from the skill directory, such as references/checklist.md."),
-      charLimit: z.number().int().positive().max(80_000).optional(),
-    })
-    .strict()
-const skillsSearchModelInputSchema = z
-    .object({
-      operation: z.literal("search"),
-      scope: skillScopeSchema.optional(),
-      query: z.string().min(1),
-      n: z.number().int().positive().max(35).optional(),
-      charLimit: z.number().int().positive().max(80_000).optional(),
-    })
-    .strict()
-const skillsPreviewImportModelInputSchema = z
-    .object({
-      operation: z.literal("preview_import"),
-      scope: skillImportToolScopeSchema.default("project"),
-      url: skillImportUrlSchema.optional().describe("Exact public HTTPS URL of one Agent Skill ZIP. This is not web search."),
-      attachmentPath: skillImportAttachmentPathSchema.optional().describe("Exact .socrates/attachments/*.zip path shown in the current user message."),
-    })
-    .strict()
-const skillsCommitImportModelInputSchema = z
-    .object({
-      operation: z.literal("commit_import"),
-      scope: skillImportToolScopeSchema.default("project"),
-      previewId: skillImportPreviewIdSchema.describe("Exact previewId returned by preview_import."),
-      conflictStrategy: z.enum(["reject", "replace"]).default("reject"),
-    })
-    .strict()
-
-const refineSkillModelInput = (
-  input: { operation?: unknown; id?: unknown; name?: unknown; url?: unknown; attachmentPath?: unknown },
-  context: z.RefinementCtx,
-): void => {
-  if ((input.operation === "describe" || input.operation === "read") && typeof input.id !== "string" && typeof input.name !== "string") {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["id"], message: `${input.operation} requires id or name.` })
-  }
-  if (input.operation === "preview_import" && (typeof input.url === "string") === (typeof input.attachmentPath === "string")) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "Provide exactly one URL or attachmentPath." })
-  }
-}
-
-export const skillsToolReadModelInputSchema = z
-  .discriminatedUnion("operation", [skillsListModelInputSchema, skillsDescribeModelInputSchema, skillsReadModelInputSchema, skillsSearchModelInputSchema])
-  .superRefine(refineSkillModelInput)
-export type SkillsToolReadModelInput = z.infer<typeof skillsToolReadModelInputSchema>
-
-export const skillsToolModelInputSchema = z.discriminatedUnion("operation", [
-  skillsListModelInputSchema,
-  skillsDescribeModelInputSchema,
-  skillsReadModelInputSchema,
-  skillsPreviewImportModelInputSchema,
-  skillsCommitImportModelInputSchema,
+export const skillsReadOnlyToolInputSchema = z.union([
+  skillsListInputSchema,
+  skillsSearchInputSchema,
+  skillsDescribeByIdInputSchema,
+  skillsDescribeByNameInputSchema,
+  skillsReadByIdInputSchema,
+  skillsReadByNameInputSchema,
 ])
-  .superRefine(refineSkillModelInput)
+export type SkillsReadOnlyToolInput = z.infer<typeof skillsReadOnlyToolInputSchema>
 
 export const skillImportToolWarningSchema = z
   .object({
@@ -1954,109 +1692,30 @@ export type EditFilesToolOutput = z.infer<typeof editFilesToolOutputSchema>
 export const projectDocsAreaSchema = z.enum(["memory", "notes"])
 export type ProjectDocsArea = z.infer<typeof projectDocsAreaSchema>
 
-export const projectDocsToolInputSchema = z
+const projectDocsReadInputSchema = z
   .object({
-    operation: z.enum(["read", "search", "edit", "read_index", "read_section", "patch_section"]),
+    operation: z.literal("read"),
     area: projectDocsAreaSchema,
-    sectionId: z.string().min(1).optional(),
-    query: z.string().min(1).optional(),
-    editMode: z.enum(["append", "replace"]).optional(),
-    oldText: z.string().optional(),
-    newText: z.string().optional(),
-    text: z.string().optional(),
-    replaceAll: z.boolean().optional(),
     charLimit: z.number().int().positive().max(80_000).optional(),
   })
   .strict()
-  .superRefine((input, context) => {
-    if (input.operation === "search" && !input.query) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["query"], message: "search requires query." })
-    }
-    if (input.operation === "read_section" && !input.sectionId) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["sectionId"], message: "read_section requires sectionId." })
-    }
-    if (input.operation === "patch_section") {
-      if (!input.sectionId) {
-        context.addIssue({ code: z.ZodIssueCode.custom, path: ["sectionId"], message: "patch_section requires sectionId." })
-      }
-      if (input.oldText === undefined || input.newText === undefined) {
-        context.addIssue({ code: z.ZodIssueCode.custom, message: "patch_section requires oldText and newText." })
-      }
-    }
-    if (input.operation === "edit") {
-      if (!input.editMode) {
-        context.addIssue({ code: z.ZodIssueCode.custom, path: ["editMode"], message: "edit requires editMode." })
-      }
-      if (input.editMode === "append" && input.text === undefined) {
-        context.addIssue({ code: z.ZodIssueCode.custom, path: ["text"], message: "append edit requires text." })
-      }
-      if (input.editMode === "replace" && (input.oldText === undefined || input.newText === undefined)) {
-        context.addIssue({ code: z.ZodIssueCode.custom, message: "replace edit requires oldText and newText." })
-      }
-    }
-  })
-export type ProjectDocsToolInput = z.infer<typeof projectDocsToolInputSchema>
+const projectDocsSearchInputSchema = z.object({ operation: z.literal("search"), area: projectDocsAreaSchema, query: z.string().min(1), charLimit: z.number().int().positive().max(80_000).optional() }).strict()
+const projectDocsReadIndexInputSchema = z.object({ operation: z.literal("read_index"), area: projectDocsAreaSchema, charLimit: z.number().int().positive().max(80_000).optional() }).strict()
+const projectDocsReadSectionInputSchema = z.object({ operation: z.literal("read_section"), area: projectDocsAreaSchema, sectionId: z.string().min(1), charLimit: z.number().int().positive().max(80_000).optional() }).strict()
+const projectDocsPatchSectionInputSchema = z.object({ operation: z.literal("patch_section"), area: projectDocsAreaSchema, sectionId: z.string().min(1), oldText: z.string(), newText: z.string(), replaceAll: z.boolean().optional(), charLimit: z.number().int().positive().max(80_000).optional() }).strict()
+const projectDocsAppendInputSchema = z.object({ operation: z.literal("edit"), area: projectDocsAreaSchema, editMode: z.literal("append"), text: z.string(), charLimit: z.number().int().positive().max(80_000).optional() }).strict()
+const projectDocsReplaceInputSchema = z.object({ operation: z.literal("edit"), area: projectDocsAreaSchema, editMode: z.literal("replace"), oldText: z.string(), newText: z.string(), replaceAll: z.boolean().optional(), charLimit: z.number().int().positive().max(80_000).optional() }).strict()
 
-const projectDocsModelBaseShape = {
-  area: projectDocsAreaSchema,
-  charLimit: z.number().int().positive().max(80_000).optional(),
-}
-
-export const projectDocsToolModelInputSchema = z.union([
-  z
-    .object({
-      operation: z.literal("read"),
-      ...projectDocsModelBaseShape,
-    })
-    .strict(),
-  z
-    .object({
-      operation: z.literal("search"),
-      ...projectDocsModelBaseShape,
-      query: z.string().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      operation: z.literal("read_index"),
-      ...projectDocsModelBaseShape,
-    })
-    .strict(),
-  z
-    .object({
-      operation: z.literal("read_section"),
-      ...projectDocsModelBaseShape,
-      sectionId: z.string().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      operation: z.literal("patch_section"),
-      ...projectDocsModelBaseShape,
-      sectionId: z.string().min(1),
-      oldText: z.string(),
-      newText: z.string(),
-      replaceAll: z.boolean().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      operation: z.literal("edit"),
-      ...projectDocsModelBaseShape,
-      editMode: z.literal("append"),
-      text: z.string(),
-    })
-    .strict(),
-  z
-    .object({
-      operation: z.literal("edit"),
-      ...projectDocsModelBaseShape,
-      editMode: z.literal("replace"),
-      oldText: z.string(),
-      newText: z.string(),
-    })
-    .strict(),
+export const projectDocsToolInputSchema = z.union([
+  projectDocsReadInputSchema,
+  projectDocsSearchInputSchema,
+  projectDocsReadIndexInputSchema,
+  projectDocsReadSectionInputSchema,
+  projectDocsPatchSectionInputSchema,
+  projectDocsAppendInputSchema,
+  projectDocsReplaceInputSchema,
 ])
+export type ProjectDocsToolInput = z.infer<typeof projectDocsToolInputSchema>
 
 export const projectDocsToolOutputSchema = z
   .object({
@@ -2092,104 +1751,28 @@ export const repoDocFileSchema = z.enum([
 ])
 export type RepoDocFile = z.infer<typeof repoDocFileSchema>
 
-export const repoDocsToolInputSchema = z
+const repoDocsReadInputSchema = z
   .object({
-    operation: z.enum(["read", "search", "edit", "read_index", "read_section", "patch_section"]),
+    operation: z.literal("read"),
     path: repoDocFileSchema.optional(),
-    sectionId: z.string().min(1).optional(),
-    query: z.string().min(1).optional(),
-    oldText: z.string().optional(),
-    newText: z.string().optional(),
-    replaceAll: z.boolean().optional(),
     charLimit: z.number().int().positive().max(80_000).optional(),
   })
   .strict()
-  .superRefine((input, context) => {
-    if (input.operation === "search" && !input.query) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["query"], message: "search requires query." })
-    }
-    if ((input.operation === "read_section" || input.operation === "patch_section") && !input.path) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["path"], message: `${input.operation} requires path.` })
-    }
-    if (input.operation === "read_section" && !input.sectionId) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["sectionId"], message: "read_section requires sectionId." })
-    }
-    if (input.operation === "patch_section") {
-      if (!input.sectionId) {
-        context.addIssue({ code: z.ZodIssueCode.custom, path: ["sectionId"], message: "patch_section requires sectionId." })
-      }
-      if (input.oldText === undefined || input.newText === undefined) {
-        context.addIssue({ code: z.ZodIssueCode.custom, message: "patch_section requires oldText and newText." })
-      }
-    }
-    if (input.operation === "edit") {
-      if (!input.path) {
-        context.addIssue({ code: z.ZodIssueCode.custom, path: ["path"], message: "edit requires path." })
-      }
-      if (input.oldText === undefined || input.newText === undefined) {
-        context.addIssue({ code: z.ZodIssueCode.custom, message: "edit requires oldText and newText." })
-      }
-    }
-  })
-export type RepoDocsToolInput = z.infer<typeof repoDocsToolInputSchema>
+const repoDocsSearchInputSchema = z.object({ operation: z.literal("search"), path: repoDocFileSchema.optional(), query: z.string().min(1), charLimit: z.number().int().positive().max(80_000).optional() }).strict()
+const repoDocsReadIndexInputSchema = z.object({ operation: z.literal("read_index"), path: repoDocFileSchema.optional(), charLimit: z.number().int().positive().max(80_000).optional() }).strict()
+const repoDocsReadSectionInputSchema = z.object({ operation: z.literal("read_section"), path: repoDocFileSchema, sectionId: z.string().min(1), charLimit: z.number().int().positive().max(80_000).optional() }).strict()
+const repoDocsPatchSectionInputSchema = z.object({ operation: z.literal("patch_section"), path: repoDocFileSchema, sectionId: z.string().min(1), oldText: z.string(), newText: z.string(), replaceAll: z.boolean().optional(), charLimit: z.number().int().positive().max(80_000).optional() }).strict()
+const repoDocsEditInputSchema = z.object({ operation: z.literal("edit"), path: repoDocFileSchema, oldText: z.string(), newText: z.string(), replaceAll: z.boolean().optional(), charLimit: z.number().int().positive().max(80_000).optional() }).strict()
 
-const repoDocsModelBaseShape = {
-  charLimit: z.number().int().positive().max(80_000).optional(),
-}
-
-export const repoDocsToolModelInputSchema = z.union([
-  z
-    .object({
-      operation: z.literal("read"),
-      ...repoDocsModelBaseShape,
-      path: repoDocFileSchema.optional(),
-    })
-    .strict(),
-  z
-    .object({
-      operation: z.literal("search"),
-      ...repoDocsModelBaseShape,
-      path: repoDocFileSchema.optional(),
-      query: z.string().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      operation: z.literal("read_index"),
-      ...repoDocsModelBaseShape,
-      path: repoDocFileSchema.optional(),
-    })
-    .strict(),
-  z
-    .object({
-      operation: z.literal("read_section"),
-      ...repoDocsModelBaseShape,
-      path: repoDocFileSchema,
-      sectionId: z.string().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      operation: z.literal("patch_section"),
-      ...repoDocsModelBaseShape,
-      path: repoDocFileSchema,
-      sectionId: z.string().min(1),
-      oldText: z.string(),
-      newText: z.string(),
-      replaceAll: z.boolean().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      operation: z.literal("edit"),
-      ...repoDocsModelBaseShape,
-      path: repoDocFileSchema,
-      oldText: z.string(),
-      newText: z.string(),
-      replaceAll: z.boolean().optional(),
-    })
-    .strict(),
+export const repoDocsToolInputSchema = z.union([
+  repoDocsReadInputSchema,
+  repoDocsSearchInputSchema,
+  repoDocsReadIndexInputSchema,
+  repoDocsReadSectionInputSchema,
+  repoDocsPatchSectionInputSchema,
+  repoDocsEditInputSchema,
 ])
+export type RepoDocsToolInput = z.infer<typeof repoDocsToolInputSchema>
 
 export const repoDocsToolOutputSchema = z
   .object({
@@ -2285,55 +1868,17 @@ const mcpSecretBindingsSchema = z
     }
   })
 
-export const mcpRegistryToolInputSchema = z
-  .object({
-    operation: mcpRegistryOperationSchema,
-    id: z.string().min(1).optional().describe("Canonical MCP id copied from mcp_registry list. Prefer this for describe."),
-    name: z.string().min(1).optional().describe("Exact listed MCP display name. Use only when matching by name; do not copy a name into id."),
-    n: z.number().int().positive().max(35).optional(),
-    serverId: z.string().min(1).optional(),
-    serverName: z.string().min(1).optional(),
-    preset: z.enum(["playwright"]).optional(),
-    scope: mcpServerScopeSchema.optional(),
-    server: z
-      .object({
-        id: z.string().min(1).max(64).regex(/^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$/),
-        label: z.string().min(1).max(120).optional(),
-        command: z.string().min(1),
-        args: z.array(z.string()).max(40).optional(),
-        env: z.record(z.string(), z.string()).optional(),
-        secretBindings: mcpSecretBindingsSchema,
-        enabled: z.boolean().optional(),
-      })
-      .strict()
-      .optional(),
-    confirmed: z.boolean().optional(),
-    enableOnSuccess: z.boolean().optional(),
-  })
-  .strict()
-export type McpRegistryToolInput = z.infer<typeof mcpRegistryToolInputSchema>
-
-export const mcpRegistryToolModelInputSchema = z.discriminatedUnion("operation", [
-  z
-    .object({
-      operation: z.literal("list"),
-      n: z.number().int().positive().max(35).optional(),
-    })
-    .strict(),
+export const mcpRegistryToolInputSchema = z.discriminatedUnion("operation", [
+  z.object({ operation: z.literal("list"), n: z.number().int().positive().max(35).optional() }).strict(),
   z
     .object({
       operation: z.literal("describe"),
       id: z.string().min(1).optional().describe("Canonical MCP id copied from mcp_registry list. Prefer this for describe."),
-      name: z.string().min(1).optional().describe("Exact listed MCP display name. Use only when matching by name; do not copy a name into id."),
+      name: z.string().min(1).optional().describe("Exact listed MCP display name. Use only when matching by name."),
       n: z.number().int().positive().max(35).optional(),
     })
     .strict(),
-  z
-    .object({
-      operation: z.literal("check"),
-      id: z.string().min(1),
-    })
-    .strict(),
+  z.object({ operation: z.literal("check"), id: z.string().min(1) }).strict(),
   z
     .object({
       operation: z.literal("configure"),
@@ -2345,26 +1890,18 @@ export const mcpRegistryToolModelInputSchema = z.discriminatedUnion("operation",
           command: z.string().min(1),
           args: z.array(z.string()).max(40).optional(),
           env: z.record(z.string(), z.string()).optional().describe("Non-secret environment values only."),
-          secretBindings: mcpSecretBindingsSchema.describe(
-            "Secret key names and their source only. Use user_input unless the user explicitly asked to reuse that exact key from a workspace .env file. Never provide a secret value.",
-          ),
+          secretBindings: mcpSecretBindingsSchema.describe("Secret key names and sources only. Never provide secret values."),
         })
         .strict(),
     })
     .strict(),
-  z
-    .object({
-      operation: z.literal("delete"),
-      scope: mcpServerScopeSchema.default("project"),
-      id: z.string().min(1),
-    })
-    .strict(),
-])
-  .superRefine((input, context) => {
-    if (input.operation === "describe" && !input.id && !input.name) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["id"], message: "describe requires id or name." })
-    }
-  })
+  z.object({ operation: z.literal("delete"), scope: mcpServerScopeSchema.default("project"), id: z.string().min(1) }).strict(),
+]).superRefine((input, context) => {
+  if (input.operation === "describe" && !input.id && !input.name) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["id"], message: "describe requires id or name." })
+  }
+})
+export type McpRegistryToolInput = z.infer<typeof mcpRegistryToolInputSchema>
 
 export const mcpRegistryServerSchema = z
   .object({
@@ -2449,5 +1986,27 @@ export type ModelToolDefinition = {
   name: ToolName
   description: string
   inputSchema: z.ZodTypeAny
-  resultSchema?: z.ZodTypeAny
+  resultSchema: z.ZodTypeAny
+  providerInputSchema: unknown
+}
+
+/**
+ * Runtime-discovered tools enter the shared CapabilityCatalog through this
+ * contract. The MCP package owns discovery; it does not attach tools directly
+ * to an agent or execute them outside the catalog.
+ */
+export type DynamicToolCapabilityRegistration = {
+  id: string
+  kind: "dynamic_tool"
+  name: ToolName
+  description: string
+  inputSchema: z.ZodTypeAny
+  resultSchema: z.ZodTypeAny
+  providerInputSchema: unknown
+  source: {
+    type: "mcp"
+    serverId: string
+    childName: string
+    scope: "project" | "global"
+  }
 }

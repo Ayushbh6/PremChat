@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest"
-import { buildMemoryAgentSystemPrompt, createMemoryToolRegistry, createSkillWriterToolRegistry, memoryAgentBasePrompt } from "../index"
+import {
+  buildMemoryAgentSystemPrompt,
+  capabilityCatalog,
+  globalMemoryAgentDefinition,
+  memoryAgentBasePrompt,
+  skillWriterAgentDefinition,
+} from "../index"
+
+const memoryCapabilities = capabilityCatalog.resolve(globalMemoryAgentDefinition.roleManifest)
+const skillWriterCapabilities = capabilityCatalog.resolve(skillWriterAgentDefinition.roleManifest)
 
 describe("memory agent prompt", () => {
   it("defines the backend memory-agent operating contract", () => {
@@ -49,7 +58,7 @@ describe("memory agent prompt", () => {
   })
 
   it("exposes the clean global trace contract to the Memory Agent", () => {
-    const trace = createMemoryToolRegistry().get("trace_retrieve")
+    const trace = memoryCapabilities.get("trace_retrieve")
     expect(trace?.description).toContain("same retrieval behavior as the main agent")
     expect(trace?.inputSchema.safeParse({ mode: "lexical", query: "slow mode" }).success).toBe(true)
     expect(trace?.inputSchema.safeParse({ mode: "exact", query: "slow mode" }).success).toBe(false)
@@ -57,7 +66,7 @@ describe("memory agent prompt", () => {
   })
 
   it("exposes only bounded read operations for prior journal history", () => {
-    const journal = createMemoryToolRegistry().get("read_memory_journal")
+    const journal = memoryCapabilities.get("read_memory_journal")
     expect(journal?.permission).toBe("read")
     expect(journal?.inputSchema.safeParse({ operation: "list", limit: 10, charLimit: 20_000 }).success).toBe(true)
     expect(journal?.inputSchema.safeParse({ operation: "list", limit: 11 }).success).toBe(false)
@@ -66,11 +75,11 @@ describe("memory agent prompt", () => {
   })
 
   it("keeps skill installation exclusive to main Socrates", () => {
-    const skills = createMemoryToolRegistry().get("skills")
+    const skills = memoryCapabilities.get("skills")
     expect(skills?.permission).toBe("read")
     expect(skills?.inputSchema.safeParse({ operation: "search", query: "review" }).success).toBe(true)
     expect(skills?.inputSchema.safeParse({ operation: "preview_import", url: "https://example.com/review.zip" }).success).toBe(false)
     expect(skills?.inputSchema.safeParse({ operation: "commit_import", previewId: `skillimp_${"a".repeat(32)}` }).success).toBe(false)
-    expect(createSkillWriterToolRegistry().get("skills")?.inputSchema.safeParse({ operation: "preview_import", url: "https://example.com/review.zip" }).success).toBe(false)
+    expect(skillWriterCapabilities.get("skills")?.inputSchema.safeParse({ operation: "preview_import", url: "https://example.com/review.zip" }).success).toBe(false)
   })
 })
