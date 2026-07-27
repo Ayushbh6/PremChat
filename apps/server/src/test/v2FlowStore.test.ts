@@ -961,6 +961,25 @@ describe("V2FlowStore isolation and lifecycle", () => {
     expect(new Set(loadCanonicalTraceRows(handle, "proj_one").map((row) => row.parentId))).toEqual(new Set([created.turn.id]))
   })
 
+  it("skips dangling legacy bridge links during startup reconciliation", () => {
+    const { handle, store } = setup()
+    const flow = store.ensureFlow("proj_one").flow
+    const created = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Create a valid goal", runtimeConfig })
+    const goal = store.applyRouting({
+      projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, messageId: created.userMessage.id,
+      messageContent: created.userMessage.content, result: forcedCreateResult(store, flow.id),
+    }).goal
+    const bridge = store.openFocusInClassic("proj_one", flow.id, goal.id)
+    const now = nowIso()
+    handle.sqlite.prepare(
+      "INSERT INTO v2_classic_turn_goal_links (id, project_id, flow_id, goal_id, bridge_id, conversation_id, session_id, turn_id, user_message_id, created_at, updated_at) VALUES (?, 'proj_one', ?, ?, ?, ?, ?, 'turn_deleted', 'msg_deleted', ?, ?)",
+    ).run(createId("v2link"), flow.id, goal.id, bridge.id, bridge.conversationId, bridge.sessionId, now, now)
+
+    expect(() => new CanonicalWorkStore(handle).reconcileLegacyBridgeData()).not.toThrow()
+    expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM v2_classic_turn_goal_links WHERE turn_id = 'turn_deleted'").get()).toEqual({ count: 1 })
+    expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM work_tasks WHERE source_turn_id = 'turn_deleted'").get()).toEqual({ count: 0 })
+  })
+
   it("keeps Classic behavior byte-for-byte native when Flow is disabled", () => {
     const { handle, root, store } = setup()
     const flow = store.ensureFlow("proj_one").flow

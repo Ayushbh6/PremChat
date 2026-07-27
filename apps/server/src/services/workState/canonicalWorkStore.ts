@@ -96,7 +96,7 @@ export class CanonicalWorkStore {
         )).limit(1).get()
         if (sourceV2) {
           const source = this.handle.db.select().from(v2Messages).where(eq(v2Messages.id, sourceV2.v2MessageId)).limit(1).get()
-          if (source?.turnId) {
+          if (source?.turnId && this.sourceTurnStartedAt("v2_flow", source.turnId)) {
             this.bindTask({
               projectId: link.projectId,
               goalId: link.goalId,
@@ -108,6 +108,7 @@ export class CanonicalWorkStore {
           }
           continue
         }
+        if (!this.sourceTurnStartedAt("classic", link.turnId)) continue
         this.bindTask({
           projectId: link.projectId,
           goalId: link.goalId,
@@ -131,7 +132,7 @@ export class CanonicalWorkStore {
           : undefined
         if (sourceClassic) {
           const source = this.handle.db.select().from(messages).where(eq(messages.id, sourceClassic.classicMessageId)).limit(1).get()
-          if (source?.turnId) {
+          if (source?.turnId && this.sourceTurnStartedAt("classic", source.turnId)) {
             const classicLink = this.handle.db.select().from(v2ClassicTurnGoalLinks).where(eq(v2ClassicTurnGoalLinks.turnId, source.turnId)).limit(1).get()
             this.bindTask({
               projectId: turn.projectId,
@@ -440,9 +441,7 @@ export class CanonicalWorkStore {
 
   private bindTask(input: BindTaskInput): WorkTaskRow {
     const existing = this.findTask(input.sourceRuntime, input.sourceTurnId)
-    const startedAt = input.sourceRuntime === "classic"
-      ? this.handle.db.select({ startedAt: turns.startedAt }).from(turns).where(eq(turns.id, input.sourceTurnId)).limit(1).get()?.startedAt
-      : this.handle.db.select({ startedAt: v2Turns.startedAt }).from(v2Turns).where(eq(v2Turns.id, input.sourceTurnId)).limit(1).get()?.startedAt
+    const startedAt = this.sourceTurnStartedAt(input.sourceRuntime, input.sourceTurnId)
     if (!startedAt) throw new SocratesError("canonical_source_turn_not_found", "The source task could not be found.")
     const now = nowIso()
     let task = existing
@@ -473,6 +472,12 @@ export class CanonicalWorkStore {
       for (const home of homes) this.ensureConversationProjection(home.conversationId, task.id, "goal_home")
     }
     return task
+  }
+
+  private sourceTurnStartedAt(sourceRuntime: WorkSourceRuntime, sourceTurnId: string): string | undefined {
+    return sourceRuntime === "classic"
+      ? this.handle.db.select({ startedAt: turns.startedAt }).from(turns).where(eq(turns.id, sourceTurnId)).limit(1).get()?.startedAt
+      : this.handle.db.select({ startedAt: v2Turns.startedAt }).from(v2Turns).where(eq(v2Turns.id, sourceTurnId)).limit(1).get()?.startedAt
   }
 
   private findTask(sourceRuntime: WorkSourceRuntime, sourceTurnId: string): WorkTaskRow | undefined {
