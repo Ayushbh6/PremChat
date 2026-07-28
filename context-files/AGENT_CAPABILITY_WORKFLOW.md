@@ -208,19 +208,19 @@ Goal and memory candidates are retrieved concurrently, and the first memory quer
 
 Main Socrates then receives the bound capsule, latest exact exchange, exact selected memory/evidence, authorized resource state, and active Terminal/approval/wait state. It does not receive a bulk goal ledger. Goal capsules are structured live state with exact source anchors; they do not replace canonical goal history.
 
-Exact goal-history selection, stable standing context, Terminal continuation state, consent-gated compaction, finalization, and asynchronous enrichment are separate declared stages. Changing one requires tests proving the others retain their ordering and protected information.
+Exact goal-history selection, stable standing context, Terminal continuation state, turn-local large-result release, automatic 170k compaction, finalization, and asynchronous enrichment are separate declared stages. Changing one requires tests proving the others retain their ordering and protected information.
 
-Every context-stage change must satisfy the exact-content consent rule:
+Every context-stage change must satisfy the exact-source and model-projection rule:
 
 1. Canonical user messages and visible assistant answers remain exact.
 2. A selected relevant message is included whole, never character- or token-sliced.
 3. `bounded` means scoped or paginated, with explicit continuation, not truncated.
-4. Never document a stage merely as `bounded context`; name whether it is exact scoped selection, exact pagination, lossless indexing, or lossy user-approved compaction.
+4. Never document a stage merely as `bounded context`; name whether it is exact scoped selection, exact pagination, lossless indexing, turn-local released projection, or automatic provenance-linked model-context compaction.
 5. Parsing, chunking, embeddings, and ranking create disposable derivatives and never replace source text.
-6. If relevant exact context cannot fit, the runtime pauses before provider dispatch and asks the user to approve one specifically described lossy operation.
-7. No compactor, router, history selector, provider adapter, or fallback may infer consent.
-8. Approved compaction remains provenance-linked and exact source retrieval stays available.
-9. Tests must prove no selected text changed, the consent gate occurs before dispatch, refusal prevents lossy dispatch, and pagination can recover exact deferred content.
+6. At 170k estimated model-visible tokens, one shared stage automatically compacts only the oldest completed-turn head, preserves approximately 70k of newest complete Q/A plus the active turn, targets around 100k, accepts no result above 120k, and never dispatches the main model above the trigger after failed safe compaction.
+7. Successful individual tool results over 3,000 estimated tokens receive monotonic turn-local `R<n>` handles; release is the only disposition, piggybacks with the next normal tool request, never adds model inference, and never blocks functional tools when omitted.
+8. Compaction and release remain provenance-linked model projections; canonical exact sources are never overwritten and exact retrieval stays available.
+9. Tests must prove whole selected messages remain exact, protected suffix turns remain complete, handles reset each user turn, release receipts can recover exact evidence, and pagination can recover exact deferred content.
 
 ## 10. Dynamic MCP Changes
 
@@ -316,7 +316,7 @@ A change is complete only when all answers are yes:
 - Do the global seamless UI and every released compatibility adapter share the main definition, tools, utilities, exact-history policy, and runtime?
 - Does the critical path contain only parallel candidate retrieval, same-Socrates goal resolution, deterministic memory selection, and the main Socrates loop—with no router-agent shadow path?
 - Does every causally dependent follow-up become another task in the current goal instead of a new goal?
-- Did every selected relevant message remain exact, and was any lossy transformation explicitly approved before provider dispatch?
+- Did every canonical selected message remain exact, and did every automatic model-projection change preserve its required whole-turn suffix, provenance, exact recovery, and dispatch ceiling?
 - Does `pnpm check:agent-architecture` pass?
 - Do targeted unit, integration, isolated-state, real-provider, and packaging tests required by the matrix pass?
 

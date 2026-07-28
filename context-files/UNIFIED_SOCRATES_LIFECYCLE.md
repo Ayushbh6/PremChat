@@ -4,7 +4,7 @@ Status: detailed technical target for the global goal-centric Socrates lifecycle
 
 FLOW_NORTH_STAR.md defines the product experience. AGENT_REFACTOR_MANIFESTO.md defines the replacement agent architecture. AGENT_CAPABILITY_WORKFLOW.md defines the mandatory change procedure. Current Classic, project, V2, router, and compaction implementations are migration evidence when they conflict with this target.
 
-Implementation checkpoint (2026-07-28): Phase 3 converges the released Classic and Flow pre-turn path through concurrent typed goal/memory retrieval, current-capsule-aware first-pass memory queries, same-main-Socrates no-tool four-way resolution, one conditional bound-goal memory refinement, deterministic exact-memory selection, and one view-neutral exact prepared context. The former Goal Router, Memory Router, their model tools/settings/prompts, sliced goal-history helper, and view-specific context policy are deleted. The global no-project UI and the consent-gated replacement for released automatic lossy compaction remain later migration work.
+Implementation checkpoint (2026-07-28): Phase 3 converges the released Classic and Flow pre-turn path through concurrent typed goal/memory retrieval, current-capsule-aware first-pass memory queries, same-main-Socrates no-tool four-way resolution, one conditional bound-goal memory refinement, deterministic exact-memory selection, and one view-neutral exact prepared context. The former Goal Router, Memory Router, their model tools/settings/prompts, sliced goal-history helper, and view-specific context policy are deleted. The next locked convergence implements process-over-ceremony Socratic state, release-only turn-local large-result control, automatic 170k oldest-head compaction with an approximately 70k exact whole-turn suffix, exact-current-context Frontier transfer, and one shared atomic finalization path. The global no-project UI remains later migration work.
 
 ## One Product Model
 
@@ -18,20 +18,23 @@ The target product has one global Socrates, one canonical goal/task history, one
 
 A released project or conversation id may remain as a migration, access, audit, or presentation coordinate. It is not a separate Socrates mind, memory universe, or required user-facing entry boundary.
 
-## Exact Content And Consent
+## Exact Content And Efficient Model Context
 
-Exact user messages, visible assistant answers, explicit constraints, approvals, blockers, attachments, and selected relevant history are immutable canonical sources. The runtime must never clip, token-slice, rewrite, summarize, compact, or silently omit selected relevant text.
+Exact user messages, visible assistant answers, explicit constraints, approvals, blockers, attachments, and selected relevant history are immutable canonical sources. Canonical storage and exact retrieval never clip, token-slice, rewrite, summarize, compact, or silently omit those sources. Only the provider-facing projection may release qualifying current-turn tool copies or compact the oldest completed-turn head under the fixed policy below.
 
 Use precise language:
 
 - exact scoped selection means complete canonical items selected for one goal or task;
 - exact pagination means complete recoverable pages with continuation metadata;
 - lossless derived index means chunks, embeddings, lexical indexes, entities, or metadata pointing back to exact sources;
-- lossy user-approved compaction means one specifically described transformation approved before provider dispatch.
+- turn-local released projection means an unneeded large tool-result copy removed only from the active model context while exact evidence remains available;
+- automatic provenance-linked compaction means the oldest completed-turn head is summarized for model context while canonical sources remain exact and recoverable.
 
 The phrase bounded context is forbidden as a standalone description because it hides whether information was lost.
 
-If the relevant exact working set cannot fit a provider request, the runtime pauses before dispatch. It identifies the affected content, provider limit, and proposed lossy operation, then asks for explicit permission for that exact scope. Refusal prevents the lossy request. Any approved derivative retains provenance and never overwrites canonical content.
+At 170k estimated model-visible input tokens, the runtime automatically compacts only the oldest completed-turn head. It preserves approximately 70k of the newest completed Q/A by whole-turn boundary plus the active turn, targets a rebuilt request around 100k, accepts no result above 120k, and does not dispatch the main model above the trigger if safe compaction fails. The derivative retains provenance and never overwrites canonical content.
+
+Each successful individual tool result above 3,000 estimated tokens receives the next turn-local `R<n>` handle and one compact hidden reminder after its tool batch. Socrates may release unneeded handles alongside its next normal tool call. There is no keep, distill, or unresolved state; omission never blocks normal tools; no separate model inference is added; and exact results remain retrievable.
 
 A goal capsule is not automatic conversation compaction. It is structured live state derived from validated goal outcomes and source anchors. It may guide selection but cannot replace relevant exact wording or evidence.
 
@@ -197,7 +200,7 @@ The model receives no view-specific persona, project-first prompt, mutable focus
 
 One AgentDefinition, one AgentRuntime, one capability manifest, and one provider/tool lifecycle execute every foreground task. Paths, connections, current access mode, and the bound goal are typed runtime inputs rather than different agents.
 
-The same loop owns investigation, planning, tool calls, recovery, approvals, credentials, Terminal/wait continuation, long-task progress reconciliation, mandatory pre-final reconciliation when applicable, and the substantive final answer.
+The same loop owns investigation, planning, tool calls, recovery, approvals, credentials, Terminal/wait continuation, long-task progress reconciliation, pre-final reconciliation when durable state changed, and the substantive final answer. `.socrates/` is a flexible working space: Socrates records useful plans, tasks, probes, scripts, and temporary artifacts without mandatory filenames. The process is plan, track, reconcile at meaningful milestones, and verify—not document reads before and after every operation.
 
 The goal resolver cannot perform task tools. The main loop cannot rebind the task to another goal after work begins.
 
@@ -267,7 +270,8 @@ The replacement is incomplete while any production path still depends on:
 - separate Classic and Flow main-agent prompts, registries, provider loops, or context policies;
 - required project or conversation creation before entering Socrates;
 - Projects to Goals to Queries as the target sidebar authority;
-- automatic lossy conversation compaction without specific prior consent;
+- a compactor that overwrites canonical sources, slices selected messages, uses a view-specific threshold, retains less than the protected newest whole-turn suffix without necessity, or dispatches the main model above the 170k trigger after failed safe compaction;
+- a context-disposition classifier, distiller, unresolved queue, mandatory release gate, or extra release-only model round trip;
 - character/token slicing of selected user or assistant messages;
 - a mutable model-facing focus ledger;
 - duplicate semantic Q&A mirrors or hidden conversation shims;
@@ -290,12 +294,13 @@ Required scenarios include:
 6. Genuine ambiguity asks one clarification question.
 7. The current capsule and latest exact exchange are present regardless of retrieval score.
 8. Goal and memory candidate retrieval run concurrently and the critical path contains no Memory Router model call.
-9. Selected messages remain byte-exact; refusal at the consent gate prevents lossy dispatch.
+9. Canonical selected messages remain byte-exact; automatic compaction preserves an approximately 70k newest whole-turn suffix, provenance, exact recovery, and no dispatch above 170k after safe-compaction failure.
 10. Capsule updates never overwrite exact history and exact source inspection succeeds.
 11. Answer, task outcome, capsule, and current-goal state commit atomically before publication.
 12. The global UI opens without project selection and path/full-access enforcement is real.
 13. The goal sidebar shows exact Q&A grouped by goal with no required project hierarchy.
 14. Capability-manifest and absence tests prove old routers and shadow paths are unreachable.
+15. Large qualifying tool outputs receive monotonic turn-local `R<n>` handles, release only piggybacks with normal work, omission never blocks functional calls, and the next user turn does not reload intermediate results.
 
 ## Documentation Authority And Change Discipline
 

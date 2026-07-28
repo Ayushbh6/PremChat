@@ -27,25 +27,24 @@ At the completed cutover:
 - No previous runner, registry, schema projection, retrieval authority, context worker, generated runtime copy, or compatibility execution path can still handle production work.
 - The old core is deleted before the refactor is merged. A permanent dual architecture is forbidden.
 
-## Exact Content And Consent
+## Exact Content And Efficient Model Context
 
 Socrates must never silently trade user meaning for context efficiency.
 
-`Socrates remembers everything` is the product's primary differentiator. The concrete contract is that everything the user chooses to entrust to Socrates remains exact, attributable, searchable, retrievable across time and authorized scopes, and deletable by the user. Recall may use lossless derived indexes and exact scoped selection, but a model-facing projection is never the canonical memory and a provider context limit is never permission to forget.
+`Socrates remembers everything` is the product's primary differentiator. Everything the user chooses to entrust to Socrates remains exact, attributable, searchable, retrievable across time and authorized scopes, and deletable by the user. Recall may use lossless derived indexes, exact scoped selection, turn-local released projections, and automatic provenance-linked model-context compaction, but a provider projection is never canonical memory and a provider limit is never permission to delete evidence.
 
 - Persist every user-authored message and visible assistant answer exactly as submitted or published.
-- Never clip, shorten, rewrite, summarize, compact, or partially include an individual selected message, answer, explicit constraint, approval, blocker, or instruction.
+- Never clip, shorten, rewrite, or partially include an individual selected message, answer, explicit constraint, approval, blocker, or instruction in canonical storage or exact retrieval.
 - Preserve exact canonical source text even when parsing, chunking, embedding, indexing, ranking, or pagination creates derivative representations.
 - Treat "bounded" as a finite, paginated, explicitly scoped projection. It never authorizes truncating the content of a selected item or deleting its source.
-- Do not use `bounded context` as a standalone description. Every design, log, UI notice, and handoff must name the actual operation and its loss status: exact scoped selection, exact pagination, lossless derived indexing, or lossy user-approved compaction.
+- Do not use `bounded context` as a standalone description. Every design, log, UI notice, and handoff must name the actual operation: exact scoped selection, exact pagination, lossless derived indexing, turn-local released tool-result projection, or automatic provenance-linked model-context compaction.
 - Goal scoping may exclude clearly unrelated goals, but the runtime must not silently omit history that it believes may be relevant to the current request.
-- When relevant exact history, evidence, or tool output cannot fit the provider request, stop before dispatch and ask the user whether a specific proposed efficiency operation is allowed.
-- The request for consent must explain what content is affected, why the provider limit requires action, and whether the proposal would summarize, compact, omit, or replace anything.
-- Apply a lossy transformation only after explicit user approval for that exact operation and scope. Silence, prior unrelated approval, or a generic performance preference is not consent.
-- An approved summary or compaction is a derived representation with provenance. It never overwrites or replaces exact canonical content and exact retrieval remains available.
-- If the user declines, do not proceed with the lossy provider request. Continue through exact pagination/retrieval where possible or report the hard provider limit.
+- When model-visible input reaches 170k estimated tokens, automatically compact only the oldest completed-turn head. Preserve approximately 70k of the newest completed Q/A by whole-turn boundary plus the current active turn, target a rebuilt request around 100k, and reject a rebuilt request above 120k.
+- If safe automatic compaction fails, do not dispatch the main model above the 170k trigger. Report the runtime limit without changing canonical history.
+- Treat a compaction as a derived representation with source provenance. It never overwrites or replaces exact canonical content, and exact retrieval remains available.
+- For successful individual tool results over 3,000 estimated tokens, give the model a turn-local `R<n>` handle and one compact release reminder. A piggybacked release changes only the current model-visible copy, never requires a separate model round trip, never blocks omitted functional calls, and never deletes the exact result.
 
-Automatic retrieval may rank and paginate candidates without consent because it does not alter canonical content. Once an exact message or source is selected for model context, its text remains complete. If ranking would exclude potentially relevant history rather than merely defer it to another exact page, the runtime asks instead of guessing.
+Automatic retrieval may rank and paginate candidates because it does not alter canonical content. Exact inspection returns complete source items. Automatic compaction and turn-local release are model-projection controls with exact recovery; neither creates a second durable memory authority.
 
 ## Global Socrates And Goal-Centric Memory
 
@@ -204,7 +203,7 @@ Required gates are:
 3. Role-manifest and forbidden-capability tests.
 4. Agent-loop tests for valid calls, invalid calls, retries, budgets, cancellation, and finalization.
 5. Retrieval tests for parallel goal/memory candidates, current-goal inclusion, exact inspection, audit, filtering, and index lifecycle.
-6. Context tests for exact scoped selection, consent-gated lossy compaction, evidence preservation, and continuation recovery.
+6. Context tests for exact scoped selection, release-only `R<n>` handling, automatic 170k oldest-head compaction, an approximately 70k exact whole-turn suffix, evidence preservation, and continuation recovery.
 7. Terminal tests for foreground execution, persistent start, input, output, stop, wait, cancellation, and restart cleanup.
 8. Goal/task lifecycle tests proving current, retrieved older goal, new, and clarify decisions without goal fragmentation.
 9. Global UI and compatibility-adapter tests proving one main runtime, goal-centric sidebar, Paths/access enforcement, and no required project entry.

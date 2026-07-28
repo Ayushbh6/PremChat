@@ -185,7 +185,7 @@ save the current capsule version
 
 The user experiences continuity because the capsule restores the live working state and exact history remains retrievable. Switching goals does not copy messages, invent a conversation, or start another Socrates.
 
-## Exact Context And Consent
+## Exact Context And Automatic Efficiency
 
 The ordinary model request includes:
 
@@ -196,7 +196,9 @@ The ordinary model request includes:
 5. Deterministically selected exact memory and evidence relevant to the request.
 6. The same tool, approval, Terminal, wait, continuation, and finalization behavior on every turn.
 
-Exact goal history remains canonical even when it is not all attached to one provider request. Selection and exact pagination are lossless. If Socrates believes additional relevant exact content cannot fit a provider request, it must pause before dispatch and ask the user to approve the specifically described lossy operation. No automatic compactor may infer that permission.
+Exact goal history remains canonical even when it is not all attached to one provider request. Selection and exact pagination are lossless. At 170k estimated model-visible tokens, one shared automatic compactor replaces only the oldest completed-turn head with a provenance-linked hidden summary, preserves approximately 70k of the newest complete Q/A plus the active turn, targets a rebuilt request around 100k, and rejects a result above 120k. It never changes canonical history, and the main model is not dispatched above the trigger if safe compaction fails.
+
+Within a turn, each successful individual tool result over 3,000 estimated tokens receives the next `R<n>` handle and one compact hidden reminder. Socrates may release an unneeded handle alongside its next normal tool call without another model round trip. Release affects only the current model-visible copy; exact evidence remains immutable and retrievable.
 
 Goal capsules and lossless indexes may guide retrieval, but they may not be presented as exact quotes or silently substitute for relevant exact source text.
 
@@ -242,6 +244,8 @@ The product reaches this North Star only when all of the following are true:
 - The goal decision exposes only current, retrieved older goal, new, or clarify.
 - There is no model-driven Memory Router or tool-using Goal Router in the critical path.
 - Exact messages and answers remain canonical, visible, attributable, searchable, and deletable.
+- Automatic 170k oldest-head compaction preserves an approximately 70k newest whole-turn suffix and exact source recovery without interrupting the user.
+- Large current-turn tool results use release-only `R<n>` handles without mandatory classification or extra inference calls.
 - Goal capsules restore working state without replacing exact goal history.
 - The sidebar groups exact Q&A pairs by goal and contains no required project hierarchy.
 - One agent runtime, capability catalog, tool contract, retrieval foundation, and finalization path serve every turn.
