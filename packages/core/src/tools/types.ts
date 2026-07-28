@@ -3,46 +3,32 @@ import type {
   ApplyPatchToolOutput,
   BashToolInput,
   BashToolOutput,
+  CapabilityManagerToolInput,
+  CapabilityManagerToolOutput,
   CurrentTimeToolInput,
   CurrentTimeToolOutput,
   ContextDispositionToolInput,
   ContextDispositionToolOutput,
   EditToolInput,
   EditToolOutput,
-  ListProjectResourcesToolInput,
-  ListProjectResourcesToolOutput,
   MemoryNoteToolInput,
   MemoryNoteToolOutput,
   MemoryNotesToolInput,
   MemoryNotesToolOutput,
   ReadMemoryJournalToolInput,
   ReadMemoryJournalToolOutput,
-  McpRegistryToolInput,
-  McpRegistryToolOutput,
   ModelToolDefinition,
   EditFilesToolInput,
   EditFilesToolOutput,
-  ProjectDocsToolInput,
-  ProjectDocsToolOutput,
   ProjectsToolInput,
   ProjectsToolOutput,
   ReadToolInput,
   ReadToolOutput,
-  RepoDocsToolInput,
-  RepoDocsToolOutput,
   RuntimeConfig,
   SearchToolInput,
   SearchToolOutput,
-  SkillsToolInput,
-  SkillsToolOutput,
   SkillWriteToolInput,
   SkillWriteToolOutput,
-  SkillManagerToolInput,
-  SkillManagerToolOutput,
-  SoulToolInput,
-  SoulToolOutput,
-  ToolDocsToolInput,
-  ToolDocsToolOutput,
   ToolName,
   ToolPermission,
   TraceRetrieveGlobalToolInput,
@@ -55,8 +41,6 @@ import type {
   UrlFetchToolOutput,
   WaitToolInput,
   WaitToolOutput,
-  UserProfileToolInput,
-  UserProfileToolOutput,
 } from "@socrates/contracts"
 import type { SocratesError } from "@socrates/shared"
 
@@ -74,6 +58,8 @@ export type ToolExecutorContext = {
   workspacePath: string
   runtimeConfig: RuntimeConfig
   fileFreshness?: FileFreshnessTracker
+  /** Internal approval preview flag. Never part of a model-facing tool schema. */
+  previewOnly?: boolean
   abortSignal?: AbortSignal
   onOutput?: (output: { stream: "stdout" | "stderr" | "log" | "result"; text?: string; data?: unknown }) => void
 }
@@ -85,34 +71,23 @@ export type ToolExecutors = {
   edit: (input: EditToolInput, context: ToolExecutorContext) => Promise<EditToolOutput>
   apply_patch: (input: ApplyPatchToolInput, context: ToolExecutorContext) => Promise<ApplyPatchToolOutput>
   bash: (input: BashToolInput, context: ToolExecutorContext) => Promise<BashToolOutput>
+  capability_manager?: (
+    input: CapabilityManagerToolInput,
+    context: ToolExecutorContext,
+    resolvedSecretEnv?: Readonly<Record<string, string>>,
+  ) => Promise<CapabilityManagerToolOutput>
   wait?: (input: WaitToolInput, context: ToolExecutorContext) => Promise<WaitToolOutput>
   current_time: (input: CurrentTimeToolInput, context: ToolExecutorContext) => Promise<CurrentTimeToolOutput>
   trace_retrieve: (
     input: TraceRetrieveMainToolInput | TraceRetrieveGlobalToolInput | TraceRetrieveToolInput,
     context: ToolExecutorContext,
   ) => Promise<TraceRetrieveMainToolOutput | TraceRetrieveGlobalToolOutput | TraceRetrieveToolOutput>
-  tool_docs: (input: ToolDocsToolInput, context: ToolExecutorContext) => Promise<ToolDocsToolOutput>
-  skills: (input: SkillsToolInput, context: ToolExecutorContext) => Promise<SkillsToolOutput>
   projects?: (input: ProjectsToolInput, context: ToolExecutorContext) => Promise<ProjectsToolOutput>
   edit_files?: (input: EditFilesToolInput, context: ToolExecutorContext) => Promise<EditFilesToolOutput>
-  project_docs: (input: ProjectDocsToolInput, context: ToolExecutorContext) => Promise<ProjectDocsToolOutput>
-  repo_docs: (input: RepoDocsToolInput, context: ToolExecutorContext) => Promise<RepoDocsToolOutput>
-  soul: (input: SoulToolInput, context: ToolExecutorContext) => Promise<SoulToolOutput>
-  user_profile: (input: UserProfileToolInput, context: ToolExecutorContext) => Promise<UserProfileToolOutput>
-  list_project_resources: (
-    input: ListProjectResourcesToolInput,
-    context: ToolExecutorContext,
-  ) => Promise<ListProjectResourcesToolOutput>
   memory_note?: (input: MemoryNoteToolInput, context: ToolExecutorContext) => Promise<MemoryNoteToolOutput>
   memory_notes?: (input: MemoryNotesToolInput, context: ToolExecutorContext) => Promise<MemoryNotesToolOutput>
   read_memory_journal?: (input: ReadMemoryJournalToolInput, context: ToolExecutorContext) => Promise<ReadMemoryJournalToolOutput>
   skill_write?: (input: SkillWriteToolInput, context: ToolExecutorContext) => Promise<SkillWriteToolOutput>
-  skill_manager?: (input: SkillManagerToolInput, context: ToolExecutorContext) => Promise<SkillManagerToolOutput>
-  mcp_registry?: (
-    input: McpRegistryToolInput,
-    context: ToolExecutorContext,
-    resolvedSecretEnv?: Readonly<Record<string, string>>,
-  ) => Promise<McpRegistryToolOutput>
   mcp_dynamic?: (input: { dynamicName: string; input: unknown }, context: ToolExecutorContext) => Promise<unknown>
 }
 

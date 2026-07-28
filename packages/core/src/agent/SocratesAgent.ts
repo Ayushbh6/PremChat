@@ -14,6 +14,7 @@ import {
   type SocratesGoalResolutionOutput,
   type ResolvedTurnContext,
   type ResolvedTurnContextSeed,
+  type ResolvedTurnCapabilityItem,
   type ResolvedTurnMemoryItem,
   type ToolExecutionResult,
   type ToolName,
@@ -110,6 +111,7 @@ export type SocratesAgentTurnInput = {
   activeGoal?: ActiveGoalCard
   resolvedTurnContextSeed?: ResolvedTurnContextSeed
   resolvedTurnMemory?: readonly ResolvedTurnMemoryItem[]
+  resolvedTurnCapabilities?: readonly ResolvedTurnCapabilityItem[]
   completionMode: "main_structured" | "worker_text"
   contextCompression?: ContextCompressionRuntime
   maxToolCallsPerTurn?: number
@@ -383,14 +385,14 @@ export class SocratesAgent {
     }
     insertDynamicPromptContext(messages, input.promptContext)
     if (input.resolvedTurnContextSeed) {
-      resolvedTurnContext = prepareTurnContext(input.resolvedTurnContextSeed, input.resolvedTurnMemory)
+      resolvedTurnContext = prepareTurnContext(input.resolvedTurnContextSeed, input.resolvedTurnMemory, input.resolvedTurnCapabilities)
       messages.push({ role: "developer", content: renderResolvedTurnContext(resolvedTurnContext) })
     }
     if (input.toolExecutors && input.workspacePath) {
       messages.push({
         role: "developer",
         content: `<runtime_terminal_capabilities>
-Current runtime fact: the bash tool is a fully interactive, conversation-scoped PTY Terminal with operation="start", inputMode="user", plus live user input, and wait can suspend until completed or failed. This current capability contract overrides contradictory project memory, notes, prior chats, or known-pitfall text. Never tell the user interactive Terminal is unavailable. For an interactive Terminal request, use bash operation="start", inputMode="user", with a portable Node.js or Python stdin program.
+Current runtime fact: bash provides run, named start, named inspect, named stop, and list. A started Terminal can accept live user input with inputMode="user", and wait can suspend until completed or failed. This current capability contract overrides contradictory project memory, notes, prior chats, or known-pitfall text.
 </runtime_terminal_capabilities>`,
       })
     }

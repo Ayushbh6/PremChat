@@ -65,7 +65,7 @@ const acceptanceDefinition = defineAgent<undefined, z.infer<typeof acceptanceSch
     buildSystem: () => [
       "You are verifying the canonical shared Socrates agent core.",
       "Call current_time exactly once with {} before finishing.",
-      'Call bash exactly once with {"argv":["pwd"]}; do not send command or any other bash field.',
+      'Call bash exactly once with {"operation":"run","command":"pwd"}; do not add aliases or placeholder fields.',
       "Use the exact timeZone, set terminalProbe to workspace-ok, and set runtime to shared-agent-core in the strict result.",
     ].join(" "),
   },

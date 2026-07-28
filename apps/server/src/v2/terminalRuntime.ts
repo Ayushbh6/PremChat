@@ -153,6 +153,7 @@ export class V2TerminalRuntime {
     if ("argv" in input) return runWorkspaceArgv(input, context)
     const operation = input.operation ?? "run"
     if (operation === "list") return this.list(scope, input.limit, input.charLimit)
+    if (operation === "inspect") return { ...await this.output(input, scope, context), operation: "inspect" }
     if (operation === "status") return this.status(input, scope, context)
     if (operation === "output") return this.output(input, scope, context)
     if (operation === "stop") return this.stopFromTool(input, scope, context)

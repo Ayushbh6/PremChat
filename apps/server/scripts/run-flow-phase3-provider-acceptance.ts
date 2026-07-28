@@ -148,7 +148,7 @@ const context = prepareTurnContext(createResolvedTurnContextSeed({
     { role: "assistant", content: exactAssistant },
     { role: "user", content: exactTask },
   ],
-  retrieval: { goalCandidates: "completed", memoryCandidates: "completed", warnings: [] },
+  retrieval: { goalCandidates: "completed", memoryCandidates: "completed", capabilityCandidates: "completed", warnings: [] },
 }), selectedMemory)
 if (
   context.task.request !== exactTask

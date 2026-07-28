@@ -57,9 +57,7 @@ export const canLoadStableCachePrelude = (input: SocratesAgentTurnInput, capabil
       input.conversationId &&
       input.sessionId &&
       input.turnId &&
-      capabilities.get("project_docs") &&
-      capabilities.get("user_profile") &&
-      capabilities.get("soul"),
+      capabilities.get("read"),
   )
 
 export const isSameModelSelection = (runtimeConfig: RuntimeConfig, settings: FrontierModelSettings | undefined): boolean =>
@@ -85,11 +83,11 @@ export const escapeXmlAttribute = (value: string): string =>
   value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
 
 export const stablePreludeRecallRequests = (): Array<{ toolName: ToolName; input: unknown }> => [
-  { toolName: "project_docs", input: { operation: "read_section", area: "memory", sectionId: "always_apply_rules", charLimit: 10_000 } },
-  { toolName: "user_profile", input: { operation: "read_section", sectionId: "global_always_apply_rules", charLimit: 10_000 } },
-  { toolName: "soul", input: { operation: "read_section", sectionId: "core_identity", charLimit: 4_000 } },
-  { toolName: "soul", input: { operation: "read_section", sectionId: "voice_and_presence", charLimit: 4_000 } },
-  { toolName: "soul", input: { operation: "read_section", sectionId: "relationship_to_user", charLimit: 4_000 } },
+  { toolName: "read", input: { path: "socrates://project/memory/always_apply_rules", charLimit: 10_000 } },
+  { toolName: "read", input: { path: "socrates://user/profile/global_always_apply_rules", charLimit: 10_000 } },
+  { toolName: "read", input: { path: "socrates://identity/core_identity", charLimit: 4_000 } },
+  { toolName: "read", input: { path: "socrates://identity/voice_and_presence", charLimit: 4_000 } },
+  { toolName: "read", input: { path: "socrates://identity/relationship_to_user", charLimit: 4_000 } },
 ]
 
 export const stablePreludeSectionContent = (output: unknown): string | undefined => {
@@ -120,7 +118,7 @@ export const renderStableCachePrelude = (records: StablePreludeToolRecord[]): st
     } else if (isGlobalAlwaysApplyRecord(record)) {
       globalRules = content
     } else if (isStableIdentityRecord(record)) {
-      const sectionId = objectRecord(record.input)?.sectionId
+      const sectionId = resourceSectionId(record)
       if (typeof sectionId === "string") identitySections.set(sectionId, content)
     }
   }
@@ -172,30 +170,25 @@ export const isStableCachePreludeRecord = (record: StablePreludeToolRecord): boo
   isProjectAlwaysApplyRecord(record) || isGlobalAlwaysApplyRecord(record) || isStableIdentityRecord(record)
 
 export const isStableIdentityRecord = (record: StablePreludeToolRecord): boolean => {
-  if (record.toolName !== "soul") return false
-  const input = objectRecord(record.input)
-  return input?.operation === "read_section" && ["core_identity", "voice_and_presence", "relationship_to_user"].includes(String(input.sectionId))
+  if (record.toolName !== "read") return false
+  return ["core_identity", "voice_and_presence", "relationship_to_user"].includes(resourceSectionId(record) ?? "") &&
+    resourcePath(record)?.startsWith("socrates://identity/") === true
 }
 
 export const isProjectAlwaysApplyRecord = (record: StablePreludeToolRecord): boolean => {
-  if (record.toolName !== "project_docs") {
-    return false
-  }
-  const input = objectRecord(record.input)
-  return (
-    input?.area === "memory" &&
-    input.sectionId === "always_apply_rules" &&
-    (input.operation === "read_section" || input.operation === "patch_section")
-  )
+  return record.toolName === "read" && resourcePath(record) === "socrates://project/memory/always_apply_rules"
 }
 
 export const isGlobalAlwaysApplyRecord = (record: StablePreludeToolRecord): boolean => {
-  if (record.toolName !== "user_profile") {
-    return false
-  }
-  const input = objectRecord(record.input)
-  return input?.operation === "read_section" && input.sectionId === "global_always_apply_rules"
+  return record.toolName === "read" && resourcePath(record) === "socrates://user/profile/global_always_apply_rules"
 }
+
+const resourcePath = (record: StablePreludeToolRecord): string | undefined => {
+  const value = objectRecord(record.input)?.path
+  return typeof value === "string" ? value : undefined
+}
+
+const resourceSectionId = (record: StablePreludeToolRecord): string | undefined => resourcePath(record)?.split("/").at(-1)
 
 export const objectRecord = (value: unknown): Record<string, unknown> | undefined =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined

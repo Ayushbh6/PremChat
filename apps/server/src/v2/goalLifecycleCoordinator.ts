@@ -1,6 +1,7 @@
 import { resolveSocratesGoal, type SocratesAgent, type SocratesGoalResolutionResult } from "@socrates/core"
 import type {
   CandidateRetrievalStatus,
+  CapabilityCandidate,
   MemoryCandidate,
   V2GoalRoutingRun,
   V2Message,
@@ -36,6 +37,7 @@ type ResolveFlowGoalInput = {
 
 type CandidateContext = {
   memoryCandidates: readonly MemoryCandidate[]
+  capabilityCandidates: readonly CapabilityCandidate[]
   retrieval: CandidateRetrievalStatus
 }
 
@@ -56,12 +58,13 @@ export const resolveFlowGoal = async (input: ResolveFlowGoalInput): Promise<Reso
     capsules: snapshot.latestCapsules,
   })
   const retrieved = await retrieveTurnCandidates({
-    retrieveGoals: () => input.sharedStore.retrieveGoalCandidates(input.projectId, input.messageContent, 12),
+    retrieveGoals: () => input.sharedStore.retrieveGoalCandidates(input.projectId, input.messageContent, 3),
     retrieveMemory: () => input.sharedStore.retrieveMemoryCandidates(input.projectId, memoryCandidateQueryForTurn({
       userMessage: input.messageContent,
       ...(initialMemoryGoal ? { goal: initialMemoryGoal } : {}),
       phase: "broad",
     }), true),
+    retrieveCapabilities: () => input.sharedStore.retrieveCapabilityCandidates(input.projectId, input.messageContent, 5),
   })
   const retrievedGoalIds = retrieved.goalCandidates.map((candidate) => candidate.goalId)
   const resolutionGoals = input.store.listGoalsForResolution(input.flowId, [
@@ -100,7 +103,7 @@ export const resolveFlowGoal = async (input: ResolveFlowGoalInput): Promise<Reso
       providerId: input.runtimeConfig.providerId,
       modelId: input.runtimeConfig.modelId,
     })
-    return { status: "clarification", ...clarification, memoryCandidates: retrieved.memoryCandidates, retrieval: retrieved.status }
+    return { status: "clarification", ...clarification, memoryCandidates: retrieved.memoryCandidates, capabilityCandidates: retrieved.capabilityCandidates, retrieval: retrieved.status }
   }
   const effective = routing.decision.action === "clarify"
     ? routing.candidates.foreground
@@ -117,7 +120,7 @@ export const resolveFlowGoal = async (input: ResolveFlowGoalInput): Promise<Reso
       providerId: input.runtimeConfig.providerId,
       modelId: input.runtimeConfig.modelId,
     })
-    return { status: "clarification", ...clarification, memoryCandidates: retrieved.memoryCandidates, retrieval: retrieved.status }
+    return { status: "clarification", ...clarification, memoryCandidates: retrieved.memoryCandidates, capabilityCandidates: retrieved.capabilityCandidates, retrieval: retrieved.status }
   }
   const applied = input.store.applyRouting({
     projectId: input.projectId,
@@ -150,6 +153,7 @@ export const resolveFlowGoal = async (input: ResolveFlowGoalInput): Promise<Reso
     applied,
     result: effective,
     memoryCandidates: refinedMemory.memoryCandidates,
+    capabilityCandidates: retrieved.capabilityCandidates,
     retrieval: refinedMemory.status,
   }
 }

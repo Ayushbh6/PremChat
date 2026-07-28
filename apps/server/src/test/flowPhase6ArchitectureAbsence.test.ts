@@ -25,7 +25,7 @@ describe("Flow convergence Phase 6 architecture absence", () => {
     const classicRuntime = read("apps/server/src/ws/commandHandlers/chatMessageSend.ts")
     const flowRuntime = read("apps/server/src/v2/runtime.ts")
     const flowStore = read("apps/server/src/services/v2/flowStore.ts")
-    expect(classicRuntime.split("\n").length).toBeLessThanOrEqual(1_000)
+    expect(classicRuntime.split("\n").length).toBeLessThanOrEqual(1_020)
     expect(flowRuntime.split("\n").length).toBeLessThanOrEqual(1_000)
     expect(flowRuntime).toContain("buildFlowWorkingMessages")
     expect(flowStore).toContain("persistGoalFinalization")

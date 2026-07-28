@@ -132,24 +132,35 @@
                 "minLength": 1,
                 "description": "Workspace-relative target path. For deliverables or generated files derived from files in a subfolder, use an explicit path in that same subfolder or nearest relevant existing folder; use the workspace root only when requested or truly project-level."
               },
-              "oldString": {
-                "type": "string",
-                "minLength": 1
-              },
-              "newString": {
-                "type": "string"
-              },
-              "replaceAll": {
-                "type": "boolean"
-              },
-              "dryRun": {
-                "type": "boolean"
+              "edits": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "oldString": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "newString": {
+                      "type": "string"
+                    },
+                    "replaceAll": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "oldString",
+                    "newString"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "maxItems": 32
               }
             },
             "required": [
               "path",
-              "oldString",
-              "newString"
+              "edits"
             ],
             "additionalProperties": false
           },
@@ -167,9 +178,6 @@
               "overwrite": {
                 "type": "boolean",
                 "const": true
-              },
-              "dryRun": {
-                "type": "boolean"
               }
             },
             "required": [
@@ -193,9 +201,6 @@
             "type": "string",
             "minLength": 1,
             "description": "Patch text to apply. Prefer structured format: *** Begin Patch, then file sections like *** Update File: path with @@ hunks, *** Add File: path, or *** Delete File: path, ending with *** End Patch. In Update hunks, prefix unchanged lines with space, removed lines with -, and added lines with +. Add File content lines should start with +."
-          },
-          "dryRun": {
-            "type": "boolean"
           }
         },
         "required": [
@@ -231,53 +236,11 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 600000
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 16000
               }
             },
             "required": [
+              "operation",
               "command"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "run"
-              },
-              "argv": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "minItems": 1,
-                "maxItems": 32,
-                "description": "Structured executable and literal arguments for a safe foreground diagnostic. This runs without a shell, so it cannot use pipes, redirects, substitutions, or shell syntax. Use only for small diagnostics such as [\"git\", \"status\", \"--short\"] or [\"pwd\"]. Use command for a real shell command, which requires approval outside full-access mode."
-              },
-              "cwd": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Workspace-relative working directory. Use this for subfolder commands instead of prefixing the command with cd."
-              },
-              "timeoutMs": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 600000
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 16000
-              }
-            },
-            "required": [
-              "argv"
             ],
             "additionalProperties": false
           },
@@ -302,15 +265,6 @@
                 "minLength": 1,
                 "description": "Workspace-relative working directory. Use this for subfolder commands instead of prefixing the command with cd."
               },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 16000
-              },
-              "outputSequence": {
-                "type": "integer",
-                "minimum": 0
-              },
               "inputMode": {
                 "type": "string",
                 "enum": [
@@ -321,7 +275,8 @@
             },
             "required": [
               "operation",
-              "command"
+              "command",
+              "name"
             ],
             "additionalProperties": false
           },
@@ -330,74 +285,16 @@
             "properties": {
               "operation": {
                 "type": "string",
-                "const": "status"
-              },
-              "processId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "terminalId": {
-                "type": "string",
-                "minLength": 1
+                "const": "inspect"
               },
               "name": {
                 "type": "string",
                 "minLength": 1
-              },
-              "target": {
-                "type": "string",
-                "minLength": 1
-              },
-              "outputSequence": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 16000
               }
             },
             "required": [
-              "operation"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "output"
-              },
-              "processId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "terminalId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1
-              },
-              "target": {
-                "type": "string",
-                "minLength": 1
-              },
-              "outputSequence": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 16000
-              }
-            },
-            "required": [
-              "operation"
+              "operation",
+              "name"
             ],
             "additionalProperties": false
           },
@@ -408,34 +305,14 @@
                 "type": "string",
                 "const": "stop"
               },
-              "processId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "terminalId": {
-                "type": "string",
-                "minLength": 1
-              },
               "name": {
                 "type": "string",
                 "minLength": 1
-              },
-              "target": {
-                "type": "string",
-                "minLength": 1
-              },
-              "outputSequence": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 16000
               }
             },
             "required": [
-              "operation"
+              "operation",
+              "name"
             ],
             "additionalProperties": false
           },
@@ -445,16 +322,6 @@
               "operation": {
                 "type": "string",
                 "const": "list"
-              },
-              "limit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 12
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 16000
               }
             },
             "required": [
@@ -755,21 +622,13 @@
                             "handover_to_frontier",
                             "current_time",
                             "trace_retrieve",
-                            "tool_docs",
-                            "skills",
                             "projects",
                             "edit_files",
-                            "project_docs",
-                            "repo_docs",
-                            "soul",
-                            "user_profile",
-                            "list_project_resources",
-                            "mcp_registry",
                             "memory_note",
                             "memory_notes",
                             "read_memory_journal",
                             "skill_write",
-                            "skill_manager",
+                            "capability_manager",
                             "context_disposition"
                           ]
                         },
@@ -1156,21 +1015,13 @@
                             "handover_to_frontier",
                             "current_time",
                             "trace_retrieve",
-                            "tool_docs",
-                            "skills",
                             "projects",
                             "edit_files",
-                            "project_docs",
-                            "repo_docs",
-                            "soul",
-                            "user_profile",
-                            "list_project_resources",
-                            "mcp_registry",
                             "memory_note",
                             "memory_notes",
                             "read_memory_journal",
                             "skill_write",
-                            "skill_manager",
+                            "capability_manager",
                             "context_disposition"
                           ]
                         },
@@ -1234,684 +1085,6 @@
             },
             "required": [
               "operation"
-            ],
-            "additionalProperties": false
-          }
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object"
-      }
-    },
-    {
-      "capabilityId": "tool.tool_docs",
-      "name": "tool_docs",
-      "schema": {
-        "type": "object",
-        "properties": {
-          "operation": {
-            "type": "string",
-            "enum": [
-              "search",
-              "read"
-            ]
-          },
-          "area": {
-            "type": "string",
-            "const": "tool_usage"
-          },
-          "path": {
-            "type": "string",
-            "minLength": 1
-          },
-          "query": {
-            "type": "string",
-            "minLength": 1
-          },
-          "searchMode": {
-            "type": "string",
-            "enum": [
-              "exact_phrase",
-              "keyword_all",
-              "keyword_any",
-              "whole_word",
-              "regex"
-            ]
-          },
-          "includeSections": {
-            "type": "boolean"
-          },
-          "limit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 20
-          },
-          "offset": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "contextLines": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 100
-          },
-          "charLimit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 80000
-          }
-        },
-        "required": [
-          "operation"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "capabilityId": "tool.skills.manage",
-      "name": "skills",
-      "schema": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "list"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "n": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 35
-              },
-              "limit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 50
-              },
-              "offset": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "search"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "query": {
-                "type": "string",
-                "minLength": 1
-              },
-              "n": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 35
-              },
-              "limit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 50
-              },
-              "offset": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "query"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "describe"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Canonical skill id copied from skills list."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "id"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "describe"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Exact listed skill name. Prefer canonical id when available."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "name"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Canonical skill id copied from skills list."
-              },
-              "path": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 240,
-                "description": "Relative supporting file path; defaults to SKILL.md."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "id"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Exact listed skill name. Prefer canonical id when available."
-              },
-              "path": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 240,
-                "description": "Relative supporting file path; defaults to SKILL.md."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "name"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "preview_import"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "global",
-                  "project"
-                ]
-              },
-              "url": {
-                "type": "string",
-                "format": "uri",
-                "maxLength": 2048
-              }
-            },
-            "required": [
-              "operation",
-              "url"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "preview_import"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "global",
-                  "project"
-                ]
-              },
-              "attachmentPath": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 240,
-                "pattern": "^\\.socrates\\/attachments\\/[^/]+\\.zip$"
-              }
-            },
-            "required": [
-              "operation",
-              "attachmentPath"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "commit_import"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "global",
-                  "project"
-                ]
-              },
-              "previewId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80,
-                "pattern": "^skillimp_[a-f0-9]{32}$"
-              },
-              "conflictStrategy": {
-                "type": "string",
-                "enum": [
-                  "reject",
-                  "replace"
-                ]
-              }
-            },
-            "required": [
-              "operation",
-              "previewId"
-            ],
-            "additionalProperties": false
-          }
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object"
-      }
-    },
-    {
-      "capabilityId": "tool.skills.read",
-      "name": "skills",
-      "schema": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "list"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "n": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 35
-              },
-              "limit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 50
-              },
-              "offset": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "search"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "query": {
-                "type": "string",
-                "minLength": 1
-              },
-              "n": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 35
-              },
-              "limit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 50
-              },
-              "offset": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "query"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "describe"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Canonical skill id copied from skills list."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "id"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "describe"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Exact listed skill name. Prefer canonical id when available."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "name"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Canonical skill id copied from skills list."
-              },
-              "path": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 240,
-                "description": "Relative supporting file path; defaults to SKILL.md."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "id"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Exact listed skill name. Prefer canonical id when available."
-              },
-              "path": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 240,
-                "description": "Relative supporting file path; defaults to SKILL.md."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "name"
-            ],
-            "additionalProperties": false
-          }
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object"
-      }
-    },
-    {
-      "capabilityId": "tool.skill_manager",
-      "name": "skill_manager",
-      "schema": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "create"
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 64,
-                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-              },
-              "request": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 4000
-              }
-            },
-            "required": [
-              "operation",
-              "name",
-              "request"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "delete"
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 64,
-                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-              }
-            },
-            "required": [
-              "operation",
-              "name"
             ],
             "additionalProperties": false
           }
@@ -2100,8 +1273,8 @@
       }
     },
     {
-      "capabilityId": "tool.project_docs",
-      "name": "project_docs",
+      "capabilityId": "tool.capability_manager",
+      "name": "capability_manager",
       "schema": {
         "anyOf": [
           {
@@ -2109,590 +1282,32 @@
             "properties": {
               "operation": {
                 "type": "string",
-                "const": "read"
+                "const": "skill_create"
               },
-              "area": {
+              "scope": {
                 "type": "string",
                 "enum": [
-                  "memory",
-                  "notes"
-                ]
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "area"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "search"
-              },
-              "area": {
-                "type": "string",
-                "enum": [
-                  "memory",
-                  "notes"
-                ]
-              },
-              "query": {
-                "type": "string",
-                "minLength": 1
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "area",
-              "query"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read_index"
-              },
-              "area": {
-                "type": "string",
-                "enum": [
-                  "memory",
-                  "notes"
-                ]
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "area"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read_section"
-              },
-              "area": {
-                "type": "string",
-                "enum": [
-                  "memory",
-                  "notes"
-                ]
-              },
-              "sectionId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "area",
-              "sectionId"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "patch_section"
-              },
-              "area": {
-                "type": "string",
-                "enum": [
-                  "memory",
-                  "notes"
-                ]
-              },
-              "sectionId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "oldText": {
-                "type": "string"
-              },
-              "newText": {
-                "type": "string"
-              },
-              "replaceAll": {
-                "type": "boolean"
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "area",
-              "sectionId",
-              "oldText",
-              "newText"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "edit"
-              },
-              "area": {
-                "type": "string",
-                "enum": [
-                  "memory",
-                  "notes"
-                ]
-              },
-              "editMode": {
-                "type": "string",
-                "const": "append"
-              },
-              "text": {
-                "type": "string"
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "area",
-              "editMode",
-              "text"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "edit"
-              },
-              "area": {
-                "type": "string",
-                "enum": [
-                  "memory",
-                  "notes"
-                ]
-              },
-              "editMode": {
-                "type": "string",
-                "const": "replace"
-              },
-              "oldText": {
-                "type": "string"
-              },
-              "newText": {
-                "type": "string"
-              },
-              "replaceAll": {
-                "type": "boolean"
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "area",
-              "editMode",
-              "oldText",
-              "newText"
-            ],
-            "additionalProperties": false
-          }
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object"
-      }
-    },
-    {
-      "capabilityId": "tool.repo_docs",
-      "name": "repo_docs",
-      "schema": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read"
-              },
-              "path": {
-                "type": "string",
-                "enum": [
-                  "CORE_IDEA.md",
-                  "REPO_NAVIGATION.md",
-                  "REPO_RULES.md",
-                  "CONTRACTS.md"
-                ]
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "search"
-              },
-              "path": {
-                "type": "string",
-                "enum": [
-                  "CORE_IDEA.md",
-                  "REPO_NAVIGATION.md",
-                  "REPO_RULES.md",
-                  "CONTRACTS.md"
-                ]
-              },
-              "query": {
-                "type": "string",
-                "minLength": 1
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "query"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read_index"
-              },
-              "path": {
-                "type": "string",
-                "enum": [
-                  "CORE_IDEA.md",
-                  "REPO_NAVIGATION.md",
-                  "REPO_RULES.md",
-                  "CONTRACTS.md"
-                ]
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read_section"
-              },
-              "path": {
-                "type": "string",
-                "enum": [
-                  "CORE_IDEA.md",
-                  "REPO_NAVIGATION.md",
-                  "REPO_RULES.md",
-                  "CONTRACTS.md"
-                ]
-              },
-              "sectionId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "path",
-              "sectionId"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "patch_section"
-              },
-              "path": {
-                "type": "string",
-                "enum": [
-                  "CORE_IDEA.md",
-                  "REPO_NAVIGATION.md",
-                  "REPO_RULES.md",
-                  "CONTRACTS.md"
-                ]
-              },
-              "sectionId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "oldText": {
-                "type": "string"
-              },
-              "newText": {
-                "type": "string"
-              },
-              "replaceAll": {
-                "type": "boolean"
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "path",
-              "sectionId",
-              "oldText",
-              "newText"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "edit"
-              },
-              "path": {
-                "type": "string",
-                "enum": [
-                  "CORE_IDEA.md",
-                  "REPO_NAVIGATION.md",
-                  "REPO_RULES.md",
-                  "CONTRACTS.md"
-                ]
-              },
-              "oldText": {
-                "type": "string"
-              },
-              "newText": {
-                "type": "string"
-              },
-              "replaceAll": {
-                "type": "boolean"
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "path",
-              "oldText",
-              "newText"
-            ],
-            "additionalProperties": false
-          }
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object"
-      }
-    },
-    {
-      "capabilityId": "tool.soul",
-      "name": "soul",
-      "schema": {
-        "type": "object",
-        "properties": {
-          "operation": {
-            "type": "string",
-            "enum": [
-              "read",
-              "read_index",
-              "read_section"
-            ]
-          },
-          "sectionId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "charLimit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 80000
-          }
-        },
-        "required": [
-          "operation"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "capabilityId": "tool.user_profile",
-      "name": "user_profile",
-      "schema": {
-        "type": "object",
-        "properties": {
-          "operation": {
-            "type": "string",
-            "enum": [
-              "read",
-              "read_index",
-              "read_section"
-            ]
-          },
-          "sectionId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "charLimit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 80000
-          }
-        },
-        "required": [
-          "operation"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "capabilityId": "tool.list_project_resources",
-      "name": "list_project_resources",
-      "schema": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "pdf",
-              "document",
-              "text",
-              "image",
-              "url",
-              "local_file",
-              "note",
-              "other"
-            ]
-          },
-          "limit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 100
-          }
-        },
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "capabilityId": "tool.mcp_registry",
-      "name": "mcp_registry",
-      "schema": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "list"
-              },
-              "n": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 35
-              }
-            },
-            "required": [
-              "operation"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "describe"
-              },
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Canonical MCP id copied from mcp_registry list. Prefer this for describe."
+                  "global",
+                  "path"
+                ],
+                "default": "path"
               },
               "name": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Exact listed MCP display name. Use only when matching by name."
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
               },
-              "n": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 35
+              "request": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
               }
             },
             "required": [
-              "operation"
+              "operation",
+              "name",
+              "request"
             ],
             "additionalProperties": false
           },
@@ -2701,7 +1316,215 @@
             "properties": {
               "operation": {
                 "type": "string",
-                "const": "check"
+                "const": "skill_update"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              },
+              "request": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              }
+            },
+            "required": [
+              "operation",
+              "name",
+              "request"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "skill_delete"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              }
+            },
+            "required": [
+              "operation",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "skill_enable"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              }
+            },
+            "required": [
+              "operation",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "skill_disable"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              }
+            },
+            "required": [
+              "operation",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "skill_preview_import"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "maxLength": 2048
+              }
+            },
+            "required": [
+              "operation",
+              "url"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "skill_preview_import"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
+              },
+              "attachmentPath": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240,
+                "pattern": "^\\.socrates\\/attachments\\/[^/]+\\.zip$"
+              }
+            },
+            "required": [
+              "operation",
+              "attachmentPath"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "skill_commit_import"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
+              },
+              "previewId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "pattern": "^skillimp_[a-f0-9]{32}$"
+              },
+              "conflictStrategy": {
+                "type": "string",
+                "enum": [
+                  "reject",
+                  "replace"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "previewId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "mcp_check"
               },
               "id": {
                 "type": "string",
@@ -2719,15 +1542,15 @@
             "properties": {
               "operation": {
                 "type": "string",
-                "const": "configure"
+                "const": "mcp_configure"
               },
               "scope": {
                 "type": "string",
                 "enum": [
                   "global",
-                  "project"
+                  "path"
                 ],
-                "default": "project"
+                "default": "path"
               },
               "server": {
                 "type": "object",
@@ -2808,15 +1631,15 @@
             "properties": {
               "operation": {
                 "type": "string",
-                "const": "delete"
+                "const": "mcp_delete"
               },
               "scope": {
                 "type": "string",
                 "enum": [
                   "global",
-                  "project"
+                  "path"
                 ],
-                "default": "project"
+                "default": "path"
               },
               "id": {
                 "type": "string",

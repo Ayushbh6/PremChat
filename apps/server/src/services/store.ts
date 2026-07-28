@@ -435,6 +435,15 @@ export class SocratesStore {
     return { skill: await this.memory.buildProjectSkill(projectId, this.getPrimaryWorkspacePath(projectId), input.request, input.name, source) }
   }
 
+  async updateProjectSkill(
+    projectId: string,
+    input: BuildProjectSkillRequest,
+    source: { conversationId: string; sessionId: string; turnId: string },
+  ): Promise<BuildProjectSkillResponse> {
+    if (!input.name) throw new SocratesError("skill_name_required", "Skill update requires an exact skill name.", { recoverable: true })
+    return { skill: await this.memory.updateProjectSkill(projectId, this.getPrimaryWorkspacePath(projectId), input.request, input.name, source) }
+  }
+
   deleteProjectSkill(projectId: string, skillName: string): DeleteSkillResponse {
     const deleted = this.memory.deleteProjectSkill(projectId, this.getPrimaryWorkspacePath(projectId), skillName)
     return { deletedSkillName: deleted.name, scope: deleted.scope }
@@ -454,6 +463,13 @@ export class SocratesStore {
 
   async buildGlobalSkill(input: BuildGlobalSkillRequest): Promise<BuildGlobalSkillResponse> {
     return { skill: await this.memory.buildGlobalSkill(input.request, input.name) }
+  }
+
+  async updateGlobalSkill(
+    input: BuildGlobalSkillRequest,
+    source: { conversationId: string; sessionId: string; turnId: string },
+  ): Promise<BuildGlobalSkillResponse> {
+    return { skill: await this.memory.updateGlobalSkill(input.request, input.name, source) }
   }
 
   previewGlobalSkillImport(filename: string, data: Buffer): Promise<SkillImportPreview> {
@@ -1432,6 +1448,14 @@ export class SocratesStore {
 
   retrieveGoalCandidates(projectId: string, query: string, limit = 4) {
     return this.retrieval.retrieveGoalCandidates(projectId, query, limit)
+  }
+
+  retrieveCapabilityCandidates(projectId: string, query: string, limit = 5) {
+    return this.retrieval.retrieveCapabilityCandidates(projectId, query, limit)
+  }
+
+  enqueueCapabilityRefresh(projectId: string): void {
+    this.retrieval.enqueueRebuild(projectId, "capability_catalog_changed")
   }
 
   getProjectEmbeddingStatus(projectId: string) {

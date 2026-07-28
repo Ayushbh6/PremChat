@@ -95,13 +95,14 @@ function ToolIcon({ tool, className }: { tool: ToolTimelineItem; className: stri
   }
   switch (tool.toolName) {
     case "read":
-    case "list_project_resources":
       return <FileText className={className} />;
     case "search":
       return <Search className={className} />;
     case "edit":
+    case "apply_patch":
       return <Pencil className={className} />;
     case "bash":
+    case "wait":
       return <SquareTerminal className={className} />;
     case "trace_retrieve":
       return <Workflow className={className} />;
@@ -161,8 +162,14 @@ function summarizeTool(tool: ToolTimelineItem): string {
     }
     return "Frontier model took over";
   }
-  if (tool.toolName === "list_project_resources") {
-    return "Listed project resources";
+  if (tool.toolName === "capability_manager") {
+    return "Managed a skill or MCP capability";
+  }
+  if (tool.toolName === "memory_note") {
+    return "Sent a memory lead";
+  }
+  if (tool.toolName === "context_disposition") {
+    return "Released unneeded working context";
   }
   return tool.displayName;
 }

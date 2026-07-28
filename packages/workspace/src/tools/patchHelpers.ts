@@ -65,14 +65,14 @@ type PatchVerificationRecord = {
 
 export const applyPatchWorkspace = async (
   input: ApplyPatchToolInput,
-  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker },
+  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker; previewOnly?: boolean },
 ): Promise<EditToolOutput> => withWorkspaceMutationLock(context.workspacePath, () => applyPatchWorkspaceLocked(input, context))
 
 const applyPatchWorkspaceLocked = async (
   input: ApplyPatchToolInput,
-  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker },
+  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker; previewOnly?: boolean },
 ): Promise<EditToolOutput> => {
-  const dryRun = input.dryRun ?? false
+  const dryRun = context.previewOnly ?? false
   const prepared = preparePatch(input.patchText, context.workspacePath)
   const changes = parsePatchFileChanges(prepared.patch)
   validatePatch(changes, context.workspacePath)

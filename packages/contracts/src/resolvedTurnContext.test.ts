@@ -7,7 +7,7 @@ const seed = {
   goal: { title: "Converge Flow", objective: "Use one lifecycle.", state: "foreground", progress: exact, openDecisions: [], blockers: [] },
   task: { ordinal: 3, request: exact },
   latestExchange: { user: exact, assistant: exact },
-  retrieval: { goalCandidates: "completed" as const, memoryCandidates: "completed" as const, warnings: [] },
+  retrieval: { goalCandidates: "completed" as const, memoryCandidates: "completed" as const, capabilityCandidates: "completed" as const, warnings: [] },
 }
 
 describe("resolved turn context contracts", () => {
@@ -16,6 +16,7 @@ describe("resolved turn context contracts", () => {
     const result = resolvedTurnContextSchema.parse({
       ...seed,
       memory: [{ surface: "project_memory", reference: "MEMORY.md/durable_decisions", scope: "project", content: exact }],
+      capabilities: [],
     })
     expect(result.task.request).toBe(exact)
     expect(result.latestExchange?.assistant).toBe(exact)

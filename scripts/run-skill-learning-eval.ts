@@ -32,6 +32,7 @@ import {
 import { createId, SocratesError } from "@socrates/shared"
 import { openDatabase, runMigrations, type DatabaseHandle } from "../apps/server/src/db/client"
 import { SocratesStore } from "../apps/server/src/services/store"
+import { readSocratesResource, searchSocratesResources } from "../apps/server/src/services/resources/socratesResourceService"
 import { runSkillWriterTurn } from "../apps/server/src/services/store/skillWriterAgentRunner"
 import { currentRuntimeTime } from "../apps/server/src/services/store/runtimeContext"
 
@@ -394,11 +395,16 @@ const screenWriterConfig = async (candidate: EvalConfig, source: GoldenDataset, 
           if (input.operation === "inspect" && input.turnId) inspected.add(input.turnId)
           return output
         },
-        skills: async (input) => sandbox.store.runSkillsTool(sandbox.projectId, input),
-        soul: async (input) => sandbox.store.runSoulTool(sandbox.projectId, input),
-        userProfile: async (input) => sandbox.store.runUserProfileTool(sandbox.projectId, input),
-        projectDocs: async (input) => sandbox.store.runProjectDocsTool(sandbox.projectId, sandbox.workspacePath, input),
-        repoDocs: async (input) => sandbox.store.runRepoDocsTool(sandbox.projectId, sandbox.workspacePath, input),
+        read: async (input) => readSocratesResource(input, {
+          store: sandbox.store,
+          projectId: sandbox.projectId,
+          workspacePath: sandbox.workspacePath,
+        }),
+        search: async (input) => searchSocratesResources(input, {
+          store: sandbox.store,
+          projectId: sandbox.projectId,
+          workspacePath: sandbox.workspacePath,
+        }),
         skillWrite: async (input) => {
           if (evidenceTurnIds.some((turnId) => !inspected.has(turnId))) throw new Error("Writer did not inspect every approved source turn.")
           writtenInput = input
@@ -551,26 +557,31 @@ const runHeldoutUse = async (sandbox: Sandbox, candidate: EvalConfig, prompt: st
   let answer = ""
   const unavailable = async (): Promise<never> => { throw new SocratesError("eval_tool_unavailable", "This tool is intentionally unavailable in the held-out read-only evaluation.", { recoverable: true }) }
   const executors: ToolExecutors = {
-    read: unavailable,
-    search: unavailable,
+    read: async (input) => {
+      if (input.path === "socrates://skills") operations.push("list")
+      else if (input.path.startsWith("socrates://skills/")) operations.push("read")
+      return readSocratesResource(input, {
+        store: sandbox.store,
+        projectId: sandbox.projectId,
+        workspacePath: sandbox.workspacePath,
+      })
+    },
+    search: async (input) => {
+      if (input.path?.startsWith("socrates://skills")) operations.push("search")
+      return searchSocratesResources(input, {
+        store: sandbox.store,
+        projectId: sandbox.projectId,
+        workspacePath: sandbox.workspacePath,
+      })
+    },
     url_fetch: unavailable,
     edit: unavailable,
     apply_patch: unavailable,
     bash: unavailable,
     current_time: async () => currentRuntimeTime(),
     trace_retrieve: async (input) => sandbox.store.retrieveMainToolTraces(sandbox.projectId, sandbox.conversationId, input as never),
-    tool_docs: async (input) => sandbox.store.runToolDocsTool(sandbox.projectId, input),
-    skills: async (input) => {
-      operations.push(input.operation)
-      return sandbox.store.runSkillsTool(sandbox.projectId, input)
-    },
-    project_docs: async (input) => sandbox.store.runProjectDocsTool(sandbox.projectId, sandbox.workspacePath, input),
-    repo_docs: async (input) => sandbox.store.runRepoDocsTool(sandbox.projectId, sandbox.workspacePath, input),
-    soul: async (input) => sandbox.store.runSoulTool(sandbox.projectId, input),
-    user_profile: async (input) => sandbox.store.runUserProfileTool(sandbox.projectId, input),
-    list_project_resources: unavailable,
+    capability_manager: unavailable,
     memory_note: unavailable,
-    mcp_registry: unavailable,
   }
   for await (const event of agent.streamTurn({
     projectId: sandbox.projectId,
@@ -595,7 +606,7 @@ const runHeldoutUse = async (sandbox: Sandbox, candidate: EvalConfig, prompt: st
   const words = signalWords ?? ["context", "question", "plan", "edit", "baseline", "parameter", "isolat", "cost", "update", "verif"]
   const matchedSignals = words.filter((signal) => matchesResponseSignal(answer, signal))
   return {
-    listed: operations.includes("list"),
+    listed: operations.includes("list") || operations.includes("search"),
     described: operations.includes("describe") || operations.includes("read"),
     operations,
     signalScore: matchedSignals.length,

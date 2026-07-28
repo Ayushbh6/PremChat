@@ -71,8 +71,7 @@ export class ReconciliationWatermarkController {
       if (!result?.ok) continue
       const sequence = this.stateValue.lastObservedEvidenceSequence + 1
       this.stateValue = { ...this.stateValue, lastObservedEvidenceSequence: sequence }
-      const operation = toolOperation(call)
-      const docsRead = (call.toolName === "project_docs" || call.toolName === "repo_docs") && isReadOperation(operation)
+      const docsRead = call.toolName === "read" && isGovernedDocumentPath(toolPath(call))
       this.sawDocsReadSinceWatermark ||= docsRead
       nonDocsEvidence ||= !docsRead && call.toolName !== "context_disposition"
       const mutation = mutationWeightFor(call, result)
@@ -162,26 +161,30 @@ export const buildSocratesProgressReconciliationCheckpoint = (checkpoint: Reconc
   `Trigger: ${checkpoint.reason}. Review only verified task evidence ${checkpoint.evidenceFrom}-${checkpoint.evidenceTo}; the previous watermark is already reconciled.`,
   `Last verified mutation boundary: ${checkpoint.lastVerifiedMutationBoundary}.`,
   "Decide whether durable state changed: a material goal or scope change, a future-dependent decision, a verified build or test milestone, a blocker or incomplete handoff, or the restart state. Tool volume and lines changed are signals only; they never prove a docs write is needed.",
-  "If reconciliation is needed, read the exact project_docs or repo_docs section, make the smallest canonical replacement, and re-read it to verify the stale claim is gone. Never append a parallel authority path.",
+  "If reconciliation is needed, read the exact socrates://project/memory, socrates://project/notes, or socrates://project/repo-docs section, use governed edit for the smallest canonical replacement, and re-read it to verify the stale claim is gone. Never append a parallel authority path.",
   "If nothing durable changed, make no docs mutation. A genuine semantic instruction not to remember, save, or store the covered content remains authoritative.",
   "Use only normal main Socrates tools. There is no router, summarizer, or writer for this checkpoint. When finished, return no user-facing answer; continue the same task.",
   ...(checkpoint.evidence.length ? ["Checkpoint evidence index:", ...checkpoint.evidence] : []),
   "</socrates_progress_reconciliation_checkpoint>",
 ].join("\n")
 
-const toolOperation = (call: NormalizedToolCall): string | undefined => {
+const toolPath = (call: NormalizedToolCall): string | undefined => {
   if (!call.input || typeof call.input !== "object" || Array.isArray(call.input)) return undefined
-  const operation = (call.input as Record<string, unknown>).operation
-  return typeof operation === "string" ? operation : undefined
+  const path = (call.input as Record<string, unknown>).path
+  return typeof path === "string" ? path : undefined
 }
 
-const isReadOperation = (operation: string | undefined): boolean =>
-  operation === "read" || operation === "search" || operation === "read_index" || operation === "read_section"
+const isGovernedDocumentPath = (path: string | undefined): boolean =>
+  typeof path === "string" && (
+    path === "socrates://project/memory" ||
+    path.startsWith("socrates://project/memory/") ||
+    path === "socrates://project/notes" ||
+    path.startsWith("socrates://project/notes/") ||
+    path === "socrates://project/repo-docs" ||
+    path.startsWith("socrates://project/repo-docs/")
+  )
 
 const mutationWeightFor = (call: NormalizedToolCall, result: ToolExecutionResult): number => {
-  if (call.toolName === "project_docs" || call.toolName === "repo_docs") {
-    return toolOperation(call) === "edit" || toolOperation(call) === "patch_section" ? 1 : 0
-  }
   if (call.toolName !== "edit" && call.toolName !== "apply_patch") return 0
   const output = result.output && typeof result.output === "object" && !Array.isArray(result.output)
     ? result.output as Record<string, unknown>

@@ -22,7 +22,7 @@ describe("prepareTurnContext", () => {
         { role: "assistant", content: exactAssistant },
         { role: "user", content: exactTask },
       ],
-      retrieval: { goalCandidates: "completed", memoryCandidates: "completed", warnings: [] },
+      retrieval: { goalCandidates: "completed", memoryCandidates: "completed", capabilityCandidates: "completed", warnings: [] },
     })
     const resolved = prepareTurnContext(seed, [{
       surface: "project_memory",
@@ -51,6 +51,7 @@ describe("prepareTurnContext", () => {
       retrieval: {
         goalCandidates: "failed",
         memoryCandidates: "failed",
+        capabilityCandidates: "failed",
         warnings: ["Older goal retrieval failed; the current goal was retained independently.", "Memory retrieval failed; no retrieved memory was attached."],
       },
     })

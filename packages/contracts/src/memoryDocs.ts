@@ -17,7 +17,20 @@ export type MemoryDocType = z.infer<typeof memoryDocTypeSchema>
 export const memoryDocScopeSchema = z.enum(["workspace", "global"])
 export type MemoryDocScope = z.infer<typeof memoryDocScopeSchema>
 
-export const memoryDocOwnerToolSchema = z.enum(["project_docs", "repo_docs", "tool_docs", "soul", "user_profile", "edit_files", "skills"])
+export const memoryDocOwnerToolSchema = z.enum([
+  "read",
+  "edit",
+  "capability_manager",
+  "skill_write",
+  "edit_files",
+  // Accepted only so existing documents can be migrated in place.
+  "project_docs",
+  "repo_docs",
+  "tool_docs",
+  "soul",
+  "user_profile",
+  "skills",
+])
 export type MemoryDocOwnerTool = z.infer<typeof memoryDocOwnerToolSchema>
 
 export const memoryDocFrontmatterSchema = z

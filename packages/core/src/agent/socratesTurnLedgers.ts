@@ -17,9 +17,9 @@ export const isDynamicMcpToolName = (toolName: string): boolean => /^mcp__[a-z0-
 export const isConfirmedToolErrorResult = (result: ToolExecutionResult): boolean =>
   result.ok === false && typeof result.error?.code === "string" && result.error.code.length > 0 && typeof result.error.message === "string" && result.error.message.length > 0
 
-export const TOOL_DOCS_FAILURE_NUDGE = "Refer to tool_docs for tool usage before retrying this tool or choosing another tool."
+export const TOOL_DOCS_FAILURE_NUDGE = "Read or search socrates://tool-guidance for current usage before retrying this tool or choosing another tool."
 export const MUTATION_SCHEMA_RECOVERY_HINT =
-  'Runtime tool-schema recovery: the previous edit/apply_patch input was invalid. For a new file, call edit with exactly { "path": "relative/path.md", "content": "..." }. For a full rewrite of an existing file, use exactly { "path": "relative/path.md", "content": "...", "overwrite": true }. For a targeted replacement, use exactly { "path": "relative/path.md", "oldString": "...", "newString": "..." }. Do not mix content with oldString/newString, and do not set overwrite unless it is true.'
+  'Runtime tool-schema recovery: the previous edit/apply_patch input was invalid. For a new file, call edit with exactly { "path": "relative/path.md", "content": "..." }. For a full rewrite of an existing file, use exactly { "path": "relative/path.md", "content": "...", "overwrite": true }. For targeted replacements, use exactly { "path": "relative/path.md", "edits": [{ "oldString": "...", "newString": "..." }] }. Do not mix content with edits, and do not set overwrite unless it is true.'
 export const FAILED_MUTATION_FORCE_FINAL_THRESHOLD = 4
 export const toolErrorResult = (toolCall: NormalizedToolCall, error: SocratesError): ToolExecutionResult =>
   toolExecutionResultSchema.parse({
@@ -89,12 +89,11 @@ export class ReconciliationVerificationLedger {
       if (!result?.ok) continue
       const key = this.keyForCall(call)
       if (!key) continue
-      const operation = toolOperation(call)
       const observed = this.observed.get(key) ?? { mutated: false, verified: false }
-      if (operation === "edit" || operation === "patch_section") {
+      if (call.toolName === "edit") {
         observed.mutated = true
         observed.verified = false
-      } else if (observed.mutated && isDocsReadOperation(operation)) {
+      } else if (call.toolName === "read" && observed.mutated) {
         observed.verified = true
       }
       this.observed.set(key, observed)
@@ -120,20 +119,21 @@ export class ReconciliationVerificationLedger {
   private keyForCall(call: NormalizedToolCall): string | undefined {
     if (!call.input || typeof call.input !== "object" || Array.isArray(call.input)) return undefined
     const input = call.input as Record<string, unknown>
-    const sectionId = typeof input.sectionId === "string" ? input.sectionId : undefined
-    if (!sectionId) return undefined
-    if (call.toolName === "project_docs") {
-      const area = input.area === "notes" ? "notes" : input.area === "memory" ? "memory" : undefined
-      return area ? `project:${area}:${sectionId}` : undefined
-    }
-    if (call.toolName === "repo_docs" && typeof input.path === "string") return `repo:${input.path}:${sectionId}`
-    return undefined
+    if ((call.toolName !== "read" && call.toolName !== "edit") || typeof input.path !== "string") return undefined
+    return governedDocumentKey(input.path)
   }
 
   private labelForKey(key: string): string {
     const parts = key.split(":")
     return parts.slice(1).join("/")
   }
+}
+
+const governedDocumentKey = (resourcePath: string): string | undefined => {
+  const project = /^socrates:\/\/project\/(memory|notes)\/([^/]+)$/.exec(resourcePath)
+  if (project) return `project:${project[1]}:${project[2]}`
+  const repo = /^socrates:\/\/project\/repo-docs\/([^/]+)\/([^/]+)$/.exec(resourcePath)
+  return repo ? `repo:${repo[1]}:${repo[2]}` : undefined
 }
 
 export class TurnMemorySaveLedger {
@@ -202,14 +202,6 @@ export class TurnMemorySaveLedger {
     }
   }
 }
-
-export const toolOperation = (toolCall: NormalizedToolCall | undefined): string | undefined => {
-  const input = toolCall?.input && typeof toolCall.input === "object" && !Array.isArray(toolCall.input) ? toolCall.input as Record<string, unknown> : undefined
-  return typeof input?.operation === "string" ? input.operation : undefined
-}
-
-export const isDocsReadOperation = (operation: string | undefined): boolean =>
-  operation === undefined || operation === "read" || operation === "search" || operation === "read_index" || operation === "read_section"
 
 export const memoryNoteInputPreview = (input: unknown): string => {
   const record = input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : undefined

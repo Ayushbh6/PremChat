@@ -393,9 +393,11 @@ export class V2ExecutionRuntime {
     let finalResult: SocratesFinalAnswer | undefined
     let goalId: string | undefined
     let memoryCandidates: readonly import("@socrates/contracts").MemoryCandidate[] = []
+    let capabilityCandidates: readonly import("@socrates/contracts").CapabilityCandidate[] = []
     let retrievalStatus: import("@socrates/contracts").CandidateRetrievalStatus = {
       goalCandidates: "completed",
       memoryCandidates: "completed",
+      capabilityCandidates: "completed",
       warnings: [],
     }
     let suspended = false
@@ -457,6 +459,7 @@ export class V2ExecutionRuntime {
         }
         const applied = resolution.applied
         memoryCandidates = resolution.memoryCandidates
+        capabilityCandidates = resolution.capabilityCandidates
         retrievalStatus = resolution.retrieval
         activeGoalId = resolution.goalId
         goalId = activeGoalId
@@ -492,6 +495,9 @@ export class V2ExecutionRuntime {
       const stableCachePreludeSnapshot = this.deps.sharedStore.loadStableCachePreludeSnapshot(command.projectId, workspacePath)
       const frontierModelSettings = this.deps.sharedStore.getWorkerModelSetting("frontier")
       const exposedMcpServers = new Set<string>()
+      for (const candidate of capabilityCandidates) {
+        if (candidate.kind === "mcp") exposedMcpServers.add(candidate.name)
+      }
       const toolExecutors = createV2ToolExecutors({
         flowStore: this.deps.store,
         sharedStore: this.deps.sharedStore,
@@ -548,6 +554,7 @@ export class V2ExecutionRuntime {
           userMessage: command.payload.content,
           goal: activeGoal,
         }),
+        resolvedTurnCapabilities: capabilityCandidates.map(({ resultNumber: _resultNumber, ...candidate }) => candidate),
         contextCompression: createV2ContextCompressionRuntime({
           store: this.deps.store,
           sharedStore: this.deps.sharedStore,

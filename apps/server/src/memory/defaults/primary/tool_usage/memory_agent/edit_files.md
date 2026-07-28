@@ -1,7 +1,7 @@
 ---
 socrates_doc: tool_doc
 schema_version: 1
-owner_tool: tool_docs
+owner_tool: read
 scope: global
 index_tags: [tool_usage]
 ---
@@ -25,7 +25,153 @@ index_tags: [tool_usage]
 <!-- socrates:section id="inputs" kind="schema" tags="tools" -->
 ## Inputs
 
-- `edit_files` uses the one canonical schema owned by `tool.edit_files`; send only documented fields and do not add aliases or placeholder values.
+### `edit_files`
+
+Canonical capability: `tool.edit_files`. Send only fields accepted by this generated provider schema; do not add aliases or placeholder values.
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "enum": [
+            "identity",
+            "user_profile",
+            "skill"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "builtin",
+            "global",
+            "project"
+          ]
+        },
+        "editMode": {
+          "type": "string",
+          "enum": [
+            "replace",
+            "create"
+          ]
+        },
+        "sectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "oldText": {
+          "type": "string"
+        },
+        "newText": {
+          "type": "string",
+          "minLength": 1
+        },
+        "replaceAll": {
+          "type": "boolean"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceTurnIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "maxItems": 12
+        }
+      },
+      "required": [
+        "target",
+        "editMode",
+        "newText"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "enum": [
+            "identity",
+            "user_profile"
+          ]
+        },
+        "editMode": {
+          "type": "string",
+          "const": "move"
+        },
+        "sourceSectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "destinationSectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceText": {
+          "type": "string",
+          "minLength": 1
+        },
+        "destinationText": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceTurnIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "name": {
+          "not": {}
+        },
+        "scope": {
+          "not": {}
+        },
+        "sectionId": {
+          "not": {}
+        },
+        "oldText": {
+          "not": {}
+        },
+        "newText": {
+          "not": {}
+        },
+        "replaceAll": {
+          "not": {}
+        }
+      },
+      "required": [
+        "target",
+        "editMode",
+        "sourceSectionId",
+        "destinationSectionId",
+        "sourceText",
+        "destinationText",
+        "rationale"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object"
+}
+```
 <!-- /socrates:section -->
 
 <!-- socrates:section id="workflow" kind="workflow" tags="tools" -->

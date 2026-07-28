@@ -1,4 +1,4 @@
-import type { ProjectResource, TraceRetrieveMainToolInput } from "@socrates/contracts"
+import type { CapabilityManagerToolInput, SkillsToolInput, SkillsToolOutput, TraceRetrieveMainToolInput } from "@socrates/contracts"
 import type { ToolExecutors } from "@socrates/core"
 import type { McpRuntime } from "@socrates/mcp"
 import { SocratesError } from "@socrates/shared"
@@ -9,12 +9,16 @@ import {
   searchWorkspace,
   withWorkspaceMutationLock,
 } from "@socrates/workspace"
+import {
+  editSocratesResource,
+  isSocratesResourcePath,
+  readSocratesResource,
+  searchSocratesResources,
+} from "./resources/socratesResourceService"
 import type { SocratesStore } from "./store"
 import { currentRuntimeTime } from "./store/runtimeContext"
 import type { ActiveTurns } from "../ws/activeTurns"
 import { fetchUrlForTool } from "../ws/urlFetch"
-
-const docsMutationOperations = new Set(["edit", "patch_section"])
 
 export type MainToolRuntimeAdapter = Readonly<{
   bash: ToolExecutors["bash"]
@@ -23,7 +27,7 @@ export type MainToolRuntimeAdapter = Readonly<{
     presentedConversationId: string
     goalId?: string
   }
-  runSkills: ToolExecutors["skills"]
+  runSkills: (input: SkillsToolInput, context: Parameters<ToolExecutors["read"]>[1]) => Promise<SkillsToolOutput>
   createMemoryNote: NonNullable<ToolExecutors["memory_note"]>
   mcpSessionKey: (context: Parameters<NonNullable<ToolExecutors["mcp_dynamic"]>>[1]) => string
 }>
@@ -43,36 +47,21 @@ export type MainToolExecutorsInput = Readonly<{
  * physical Terminal/wait and source-coordinate differences between views.
  */
 export const createMainToolExecutors = (input: MainToolExecutorsInput): ToolExecutors => {
-  let skillsDiscoverySeen = false
-  let skillsAvailable: boolean | undefined
   const withFreshness = <C extends object>(context: C): C & { fileFreshness?: ReturnType<ActiveTurns["getFileFreshness"]> } => {
     const tracker = input.activeTurns.getFileFreshness(input.turnId)
     return tracker ? { ...context, fileFreshness: tracker } : context
   }
-  const hasVisibleSkills = (): boolean => {
-    skillsAvailable ??= input.store.runSkillsTool(input.projectId, { operation: "list", n: 1 }).totalMatches > 0
-    return skillsAvailable
-  }
-  const requireSkillsDiscovery = (toolName: "read" | "list_project_resources", resourcePath?: string): void => {
-    if (skillsDiscoverySeen || !hasVisibleSkills()) return
-    throw new SocratesError(
-      "skills_discovery_required",
-      `Before using ${toolName} for uploaded project resources, call skills({ operation: "list" }) first, then describe the exact relevant skill id if one applies.`,
-      {
-        recoverable: true,
-        details: { toolName, ...(resourcePath ? { resourcePath } : {}), requiredTool: "skills", requiredOperation: "list" },
-      },
-    )
-  }
-
   return {
-    read: (toolInput, context) => {
-      if (isProjectResourceRead(toolInput.path)) requireSkillsDiscovery("read", toolInput.path)
-      return readWorkspacePath(toolInput, withFreshness(context))
-    },
-    search: (toolInput, context) => searchWorkspace(toolInput, context),
+    read: (toolInput, context) => isSocratesResourcePath(toolInput.path)
+      ? readSocratesResource(toolInput, { ...withFreshness(context), store: input.store, ...(input.mcpRuntime ? { mcpRuntime: input.mcpRuntime } : {}) })
+      : readWorkspacePath(toolInput, withFreshness(context)),
+    search: (toolInput, context) => toolInput.path && isSocratesResourcePath(toolInput.path)
+      ? searchSocratesResources(toolInput, { store: input.store, projectId: input.projectId, workspacePath: context.workspacePath, ...(input.mcpRuntime ? { mcpRuntime: input.mcpRuntime } : {}) })
+      : searchWorkspace(toolInput, context),
     url_fetch: (toolInput, context) => fetchUrlForTool(toolInput, context.abortSignal),
-    edit: (toolInput, context) => editWorkspace(toolInput, withFreshness(context)),
+    edit: (toolInput, context) => isSocratesResourcePath(toolInput.path)
+      ? withWorkspaceMutationLock(context.workspacePath, () => editSocratesResource(toolInput, { ...withFreshness(context), store: input.store }))
+      : editWorkspace(toolInput, withFreshness(context)),
     apply_patch: (toolInput, context) => applyPatchWorkspace(toolInput, withFreshness(context)),
     bash: input.runtime.bash,
     ...(input.runtime.wait ? { wait: input.runtime.wait } : {}),
@@ -87,48 +76,8 @@ export const createMainToolExecutors = (input: MainToolExecutorsInput): ToolExec
         request: toolInput as TraceRetrieveMainToolInput,
       })
     },
-    tool_docs: async (toolInput) => input.store.runToolDocsTool(input.projectId, toolInput),
-    skills: async (toolInput, context) => {
-      const output = await input.runtime.runSkills(toolInput, context)
-      if (["list", "describe", "search", "read"].includes(toolInput.operation)) skillsDiscoverySeen = true
-      return output
-    },
-    skill_manager: async (toolInput, context) => {
-      if (toolInput.operation === "create") {
-        const { skill } = await input.store.buildProjectSkill(
-          input.projectId,
-          { name: toolInput.name, request: toolInput.request },
-          { conversationId: context.conversationId, sessionId: context.sessionId, turnId: context.turnId },
-        )
-        return { operation: "create", name: skill.name, scope: "project", status: "created" }
-      }
-      const deleted = input.store.deleteProjectSkill(input.projectId, toolInput.name)
-      return { operation: "delete", name: deleted.deletedSkillName, scope: "project", status: "deleted" }
-    },
+    capability_manager: (toolInput, context, resolvedSecretEnv) => runCapabilityManager(input, toolInput, context, resolvedSecretEnv),
     memory_note: input.runtime.createMemoryNote,
-    project_docs: (toolInput, context) => docsMutationOperations.has(toolInput.operation)
-      ? withWorkspaceMutationLock(context.workspacePath, async () => input.store.runProjectDocsTool(input.projectId, context.workspacePath, toolInput))
-      : Promise.resolve(input.store.runProjectDocsTool(input.projectId, context.workspacePath, toolInput)),
-    repo_docs: (toolInput, context) => docsMutationOperations.has(toolInput.operation)
-      ? withWorkspaceMutationLock(context.workspacePath, async () => input.store.runRepoDocsTool(input.projectId, context.workspacePath, toolInput))
-      : Promise.resolve(input.store.runRepoDocsTool(input.projectId, context.workspacePath, toolInput)),
-    soul: async (toolInput) => input.store.runSoulTool(input.projectId, toolInput),
-    user_profile: async (toolInput) => input.store.runUserProfileTool(input.projectId, toolInput),
-    list_project_resources: async (toolInput) => {
-      requireSkillsDiscovery("list_project_resources")
-      return listProjectResourcesForTool(input.store, input.projectId, toolInput)
-    },
-    mcp_registry: async (toolInput, context, resolvedSecretEnv) => {
-      if (!input.mcpRuntime) throw new SocratesError("mcp_runtime_unavailable", "MCP runtime is not available.", { recoverable: true })
-      const output = await input.mcpRuntime.handleRegistryTool(toolInput, {
-        workspacePath: context.workspacePath,
-        ...(resolvedSecretEnv ? { resolvedSecretEnv } : {}),
-      })
-      if (output.tools && output.tools.length > 0) {
-        input.exposeMcpServer?.(output.server?.id ?? ("id" in toolInput ? toolInput.id : undefined) ?? ("name" in toolInput ? toolInput.name : undefined) ?? "playwright")
-      }
-      return output
-    },
     mcp_dynamic: (toolInput, context) => {
       if (!input.mcpRuntime) throw new SocratesError("mcp_runtime_unavailable", "MCP runtime is not available.", { recoverable: true })
       return input.mcpRuntime.callDynamicTool(toolInput.dynamicName, toolInput.input, {
@@ -140,43 +89,61 @@ export const createMainToolExecutors = (input: MainToolExecutorsInput): ToolExec
   }
 }
 
-const isProjectResourceRead = (value: string): boolean => {
-  const normalized = value.replaceAll("\\", "/")
-  return normalized.startsWith(".socrates/resources/") || normalized.includes("/.socrates/resources/")
-}
-
-const listProjectResourcesForTool = (
-  store: SocratesStore,
-  projectId: string,
-  input: Parameters<ToolExecutors["list_project_resources"]>[0],
+const runCapabilityManager = async (
+  owner: MainToolExecutorsInput,
+  toolInput: CapabilityManagerToolInput,
+  context: Parameters<NonNullable<ToolExecutors["capability_manager"]>>[1],
+  resolvedSecretEnv?: Readonly<Record<string, string>>,
 ) => {
-  const charLimit = 20_000
-  const limit = input.limit ?? 25
-  const allResources = store.listResources(projectId).filter((resource) => input.kind ? resource.kind === input.kind : true)
-  const resources: Array<Omit<ProjectResource, "projectId">> = []
-  for (const resource of allResources) {
-    if (resources.length >= limit) break
-    const next = {
-      id: resource.id,
-      name: resource.name,
-      kind: resource.kind,
-      source: resource.source,
-      ...(resource.uri ? { uri: resource.uri } : {}),
-      ...(resource.mimeType ? { mimeType: resource.mimeType } : {}),
-      ...(resource.sizeBytes === undefined ? {} : { sizeBytes: resource.sizeBytes }),
-      status: resource.status,
-    }
-    if (JSON.stringify([...resources, next]).length > charLimit) break
-    resources.push(next)
+  const projectScope = "scope" in toolInput && toolInput.scope === "path"
+  if (toolInput.operation === "skill_create" || toolInput.operation === "skill_update") {
+    const source = { conversationId: context.conversationId, sessionId: context.sessionId, turnId: context.turnId }
+    const built = projectScope
+      ? toolInput.operation === "skill_create"
+        ? await owner.store.buildProjectSkill(owner.projectId, { name: toolInput.name, request: toolInput.request }, source)
+        : await owner.store.updateProjectSkill(owner.projectId, { name: toolInput.name, request: toolInput.request }, source)
+      : toolInput.operation === "skill_create"
+        ? await owner.store.buildGlobalSkill({ name: toolInput.name, request: toolInput.request })
+        : await owner.store.updateGlobalSkill({ name: toolInput.name, request: toolInput.request }, source)
+    owner.store.enqueueCapabilityRefresh(owner.projectId)
+    return { operation: toolInput.operation, status: "completed" as const, summary: `${toolInput.operation === "skill_create" ? "Created" : "Updated"} ${built.skill.name}.`, resource: `socrates://skills/${toolInput.scope}/${encodeURIComponent(built.skill.name)}`, details: built }
   }
-  const originalLength = JSON.stringify(allResources).length
-  const returnedLength = JSON.stringify(resources).length
-  const hiddenCount = allResources.length - resources.length
-  return {
-    resources,
-    summary: hiddenCount > 0 ? `Listed ${resources.length} of ${allResources.length} project resources.` : `Listed ${resources.length} project resources.`,
-    totalResources: allResources.length,
-    truncation: { truncated: hiddenCount > 0, charLimit, originalLength, returnedLength },
-    ...(hiddenCount > 0 ? { warnings: [`${hiddenCount} resources were omitted by the output cap.`] } : {}),
+  if (toolInput.operation === "skill_delete") {
+    const deleted = projectScope ? owner.store.deleteProjectSkill(owner.projectId, toolInput.name) : owner.store.deleteGlobalSkill(toolInput.name)
+    owner.store.enqueueCapabilityRefresh(owner.projectId)
+    return { operation: toolInput.operation, status: "completed" as const, summary: `Deleted ${deleted.deletedSkillName}.`, details: deleted }
   }
+  if (toolInput.operation === "skill_enable" || toolInput.operation === "skill_disable") {
+    const enabled = toolInput.operation === "skill_enable"
+    const skill = projectScope
+      ? owner.store.setProjectSkillEnabled(owner.projectId, toolInput.name, enabled)
+      : owner.store.setGlobalSkillEnabled(toolInput.name, enabled)
+    owner.store.enqueueCapabilityRefresh(owner.projectId)
+    return { operation: toolInput.operation, status: "completed" as const, summary: `${enabled ? "Enabled" : "Disabled"} ${skill.name}.`, resource: `socrates://skills/${toolInput.scope}/${encodeURIComponent(skill.name)}`, details: skill }
+  }
+  if (toolInput.operation === "skill_preview_import" || toolInput.operation === "skill_commit_import") {
+    const skillInput = toolInput.operation === "skill_preview_import"
+      ? "url" in toolInput
+        ? { operation: "preview_import" as const, scope: projectScope ? "project" as const : "global" as const, url: toolInput.url }
+        : { operation: "preview_import" as const, scope: projectScope ? "project" as const : "global" as const, attachmentPath: toolInput.attachmentPath }
+      : { operation: "commit_import" as const, scope: projectScope ? "project" as const : "global" as const, previewId: toolInput.previewId, conflictStrategy: toolInput.conflictStrategy }
+    const result = await owner.runtime.runSkills(skillInput, context)
+    if (toolInput.operation === "skill_commit_import") owner.store.enqueueCapabilityRefresh(owner.projectId)
+    return { operation: toolInput.operation, status: toolInput.operation === "skill_preview_import" ? "preview_ready" as const : "completed" as const, summary: result.usageHint ?? `${toolInput.operation} completed.`, details: result }
+  }
+  if (!owner.mcpRuntime) throw new SocratesError("mcp_runtime_unavailable", "MCP runtime is not available.", { recoverable: true })
+  const mcpInput = toolInput.operation === "mcp_check"
+    ? { operation: "check" as const, id: toolInput.id }
+    : toolInput.operation === "mcp_delete"
+      ? { operation: "delete" as const, scope: projectScope ? "project" as const : "global" as const, id: toolInput.id }
+      : toolInput.operation === "mcp_configure"
+        ? { operation: "configure" as const, scope: projectScope ? "project" as const : "global" as const, server: toolInput.server }
+        : (() => { throw new SocratesError("capability_operation_invalid", "Unsupported capability manager operation.") })()
+  const output = await owner.mcpRuntime.handleRegistryTool(mcpInput, {
+    workspacePath: context.workspacePath,
+    ...(resolvedSecretEnv ? { resolvedSecretEnv } : {}),
+  })
+  owner.store.enqueueCapabilityRefresh(owner.projectId)
+  if (output.tools?.length) owner.exposeMcpServer?.(output.server?.id ?? ("id" in mcpInput ? mcpInput.id : mcpInput.server.id))
+  return { operation: toolInput.operation, status: "completed" as const, summary: output.summary, ...(output.server?.id ? { resource: `socrates://capabilities/mcp:${output.server.id}` } : {}), details: output }
 }

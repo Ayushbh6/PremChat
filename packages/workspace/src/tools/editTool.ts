@@ -36,14 +36,14 @@ const editTestHooks: {
 
 export const editWorkspace = async (
   input: EditToolInput,
-  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker },
+  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker; previewOnly?: boolean },
 ): Promise<EditToolOutput> => withWorkspaceMutationLock(context.workspacePath, () => editWorkspaceLocked(input, context))
 
 const editWorkspaceLocked = async (
   input: EditToolInput,
-  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker },
+  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker; previewOnly?: boolean },
 ): Promise<EditToolOutput> => {
-  const dryRun = input.dryRun ?? false
+  const dryRun = context.previewOnly ?? false
   const absolutePath = resolveWorkspacePath(context.workspacePath, input.path)
   assertNotProjectNotesMutation(context.workspacePath, absolutePath, input.path)
   assertNotRepoDocsMutation(context.workspacePath, absolutePath, input.path)
@@ -56,29 +56,12 @@ const editWorkspaceLocked = async (
 
   const relativePath = toWorkspaceRelativePath(context.workspacePath, absolutePath)
   const before = readFileSnapshot(absolutePath, { includeText: true })
-  if ("oldString" in input) {
+  if ("edits" in input) {
     if (!before.exists) {
       throw new SocratesError("file_not_found", "Replace edit target does not exist", { details: { path: input.path } })
     }
     validateFreshness(context, absolutePath, before.contentHash)
-    const oldString = input.oldString
-    const newString = input.newString
-    const occurrences = before.content?.split(oldString).length ?? 0
-    const actualOccurrences = Math.max(occurrences - 1, 0)
-    const replaceAll = input.replaceAll ?? false
-    if (!replaceAll && actualOccurrences !== 1) {
-      throw new SocratesError("replace_occurrence_mismatch", "Replace edit oldString occurrence count did not match", {
-        details: { path: input.path, expectedOccurrences: 1, actualOccurrences },
-        recoverable: true,
-      })
-    }
-    if (replaceAll && actualOccurrences === 0) {
-      throw new SocratesError("replace_occurrence_mismatch", "Replace edit oldString was not found", {
-        details: { path: input.path, expectedOccurrences: "all", actualOccurrences: 0 },
-        recoverable: true,
-      })
-    }
-    const afterContent = replaceAll ? (before.content ?? "").split(oldString).join(newString) : (before.content ?? "").replace(oldString, newString)
+    const afterContent = applyTextEdits(before.content ?? "", input.edits, input.path)
     return writeSingleFile({
       input,
       context,
@@ -96,7 +79,7 @@ const editWorkspaceLocked = async (
     if (!input.overwrite) {
       throw new SocratesError(
         "edit_use_targeted_replace",
-        "Existing-file content writes require explicit overwrite intent. Use oldString/newString for localized edits, or retry with overwrite: true only when replacing the whole file intentionally.",
+        "Existing-file content writes require explicit overwrite intent. Use edits:[{oldString,newString}] for localized edits, or retry with overwrite: true only when replacing the whole file intentionally.",
         {
           details: { path: input.path },
           recoverable: true,
@@ -118,7 +101,7 @@ const editWorkspaceLocked = async (
 }
 
 const validateFreshness = (
-  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker },
+  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker; previewOnly?: boolean },
   absolutePath: string,
   actualHash: string | undefined,
 ): void => {
@@ -134,7 +117,7 @@ const validateFreshness = (
 
 const writeSingleFile = async (params: {
   input: EditToolInput
-  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker }
+  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker; previewOnly?: boolean }
   dryRun: boolean
   absolutePath: string
   relativePath: string
@@ -211,6 +194,54 @@ const safeWriteTextFile = (absolutePath: string, content: string, before: FileSn
       details: { path: absolutePath, message: error instanceof Error ? error.message : String(error) },
     })
   }
+}
+
+export const applyTextEdits = (
+  original: string,
+  edits: readonly { oldString: string; newString: string; replaceAll?: boolean | undefined }[],
+  targetPath = "resource",
+): string => {
+  const replacements: Array<{ start: number; end: number; newString: string; editIndex: number }> = []
+  for (const [editIndex, edit] of edits.entries()) {
+    const starts: number[] = []
+    let cursor = 0
+    while (cursor <= original.length - edit.oldString.length) {
+      const found = original.indexOf(edit.oldString, cursor)
+      if (found < 0) break
+      starts.push(found)
+      cursor = found + edit.oldString.length
+    }
+    if ((!edit.replaceAll && starts.length !== 1) || (edit.replaceAll && starts.length === 0)) {
+      throw new SocratesError("replace_occurrence_mismatch", "Replace edit oldString occurrence count did not match", {
+        details: {
+          path: targetPath,
+          editIndex,
+          expectedOccurrences: edit.replaceAll ? "all" : 1,
+          actualOccurrences: starts.length,
+        },
+        recoverable: true,
+      })
+    }
+    for (const start of edit.replaceAll ? starts : starts.slice(0, 1)) {
+      replacements.push({ start, end: start + edit.oldString.length, newString: edit.newString, editIndex })
+    }
+  }
+  replacements.sort((left, right) => left.start - right.start || left.end - right.end)
+  for (let index = 1; index < replacements.length; index += 1) {
+    const previous = replacements[index - 1]!
+    const current = replacements[index]!
+    if (current.start < previous.end) {
+      throw new SocratesError("edit_overlap", "Edit replacements overlap in the original content.", {
+        details: { path: targetPath, firstEditIndex: previous.editIndex, secondEditIndex: current.editIndex },
+        recoverable: true,
+      })
+    }
+  }
+  let result = original
+  for (const replacement of replacements.reverse()) {
+    result = `${result.slice(0, replacement.start)}${replacement.newString}${result.slice(replacement.end)}`
+  }
+  return result
 }
 
 const verifyWrittenFile = (state: EditFileState, after: FileSnapshot, expectedHash: string): void => {

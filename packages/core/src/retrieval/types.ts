@@ -1,4 +1,4 @@
-export type RetrievalCorpusKind = "trace_turn" | "memory_section" | "goal_card"
+export type RetrievalCorpusKind = "trace_turn" | "memory_section" | "goal_card" | "capability_card"
 export type RetrievalRole = "user" | "assistant"
 
 export type MarkdownChunk = {

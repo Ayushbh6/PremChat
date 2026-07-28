@@ -21,7 +21,17 @@ export const resolvedTurnMemoryItemSchema = z.object({
 export const candidateRetrievalStatusSchema = z.object({
   goalCandidates: z.enum(["completed", "failed"]),
   memoryCandidates: z.enum(["completed", "failed"]),
-  warnings: z.array(z.string().min(1)).max(2).default([]),
+  capabilityCandidates: z.enum(["completed", "failed"]),
+  warnings: z.array(z.string().min(1)).max(3).default([]),
+}).strict()
+
+export const resolvedTurnCapabilityItemSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum(["skill", "mcp"]),
+  name: z.string().min(1),
+  description: z.string().min(1),
+  scope: z.enum(["builtin", "global", "path"]),
+  uri: z.string().startsWith("socrates://"),
 }).strict()
 
 export const resolvedTurnContextSeedSchema = z.object({
@@ -44,11 +54,13 @@ export const resolvedTurnContextSeedSchema = z.object({
 
 export const resolvedTurnContextSchema = resolvedTurnContextSeedSchema.extend({
   memory: z.array(resolvedTurnMemoryItemSchema).max(8),
+  capabilities: z.array(resolvedTurnCapabilityItemSchema).max(8),
 }).strict()
 
 export type ResolvedTurnExactExchange = z.infer<typeof resolvedTurnExactExchangeSchema>
 export type ResolvedTurnTransition = z.infer<typeof resolvedTurnTransitionSchema>
 export type ResolvedTurnMemoryItem = z.infer<typeof resolvedTurnMemoryItemSchema>
+export type ResolvedTurnCapabilityItem = z.infer<typeof resolvedTurnCapabilityItemSchema>
 export type CandidateRetrievalStatus = z.infer<typeof candidateRetrievalStatusSchema>
 export type ResolvedTurnContextSeed = z.infer<typeof resolvedTurnContextSeedSchema>
 export type ResolvedTurnContext = z.infer<typeof resolvedTurnContextSchema>

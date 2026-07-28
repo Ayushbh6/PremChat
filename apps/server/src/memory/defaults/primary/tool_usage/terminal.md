@@ -1,7 +1,7 @@
 ---
 socrates_doc: tool_doc
 schema_version: 1
-owner_tool: tool_docs
+owner_tool: read
 scope: global
 index_tags: [tool_usage]
 ---
@@ -12,7 +12,7 @@ index_tags: [tool_usage]
 <!-- socrates:section id="purpose" kind="purpose" tags="tools" -->
 ## Purpose
 
-- `bash`: Terminal command execution tool. This current definition is authoritative: interactive start/input and persistent Terminal controls are available even if stale project memory claims otherwise. The compatibility tool id is bash, but product copy should call it Terminal. Behavior is platform-native: POSIX on macOS/Linux and PowerShell/cmd on Windows. Use operation=list first when several conversation Terminals may exist; it returns a compact bounded inventory. For a small no-shell diagnostic allowlist, prefer argv such as ["git", "status", "--short"] or ["pwd"]; argv runs a literal executable with literal arguments and cannot use shell operators. Use command for a real shell command, script, test, build, local server, REPL, or bounded one-off script; raw shell commands require approval outside full-access mode. For any program that must accept user input, use operation=start, inputMode=user, a clear name, and a portable program (prefer a small Node.js or Python stdin program). inputMode is the explicit reliable signal; prompt wording alone is not. Never assume Bash-specific syntax such as read -p on POSIX because the actual shell may be zsh. The user alone types raw input in the visible Terminal; keep the process alive until all answers are received, then wait on completed/failed when the task depends on its result. Foreground raw runs complete normally when quick, otherwise automatically become a named background Terminal after the configured foreground window without being killed or restarted. Supports run plus conversation-scoped start/status/output/stop/list operations. Returned output and list rows are bounded; charLimit is at most 16000 and list limit is at most 12. Prefer read/search/edit/url_fetch for exact structured reads, but use Terminal when a real command, test, build, local server, CLI, or bounded one-off script is needed. For status/output/stop, omit the target when there is exactly one active Terminal, or use the Terminal name shown in context.
+- `bash`: Run commands or manage named persistent Terminals in the active workspace. Use run for a bounded foreground command, start with a unique name for a server or interactive process, inspect with that name to receive status plus new output, stop with that name, and list to discover existing names. Prefer read, search, edit, and apply_patch for structured file work. Use inputMode=user when the visible Terminal must accept user input.
 - `wait`: Suspend this Socrates task until a meaningful event occurs on one or more named background Terminals. Use only after completing all independent useful work and every remaining step depends on those Terminals. terminalNames must be names shown by Terminal list/context. wakeOn supports completed, failed, and input_required. reason is a compact audit label: required, at most 7 words and 64 characters. This ends the current model execution without a final user answer when waiting is registered; it does not poll or wake on a timer.
 <!-- /socrates:section -->
 
@@ -21,13 +21,184 @@ index_tags: [tool_usage]
 
 - Use `bash` when the active task requires its cataloged mutation/execution capability.
 - Use `wait` when the active task requires its cataloged mutation/execution capability.
+- The model-facing operations are exactly run, start, inspect, stop, and list. Use human-readable Terminal names; runtime ids and output cursors are internal.
 <!-- /socrates:section -->
 
 <!-- socrates:section id="inputs" kind="schema" tags="tools" -->
 ## Inputs
 
-- `bash` uses the one canonical schema owned by `tool.bash`; send only documented fields and do not add aliases or placeholder values.
-- `wait` uses the one canonical schema owned by `tool.wait`; send only documented fields and do not add aliases or placeholder values.
+### `bash`
+
+Canonical capability: `tool.bash`. Send only fields accepted by this generated provider schema; do not add aliases or placeholder values.
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "const": "run"
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Command to execute. Before commands create files or directories, verify the intended parent directory and use an explicit relative path or cwd so outputs do not accidentally land in the workspace root."
+        },
+        "cwd": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Workspace-relative working directory. Use this for subfolder commands instead of prefixing the command with cd."
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 600000
+        }
+      },
+      "required": [
+        "operation",
+        "command"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "const": "start"
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Command to execute. Before commands create files or directories, verify the intended parent directory and use an explicit relative path or cwd so outputs do not accidentally land in the workspace root."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cwd": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Workspace-relative working directory. Use this for subfolder commands instead of prefixing the command with cd."
+        },
+        "inputMode": {
+          "type": "string",
+          "enum": [
+            "none",
+            "user"
+          ]
+        }
+      },
+      "required": [
+        "operation",
+        "command",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "const": "inspect"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "operation",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "const": "stop"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "operation",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "const": "list"
+        }
+      },
+      "required": [
+        "operation"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object"
+}
+```
+### `wait`
+
+Canonical capability: `tool.wait`. Send only fields accepted by this generated provider schema; do not add aliases or placeholder values.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "terminalNames": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 96
+      },
+      "minItems": 1,
+      "maxItems": 8
+    },
+    "wakeOn": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "completed",
+          "failed",
+          "input_required"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 3
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "terminalNames",
+    "wakeOn",
+    "reason"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
 <!-- /socrates:section -->
 
 <!-- socrates:section id="workflow" kind="workflow" tags="tools" -->

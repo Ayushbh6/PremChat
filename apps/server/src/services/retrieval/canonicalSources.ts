@@ -1,6 +1,9 @@
+import fs from "node:fs"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 import type { MemoryRetrievalFile, MemoryRetrievalSection, MemoryRetrievalSurface, TraceRetrieveVisibleStatus } from "@socrates/contracts"
 import { chunkMarkdown, retrievalChunkId } from "@socrates/core"
+import YAML from "yaml"
 import type { DatabaseHandle } from "../../db/client"
 import type { RetrievalIndexRow } from "./types"
 
@@ -187,6 +190,23 @@ export const loadCanonicalGoalRows = (handle: DatabaseHandle, projectId: string,
   return rows.map(goalCardRow)
 }
 
+export const loadCanonicalCapabilityRows = (handle: DatabaseHandle, projectId: string, socratesHome: string): RetrievalIndexRow[] => {
+  const workspace = handle.sqlite.prepare(
+    "SELECT path FROM project_workspaces WHERE project_id = ? AND is_primary = 1 AND status IN ('active','missing') ORDER BY updated_at DESC LIMIT 1",
+  ).get(projectId) as { path?: string } | undefined
+  const skillRoots: Array<{ scope: "builtin" | "global" | "path"; root: string }> = [
+    { scope: "builtin", root: bundledSkillsRoot() },
+    { scope: "global", root: path.join(socratesHome, "skills") },
+    ...(workspace?.path ? [{ scope: "path" as const, root: path.join(workspace.path, ".socrates", "skills") }] : []),
+  ]
+  const skills = skillRoots.flatMap(({ scope, root }) => loadSkillCards(projectId, scope, root))
+  const mcpRoots: Array<{ scope: "global" | "path"; configPath: string; registryPath: string }> = [
+    { scope: "global", configPath: path.join(socratesHome, "mcp.json"), registryPath: path.join(socratesHome, "mcp", "registry") },
+    ...(workspace?.path ? [{ scope: "path" as const, configPath: path.join(workspace.path, ".socrates", "mcp.json"), registryPath: path.join(workspace.path, ".socrates", "mcp", "registry") }] : []),
+  ]
+  return [...skills, ...mcpRoots.flatMap(({ scope, configPath, registryPath }) => loadMcpCards(projectId, scope, configPath, registryPath))]
+}
+
 export const canonicalMemoryParentId = (input: { scope: string; projectId: string; path: string; sectionId: string }): string =>
   `${input.scope === "global" ? "global" : "project"}:${input.projectId}:${input.path}:${input.sectionId}`
 
@@ -300,6 +320,111 @@ const goalCardRow = (row: CanonicalGoalRow): RetrievalIndexRow => {
     matchedRole: "",
     status: "",
   }
+}
+
+const loadSkillCards = (projectId: string, scope: "builtin" | "global" | "path", root: string): RetrievalIndexRow[] => {
+  if (!fs.existsSync(root)) return []
+  return fs.readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory()).flatMap((entry) => {
+    const skillPath = path.join(root, entry.name, "SKILL.md")
+    if (!fs.existsSync(skillPath)) return []
+    const provenancePath = path.join(root, entry.name, ".socrates-skill.json")
+    try {
+      if (fs.existsSync(provenancePath)) {
+        const provenance = JSON.parse(fs.readFileSync(provenancePath, "utf8")) as { enabled?: boolean }
+        if (provenance.enabled === false) return []
+      }
+      const markdown = fs.readFileSync(skillPath, "utf8")
+      const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(markdown)?.[1]
+      if (!frontmatter) return []
+      const parsed = YAML.parse(frontmatter) as { name?: unknown; description?: unknown }
+      const name = typeof parsed?.name === "string" ? parsed.name.trim() : ""
+      const description = typeof parsed?.description === "string" ? parsed.description.trim() : ""
+      if (!name || !description || name !== entry.name) return []
+      return capabilityCardRows({ projectId, kind: "skill", scope, name, description, occurredAt: fs.statSync(skillPath).mtime.toISOString() })
+    } catch {
+      return []
+    }
+  })
+}
+
+const loadMcpCards = (projectId: string, scope: "global" | "path", configPath: string, registryPath: string): RetrievalIndexRow[] => {
+  if (!fs.existsSync(configPath)) return []
+  try {
+    const document = JSON.parse(fs.readFileSync(configPath, "utf8")) as { servers?: Record<string, { label?: string; enabled?: boolean }> }
+    return Object.entries(document.servers ?? {}).filter(([, server]) => server.enabled !== false).flatMap(([id, server]) => {
+      const toolsPath = path.join(registryPath, `${id}.tools.json`)
+      const tools = readMcpTools(toolsPath)
+      const label = server.label?.trim() || id
+      const description = [
+        `${label} MCP server.`,
+        ...tools.map((tool) => `${tool.name ?? "tool"}: ${tool.description ?? "MCP tool"}`),
+      ].join("\n")
+      return capabilityCardRows({ projectId, kind: "mcp", scope, name: id, description, occurredAt: fs.statSync(configPath).mtime.toISOString() })
+    })
+  } catch {
+    return []
+  }
+}
+
+const readMcpTools = (toolsPath: string): Array<{ name?: string; description?: string }> => {
+  if (!fs.existsSync(toolsPath)) return []
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(toolsPath, "utf8"))
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((tool): tool is { name?: string; description?: string } => Boolean(tool) && typeof tool === "object" && !Array.isArray(tool))
+      .slice(0, 40)
+  } catch {
+    return []
+  }
+}
+
+const capabilityCardRows = (input: {
+  projectId: string
+  kind: "skill" | "mcp"
+  scope: "builtin" | "global" | "path"
+  name: string
+  description: string
+  occurredAt: string
+}): RetrievalIndexRow[] => {
+  const parentId = `${input.kind}:${input.scope}:${input.name}`
+  const content = `${input.kind === "skill" ? "Skill" : "MCP"}: ${input.name}\nScope: ${input.scope}\n${input.description}`
+  return chunkMarkdown(content).map((chunk) => ({
+    id: retrievalChunkId({ corpusKind: "capability_card", parentId, discriminator: input.kind, chunkIndex: chunk.chunkIndex, contentHash: chunk.contentHash }),
+    projectId: input.projectId,
+    corpusKind: "capability_card",
+    parentId,
+    discriminator: input.kind,
+    content: chunk.content,
+    contentHash: chunk.contentHash,
+    chunkIndex: chunk.chunkIndex,
+    tokenCount: chunk.tokenCount,
+    occurredAt: input.occurredAt,
+    priority: 1,
+    scope: input.scope === "path" ? "project" : "global",
+    runtimeKind: "capability",
+    flowId: "",
+    goalId: "",
+    surface: "",
+    fileName: "",
+    sectionId: "",
+    sectionHeading: input.name,
+    conversationId: "",
+    conversationTitle: "",
+    turnId: "",
+    turnNumber: 0,
+    matchedRole: "",
+    status: "",
+  }))
+}
+
+const bundledSkillsRoot = (): string => {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url))
+  return [
+    path.resolve(moduleDir, "../../memory/defaults/primary/skills"),
+    path.resolve(process.cwd(), "src/memory/defaults/primary/skills"),
+    path.resolve(process.cwd(), "dist/memory/defaults/primary/skills"),
+  ].find((candidate) => fs.existsSync(candidate)) ?? path.resolve(moduleDir, "../../memory/defaults/primary/skills")
 }
 
 const visibleStatus = (row: CanonicalTurnRow): TraceRetrieveVisibleStatus => {

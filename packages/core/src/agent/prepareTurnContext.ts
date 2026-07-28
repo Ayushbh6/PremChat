@@ -3,6 +3,7 @@ import {
   resolvedTurnContextSeedSchema,
   type CandidateRetrievalStatus,
   type ResolvedTurnContext,
+  type ResolvedTurnCapabilityItem,
   type ResolvedTurnContextSeed,
   type ResolvedTurnMemoryItem,
 } from "@socrates/contracts"
@@ -43,9 +44,11 @@ export const createResolvedTurnContextSeed = (input: {
 export const prepareTurnContext = (
   seed: ResolvedTurnContextSeed,
   memory: readonly ResolvedTurnMemoryItem[] = [],
+  capabilities: readonly ResolvedTurnCapabilityItem[] = [],
 ): ResolvedTurnContext => deepFreeze(resolvedTurnContextSchema.parse({
   ...seed,
   memory,
+  capabilities,
 }))
 
 export const renderResolvedTurnContext = (context: ResolvedTurnContext): string => [
@@ -65,6 +68,9 @@ export const renderResolvedTurnContext = (context: ResolvedTurnContext): string 
   ] : []),
   ...(context.memory.length ? [
     `SELECTED EXACT MEMORY\n${context.memory.map((item) => `${item.scope}/${item.surface}/${item.reference}\n${item.content}`).join("\n\n")}`,
+  ] : []),
+  ...(context.capabilities.length ? [
+    `RELEVANT CAPABILITIES\n${context.capabilities.map((item) => `${item.kind}/${item.scope}/${item.name}\n${item.description}\nRead: ${item.uri}`).join("\n\n")}`,
   ] : []),
   ...(context.retrieval.warnings.length ? [
     `RECALL STATUS\n${context.retrieval.warnings.map((warning) => `- ${warning}`).join("\n")}`,

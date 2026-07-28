@@ -27,21 +27,22 @@ export const v2ToolActivity = (turnId: string, toolName: string, input: unknown)
         return target ? `Searching ${target}…` : "Searching the workspace…"
       case "trace_retrieve":
         return "Retrieving relevant history…"
-      case "list_project_resources":
-        return "Reviewing project resources…"
       case "edit":
         return target ? `Updating ${target}…` : "Updating a workspace file…"
       case "apply_patch":
         return "Applying the workspace changes…"
       case "bash":
         return "Running a Terminal command…"
-      case "project_docs":
-      case "repo_docs":
-        return "Reviewing the working context…"
-      case "skills":
-        return "Reviewing available skills…"
-      case "mcp_registry":
-        return "Checking connected tools…"
+      case "wait":
+        return "Waiting for Terminal work…"
+      case "capability_manager":
+        return "Managing a connected capability…"
+      case "memory_note":
+        return "Saving a memory lead…"
+      case "context_disposition":
+        return "Releasing unneeded working context…"
+      case "current_time":
+        return "Checking the current time…"
       case "handover_to_frontier":
         return "Calling the Frontier model…"
       case "url_fetch":

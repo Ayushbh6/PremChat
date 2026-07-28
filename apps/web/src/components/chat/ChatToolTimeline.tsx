@@ -108,7 +108,7 @@ const summarizeToolGroup = (tools: ToolTimelineItem[], approvals: PendingApprova
   };
 
   for (const tool of tools) {
-    if (tool.toolName === "read" || tool.toolName === "list_project_resources") {
+    if (tool.toolName === "read") {
       counts.read += 1;
     } else if (tool.toolName === "search") {
       counts.search += 1;
@@ -118,7 +118,7 @@ const summarizeToolGroup = (tools: ToolTimelineItem[], approvals: PendingApprova
       counts.command += 1;
     } else if (tool.toolName === "trace_retrieve") {
       counts.trace += 1;
-    } else if (tool.toolName === "mcp_registry" || tool.toolName.startsWith("mcp__")) {
+    } else if (tool.toolName === "capability_manager" || tool.toolName.startsWith("mcp__")) {
       counts.mcp += 1;
     } else {
       counts.other += 1;
@@ -157,8 +157,8 @@ const activeToolLabel = (tool: ToolTimelineItem): string => {
       return "Searching";
     case "trace_retrieve":
       return "Retrieving trace evidence";
-    case "list_project_resources":
-      return "Listing resources";
+    case "capability_manager":
+      return "Managing capabilities";
     case "handover_to_frontier":
       return "Calling Frontier model";
     default:

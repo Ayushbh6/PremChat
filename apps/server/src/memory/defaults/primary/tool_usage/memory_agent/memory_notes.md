@@ -1,7 +1,7 @@
 ---
 socrates_doc: tool_doc
 schema_version: 1
-owner_tool: tool_docs
+owner_tool: read
 scope: global
 index_tags: [tool_usage]
 ---
@@ -27,7 +27,53 @@ index_tags: [tool_usage]
 <!-- socrates:section id="inputs" kind="schema" tags="tools" -->
 ## Inputs
 
-- `memory_notes` uses the one canonical schema owned by `tool.memory_notes`; send only documented fields and do not add aliases or placeholder values.
+### `memory_notes`
+
+Canonical capability: `tool.memory_notes`. Send only fields accepted by this generated provider schema; do not add aliases or placeholder values.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "operation": {
+      "type": "string",
+      "enum": [
+        "list",
+        "read",
+        "mark_done"
+      ]
+    },
+    "noteNumber": {
+      "type": "integer",
+      "exclusiveMinimum": 0
+    },
+    "limit": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 10
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "applied",
+        "already_represented",
+        "skipped",
+        "proposed_skill"
+      ]
+    },
+    "resolution": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    }
+  },
+  "required": [
+    "operation"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
 <!-- /socrates:section -->
 
 <!-- socrates:section id="workflow" kind="workflow" tags="tools" -->

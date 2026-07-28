@@ -362,17 +362,17 @@ describe("workspace tools", () => {
 
     expect(read.content).toBe("old note\n")
     await expect(
-      editWorkspace({ path: ".socrates/PROJECT_NOTES.md", oldString: "old", newString: "new" }, { workspacePath }),
+      editWorkspace({ path: ".socrates/PROJECT_NOTES.md", edits: [{ oldString: "old", newString: "new" }] }, { workspacePath }),
     ).rejects.toMatchObject({
-      code: "project_docs_dedicated_tool_required",
-      message: expect.stringContaining("project_docs"),
+      code: "governed_resource_edit_required",
+      message: expect.stringContaining("socrates://project/notes"),
       recoverable: true,
     })
     await expect(
       editWorkspace({ path: ".socrates/PROJECT_NOTES.md", content: "new note\n", overwrite: true }, { workspacePath }),
     ).rejects.toMatchObject({
-      code: "project_docs_dedicated_tool_required",
-      message: expect.stringContaining("project_docs"),
+      code: "governed_resource_edit_required",
+      message: expect.stringContaining("socrates://project/notes"),
     })
     expect(fs.readFileSync(path.join(workspacePath, ".socrates", "PROJECT_NOTES.md"), "utf8")).toBe("old note\n")
   })
@@ -381,7 +381,7 @@ describe("workspace tools", () => {
     const workspacePath = tempDir()
 
     await expect(editWorkspace({ path: ".socrates/PROJECT_NOTES.md", content: "new note\n" }, { workspacePath })).rejects.toMatchObject({
-      code: "project_docs_dedicated_tool_required",
+      code: "governed_resource_edit_required",
       recoverable: true,
     })
     expect(fs.existsSync(path.join(workspacePath, ".socrates", "PROJECT_NOTES.md"))).toBe(false)
@@ -398,10 +398,10 @@ describe("workspace tools", () => {
     expect(read.content).toBe("old rule\n")
     expect(search.matches[0]?.path).toBe(".socrates/repo_docs/REPO_RULES.md")
     await expect(
-      editWorkspace({ path: ".socrates/repo_docs/REPO_RULES.md", oldString: "old", newString: "new" }, { workspacePath }),
+      editWorkspace({ path: ".socrates/repo_docs/REPO_RULES.md", edits: [{ oldString: "old", newString: "new" }] }, { workspacePath }),
     ).rejects.toMatchObject({
-      code: "repo_docs_dedicated_tool_required",
-      message: expect.stringContaining("repo_docs"),
+      code: "governed_resource_edit_required",
+      message: expect.stringContaining("socrates://project/repo-docs"),
       recoverable: true,
     })
     expect(fs.readFileSync(path.join(workspacePath, ".socrates", "repo_docs", "REPO_RULES.md"), "utf8")).toBe("old rule\n")
@@ -419,16 +419,16 @@ describe("workspace tools", () => {
     expect(read.content).toContain("old skill")
     expect(search.matches[0]?.path).toBe(".socrates/skills/memory-review/SKILL.md")
     await expect(
-      editWorkspace({ path: ".socrates/skills/memory-review/SKILL.md", oldString: "old", newString: "new" }, { workspacePath }),
+      editWorkspace({ path: ".socrates/skills/memory-review/SKILL.md", edits: [{ oldString: "old", newString: "new" }] }, { workspacePath }),
     ).rejects.toMatchObject({
-      code: "project_skills_dedicated_builder_required",
-      message: expect.stringContaining("Skills +"),
+      code: "capability_manager_required",
+      message: expect.stringContaining("capability_manager"),
       recoverable: true,
     })
     await expect(
       editWorkspace({ path: ".socrates/skills/new-skill/SKILL.md", content: "# New\n" }, { workspacePath }),
     ).rejects.toMatchObject({
-      code: "project_skills_dedicated_builder_required",
+      code: "capability_manager_required",
       recoverable: true,
     })
     expect(fs.readFileSync(skillPath, "utf8")).toContain("old skill")
@@ -511,7 +511,7 @@ describe("workspace tools", () => {
     const tracker = new FileFreshnessTracker()
     await readWorkspacePath({ path: "README.md" }, { workspacePath, fileFreshness: tracker })
 
-    const result = await editWorkspace({ path: "README.md", oldString: "old", newString: "new" }, { workspacePath, fileFreshness: tracker })
+    const result = await editWorkspace({ path: "README.md", edits: [{ oldString: "old", newString: "new" }] }, { workspacePath, fileFreshness: tracker })
 
     expect(fs.readFileSync(path.join(workspacePath, "README.md"), "utf8")).toBe("hello new world")
     expect(result.changedFiles[0]).toMatchObject({ path: "README.md", operation: "edited", verification: "verified" })
@@ -595,7 +595,7 @@ describe("workspace tools", () => {
       const tracker = new FileFreshnessTracker()
       await readWorkspacePath({ path: "README.md" }, { workspacePath, fileFreshness: tracker })
       await expect(
-        editWorkspace({ path: "README.md", oldString: "old", newString: "new" }, { workspacePath, fileFreshness: tracker }),
+        editWorkspace({ path: "README.md", edits: [{ oldString: "old", newString: "new" }] }, { workspacePath, fileFreshness: tracker }),
       ).rejects.toMatchObject({ code: "edit_verification_failed" })
     } finally {
       __editToolTest.setAfterWriteHook(undefined)
@@ -609,7 +609,7 @@ describe("workspace tools", () => {
 
     const tracker = new FileFreshnessTracker()
     await readWorkspacePath({ path: "src/main.py" }, { workspacePath, fileFreshness: tracker })
-    const result = await editWorkspace({ path: "src\\main.py", oldString: "old", newString: "new" }, { workspacePath, fileFreshness: tracker })
+    const result = await editWorkspace({ path: "src\\main.py", edits: [{ oldString: "old", newString: "new" }] }, { workspacePath, fileFreshness: tracker })
 
     expect(fs.readFileSync(path.join(workspacePath, "src", "main.py"), "utf8")).toBe("print('new')\n")
     expect(result.changedFiles[0]?.path).toBe(path.join("src", "main.py"))
@@ -621,7 +621,7 @@ describe("workspace tools", () => {
 
     const tracker = new FileFreshnessTracker()
     await readWorkspacePath({ path: "server.py" }, { workspacePath, fileFreshness: tracker })
-    await editWorkspace({ path: "server.py", oldString: "beta", newString: "beta = 42" }, { workspacePath, fileFreshness: tracker })
+    await editWorkspace({ path: "server.py", edits: [{ oldString: "beta", newString: "beta = 42" }] }, { workspacePath, fileFreshness: tracker })
 
     expect(fs.readFileSync(path.join(workspacePath, "server.py"), "utf8")).toBe("alpha\r\nbeta = 42\r\ngamma\r\n")
   })
@@ -633,12 +633,61 @@ describe("workspace tools", () => {
     await readWorkspacePath({ path: "config.py" }, { workspacePath, fileFreshness: tracker })
 
     const result = await editWorkspace(
-      { path: "config.py", oldString: "= 1", newString: "= 2", replaceAll: true },
+      { path: "config.py", edits: [{ oldString: "= 1", newString: "= 2", replaceAll: true }] },
       { workspacePath, fileFreshness: tracker },
     )
 
     expect(fs.readFileSync(path.join(workspacePath, "config.py"), "utf8")).toBe("x = 2\ny = 2\nz = 2\n")
     expect(result.changedFiles[0]).toMatchObject({ path: "config.py", operation: "edited", verification: "verified" })
+  })
+
+  it("applies multiple non-overlapping edits against one original atomically", async () => {
+    const workspacePath = tempDir()
+    fs.writeFileSync(path.join(workspacePath, "config.py"), "alpha = 1\nbeta = 2\ngamma = 3\n")
+    const tracker = new FileFreshnessTracker()
+    await readWorkspacePath({ path: "config.py" }, { workspacePath, fileFreshness: tracker })
+
+    await editWorkspace({
+      path: "config.py",
+      edits: [
+        { oldString: "alpha = 1", newString: "alpha = 10" },
+        { oldString: "gamma = 3", newString: "gamma = 30" },
+      ],
+    }, { workspacePath, fileFreshness: tracker })
+
+    expect(fs.readFileSync(path.join(workspacePath, "config.py"), "utf8")).toBe("alpha = 10\nbeta = 2\ngamma = 30\n")
+  })
+
+  it("rejects overlapping edit ranges without changing the file", async () => {
+    const workspacePath = tempDir()
+    fs.writeFileSync(path.join(workspacePath, "value.txt"), "abcdef")
+    const tracker = new FileFreshnessTracker()
+    await readWorkspacePath({ path: "value.txt" }, { workspacePath, fileFreshness: tracker })
+
+    await expect(editWorkspace({
+      path: "value.txt",
+      edits: [
+        { oldString: "abc", newString: "ABC" },
+        { oldString: "bcd", newString: "BCD" },
+      ],
+    }, { workspacePath, fileFreshness: tracker })).rejects.toMatchObject({ code: "edit_overlap" })
+    expect(fs.readFileSync(path.join(workspacePath, "value.txt"), "utf8")).toBe("abcdef")
+  })
+
+  it("rejects the whole edit batch when one match is missing", async () => {
+    const workspacePath = tempDir()
+    fs.writeFileSync(path.join(workspacePath, "value.txt"), "alpha beta")
+    const tracker = new FileFreshnessTracker()
+    await readWorkspacePath({ path: "value.txt" }, { workspacePath, fileFreshness: tracker })
+
+    await expect(editWorkspace({
+      path: "value.txt",
+      edits: [
+        { oldString: "alpha", newString: "ALPHA" },
+        { oldString: "missing", newString: "FOUND" },
+      ],
+    }, { workspacePath, fileFreshness: tracker })).rejects.toMatchObject({ code: "replace_occurrence_mismatch" })
+    expect(fs.readFileSync(path.join(workspacePath, "value.txt"), "utf8")).toBe("alpha beta")
   })
 
   it("rejects ambiguous replacements when replaceAll is not set", async () => {
@@ -648,7 +697,7 @@ describe("workspace tools", () => {
     await readWorkspacePath({ path: "config.py" }, { workspacePath, fileFreshness: tracker })
 
     await expect(
-      editWorkspace({ path: "config.py", oldString: "= 1", newString: "= 2" }, { workspacePath, fileFreshness: tracker }),
+      editWorkspace({ path: "config.py", edits: [{ oldString: "= 1", newString: "= 2" }] }, { workspacePath, fileFreshness: tracker }),
     ).rejects.toMatchObject({ code: "replace_occurrence_mismatch" })
     expect(fs.readFileSync(path.join(workspacePath, "config.py"), "utf8")).toBe("x = 1\ny = 1\n")
   })
@@ -724,8 +773,8 @@ describe("workspace tools", () => {
     fs.writeFileSync(path.join(workspacePath, "notes-copy.md"), "copy note\n")
 
     await expect(applyPatchWorkspace({ patchText: patch }, { workspacePath })).rejects.toMatchObject({
-      code: "project_docs_dedicated_tool_required",
-      message: expect.stringContaining("project_docs"),
+      code: "governed_resource_edit_required",
+      message: expect.stringContaining("socrates://project/notes"),
       recoverable: true,
     })
     expect(fs.readFileSync(path.join(workspacePath, ".socrates", "PROJECT_NOTES.md"), "utf8")).toBe("old note\n")
@@ -768,8 +817,8 @@ describe("workspace tools", () => {
     fs.writeFileSync(path.join(workspacePath, "repo-rules-copy.md"), "copy rule\n")
 
     await expect(applyPatchWorkspace({ patchText: patch }, { workspacePath })).rejects.toMatchObject({
-      code: "repo_docs_dedicated_tool_required",
-      message: expect.stringContaining("repo_docs"),
+      code: "governed_resource_edit_required",
+      message: expect.stringContaining("socrates://project/repo-docs"),
       recoverable: true,
     })
     expect(fs.readFileSync(path.join(workspacePath, ".socrates", "repo_docs", "REPO_RULES.md"), "utf8")).toBe("old rule\n")
@@ -812,8 +861,8 @@ describe("workspace tools", () => {
     fs.writeFileSync(path.join(workspacePath, "skill-copy.md"), "copy skill\n")
 
     await expect(applyPatchWorkspace({ patchText: patch }, { workspacePath })).rejects.toMatchObject({
-      code: "project_skills_dedicated_builder_required",
-      message: expect.stringContaining("Skills +"),
+      code: "capability_manager_required",
+      message: expect.stringContaining("capability_manager"),
       recoverable: true,
     })
     expect(fs.readFileSync(path.join(workspacePath, ".socrates", "skills", "memory-review", "SKILL.md"), "utf8")).toBe("old skill\n")
@@ -1261,10 +1310,10 @@ describe("workspace tools", () => {
     const tracker = new FileFreshnessTracker()
     await readWorkspacePath({ path: "strategy.py" }, { workspacePath, fileFreshness: tracker })
 
-    await editWorkspace({ path: "strategy.py", oldString: "rate = 0.02", newString: "rate = 0.04" }, { workspacePath, fileFreshness: tracker })
+    await editWorkspace({ path: "strategy.py", edits: [{ oldString: "rate = 0.02", newString: "rate = 0.04" }] }, { workspacePath, fileFreshness: tracker })
     await readWorkspacePath({ path: "strategy.py" }, { workspacePath, fileFreshness: tracker })
     const result = await editWorkspace(
-      { path: "strategy.py", oldString: "plt.show()", newString: "plt.savefig('strategy_vs_bh.png')" },
+      { path: "strategy.py", edits: [{ oldString: "plt.show()", newString: "plt.savefig('strategy_vs_bh.png')" }] },
       { workspacePath, fileFreshness: tracker },
     )
 
@@ -1281,11 +1330,11 @@ describe("workspace tools", () => {
     const tracker = new FileFreshnessTracker()
     await readWorkspacePath({ path: "strategy.py" }, { workspacePath, fileFreshness: tracker })
 
-    await editWorkspace({ path: "strategy.py", oldString: "rate = 0.02", newString: "rate = 0.04" }, { workspacePath, fileFreshness: tracker })
+    await editWorkspace({ path: "strategy.py", edits: [{ oldString: "rate = 0.02", newString: "rate = 0.04" }] }, { workspacePath, fileFreshness: tracker })
 
     await expect(
       editWorkspace(
-        { path: "strategy.py", oldString: "plt.show()", newString: "plt.savefig('strategy_vs_bh.png')" },
+        { path: "strategy.py", edits: [{ oldString: "plt.show()", newString: "plt.savefig('strategy_vs_bh.png')" }] },
         { workspacePath, fileFreshness: tracker },
       ),
     ).rejects.toMatchObject({
@@ -1300,7 +1349,7 @@ describe("workspace tools", () => {
     const tracker = new FileFreshnessTracker()
     await readWorkspacePath({ path: "strategy.py" }, { workspacePath, fileFreshness: tracker })
 
-    const result = await editWorkspace({ path: "strategy.py", oldString: "delta", newString: "delta = 42" }, { workspacePath, fileFreshness: tracker })
+    const result = await editWorkspace({ path: "strategy.py", edits: [{ oldString: "delta", newString: "delta = 42" }] }, { workspacePath, fileFreshness: tracker })
 
     expect(result.diff).toContain("@@ -1,5 +1,5 @@")
     expect(result.diff).toContain("-delta")

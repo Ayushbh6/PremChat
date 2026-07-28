@@ -6,14 +6,17 @@
       "id": "tool.read",
       "kind": "model_tool",
       "executorBinding": "read",
-      "implementationPath": "packages/workspace/src/tools/readTool.ts",
+      "implementationPath": "apps/server/src/services/resources/socratesResourceService.ts",
       "callers": [
         "packages/core/src/agent/SocratesAgent.ts",
         "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-        "apps/server/src/v2/runtime.ts"
+        "apps/server/src/v2/runtime.ts",
+        "apps/server/src/services/store/memoryAgentRunner.ts",
+        "apps/server/src/services/store/skillWriterAgentRunner.ts"
       ],
       "tests": [
-        "packages/workspace/src/workspace.test.ts"
+        "packages/workspace/src/workspace.test.ts",
+        "apps/server/src/services/resources/socratesResourceService.test.ts"
       ],
       "status": "canonical"
     },
@@ -21,14 +24,17 @@
       "id": "tool.search",
       "kind": "model_tool",
       "executorBinding": "search",
-      "implementationPath": "packages/workspace/src/tools/searchTool.ts",
+      "implementationPath": "apps/server/src/services/resources/socratesResourceService.ts",
       "callers": [
         "packages/core/src/agent/SocratesAgent.ts",
         "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-        "apps/server/src/v2/runtime.ts"
+        "apps/server/src/v2/runtime.ts",
+        "apps/server/src/services/store/memoryAgentRunner.ts",
+        "apps/server/src/services/store/skillWriterAgentRunner.ts"
       ],
       "tests": [
-        "packages/workspace/src/workspace.test.ts"
+        "packages/workspace/src/workspace.test.ts",
+        "apps/server/src/services/resources/socratesResourceService.test.ts"
       ],
       "status": "canonical"
     },
@@ -170,66 +176,6 @@
       "status": "canonical"
     },
     {
-      "id": "tool.tool_docs",
-      "kind": "model_tool",
-      "executorBinding": "tool_docs",
-      "implementationPath": "apps/server/src/services/store/toolDocsStore.ts",
-      "callers": [
-        "packages/core/src/agent/SocratesAgent.ts",
-        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-        "apps/server/src/v2/runtime.ts",
-        "apps/server/src/services/store/memoryAgentRunner.ts"
-      ],
-      "tests": [
-        "apps/server/src/services/store/memoryDocParser.test.ts"
-      ],
-      "status": "canonical"
-    },
-    {
-      "id": "tool.skills.manage",
-      "kind": "model_tool",
-      "executorBinding": "skills",
-      "implementationPath": "apps/server/src/services/store/memorySkills.ts",
-      "callers": [
-        "packages/core/src/agent/SocratesAgent.ts",
-        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-        "apps/server/src/v2/runtime.ts"
-      ],
-      "tests": [
-        "apps/server/src/services/store/memorySkills.test.ts"
-      ],
-      "status": "canonical"
-    },
-    {
-      "id": "tool.skills.read",
-      "kind": "model_tool",
-      "executorBinding": "skills",
-      "implementationPath": "apps/server/src/services/store/memorySkills.ts",
-      "callers": [
-        "apps/server/src/services/store/memoryAgentRunner.ts",
-        "apps/server/src/services/store/skillWriterAgentRunner.ts"
-      ],
-      "tests": [
-        "packages/core/src/test/memoryPrompt.test.ts"
-      ],
-      "status": "canonical"
-    },
-    {
-      "id": "tool.skill_manager",
-      "kind": "model_tool",
-      "executorBinding": "skill_manager",
-      "implementationPath": "apps/server/src/services/store/memorySkills.ts",
-      "callers": [
-        "packages/core/src/agent/SocratesAgent.ts",
-        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-        "apps/server/src/v2/runtime.ts"
-      ],
-      "tests": [
-        "apps/server/src/services/store/memorySkills.test.ts"
-      ],
-      "status": "canonical"
-    },
-    {
       "id": "tool.projects",
       "kind": "model_tool",
       "executorBinding": "projects",
@@ -256,75 +202,9 @@
       "status": "canonical"
     },
     {
-      "id": "tool.project_docs",
+      "id": "tool.capability_manager",
       "kind": "model_tool",
-      "executorBinding": "project_docs",
-      "implementationPath": "apps/server/src/services/store/memoryStore.ts",
-      "callers": [
-        "packages/core/src/agent/SocratesAgent.ts",
-        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-        "apps/server/src/v2/runtime.ts",
-        "apps/server/src/services/store/skillWriterAgentRunner.ts"
-      ],
-      "tests": [
-        "apps/server/src/services/store/memoryDocParser.test.ts"
-      ],
-      "status": "canonical"
-    },
-    {
-      "id": "tool.repo_docs",
-      "kind": "model_tool",
-      "executorBinding": "repo_docs",
-      "implementationPath": "apps/server/src/services/store/memoryStore.ts",
-      "callers": [
-        "packages/core/src/agent/SocratesAgent.ts",
-        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-        "apps/server/src/v2/runtime.ts",
-        "apps/server/src/services/store/skillWriterAgentRunner.ts"
-      ],
-      "tests": [
-        "apps/server/src/services/store/memoryDocParser.test.ts"
-      ],
-      "status": "canonical"
-    },
-    {
-      "id": "tool.soul",
-      "kind": "model_tool",
-      "executorBinding": "soul",
-      "implementationPath": "apps/server/src/services/store/memoryStore.ts",
-      "callers": [
-        "packages/core/src/agent/SocratesAgent.ts",
-        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-        "apps/server/src/v2/runtime.ts",
-        "apps/server/src/services/store/memoryAgentRunner.ts",
-        "apps/server/src/services/store/skillWriterAgentRunner.ts"
-      ],
-      "tests": [
-        "apps/server/src/services/store/memoryDocParser.test.ts"
-      ],
-      "status": "canonical"
-    },
-    {
-      "id": "tool.user_profile",
-      "kind": "model_tool",
-      "executorBinding": "user_profile",
-      "implementationPath": "apps/server/src/services/store/memoryStore.ts",
-      "callers": [
-        "packages/core/src/agent/SocratesAgent.ts",
-        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-        "apps/server/src/v2/runtime.ts",
-        "apps/server/src/services/store/memoryAgentRunner.ts",
-        "apps/server/src/services/store/skillWriterAgentRunner.ts"
-      ],
-      "tests": [
-        "apps/server/src/services/store/memoryDocParser.test.ts"
-      ],
-      "status": "canonical"
-    },
-    {
-      "id": "tool.list_project_resources",
-      "kind": "model_tool",
-      "executorBinding": "list_project_resources",
+      "executorBinding": "capability_manager",
       "implementationPath": "apps/server/src/services/mainToolExecutors.ts",
       "callers": [
         "packages/core/src/agent/SocratesAgent.ts",
@@ -332,22 +212,7 @@
         "apps/server/src/v2/runtime.ts"
       ],
       "tests": [
-        "apps/server/src/test/server.test.ts"
-      ],
-      "status": "canonical"
-    },
-    {
-      "id": "tool.mcp_registry",
-      "kind": "model_tool",
-      "executorBinding": "mcp_registry",
-      "implementationPath": "packages/mcp/src/index.ts",
-      "callers": [
-        "packages/core/src/agent/SocratesAgent.ts",
-        "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-        "apps/server/src/v2/runtime.ts"
-      ],
-      "tests": [
-        "packages/mcp/src/index.test.ts"
+        "apps/server/src/services/resources/socratesResourceService.test.ts"
       ],
       "status": "canonical"
     },
@@ -437,6 +302,19 @@
       "id": "retrieval.memory_candidates",
       "kind": "automatic_retrieval",
       "executorBinding": "retrieval.memory_candidates",
+      "implementationPath": "apps/server/src/services/turn/turnCandidateRetrieval.ts",
+      "callers": [
+        "apps/server/src/services/turn/turnCandidateRetrieval.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "retrieval.capability_candidates",
+      "kind": "automatic_retrieval",
+      "executorBinding": "retrieval.capability_candidates",
       "implementationPath": "apps/server/src/services/turn/turnCandidateRetrieval.ts",
       "callers": [
         "apps/server/src/services/turn/turnCandidateRetrieval.ts"

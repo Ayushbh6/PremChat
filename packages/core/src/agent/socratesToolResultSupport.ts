@@ -28,20 +28,8 @@ export const sanitizeToolExecutionResultForModel = (result: ToolExecutionResult,
 }
 
 export const compactModelToolOutput = (toolName: string, output: unknown): unknown => {
-  // read_index already renders the model-facing index in `content`. Keeping the
-  // full structured `index`/`indexes` as well duplicates every section record,
-  // bypasses the requested charLimit, and can turn a one-step edit into several
-  // expensive context-disposition/model rounds. The complete result remains in
-  // the audit store; only the duplicate model-facing copy is removed.
-  if ((toolName !== "project_docs" && toolName !== "repo_docs") || !output || typeof output !== "object" || Array.isArray(output)) {
-    return output
-  }
-  const record = output as Record<string, unknown>
-  if (typeof record.content !== "string") {
-    return output
-  }
-  const { index: _index, indexes: _indexes, ...compact } = record
-  return compact
+  void toolName
+  return output
 }
 
 export const sanitizeModelVisibleValue = (value: unknown, options: { preserveTraceRetrieveIds?: boolean } = {}): unknown => {

@@ -1,6 +1,7 @@
 export * from "./api"
 export * from "./agentRuntime"
 export * from "./attachments"
+export * from "./capabilityCandidates"
 export * from "./contextCompression"
 export * from "./conversationTitle"
 export * from "./entities"

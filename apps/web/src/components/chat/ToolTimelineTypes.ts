@@ -45,14 +45,24 @@ export const displayNameForTool = (toolName: string): string => {
       return "Search";
     case "edit":
       return "Edit";
+    case "apply_patch":
+      return "Apply Patch";
     case "bash":
       return "Terminal";
+    case "wait":
+      return "Wait";
     case "trace_retrieve":
       return "Trace";
-    case "list_project_resources":
-      return "Resources";
-    case "mcp_registry":
-      return "MCP Registry";
+    case "capability_manager":
+      return "Capability Manager";
+    case "memory_note":
+      return "Memory Note";
+    case "context_disposition":
+      return "Context Disposition";
+    case "current_time":
+      return "Current Time";
+    case "url_fetch":
+      return "URL Fetch";
     case "handover_to_frontier":
       return "Calling Frontier model";
     default:
@@ -66,17 +76,18 @@ export const displayNameForTool = (toolName: string): string => {
 export const categoryForTool = (toolName: string): string => {
   switch (toolName) {
     case "read":
-    case "list_project_resources":
       return "file";
     case "search":
       return "search";
     case "edit":
+    case "apply_patch":
       return "patch";
     case "bash":
+    case "wait":
       return "shell";
     case "trace_retrieve":
       return "trace";
-    case "mcp_registry":
+    case "capability_manager":
       return "mcp";
     default:
       if (toolName.startsWith("mcp__")) {

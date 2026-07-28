@@ -1,7 +1,7 @@
 ---
 socrates_doc: repo_contracts
 schema_version: 1
-owner_tool: repo_docs
+owner_tool: edit
 scope: workspace
 index_tags: [repo_docs]
 ---

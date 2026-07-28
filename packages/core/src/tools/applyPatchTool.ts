@@ -16,7 +16,7 @@ const decidePatchPolicy: SocratesTool<typeof applyPatchToolInputSchema._type, ty
       return { type: "auto" }
     }
 
-    const preview = await context.executors.apply_patch({ ...input, dryRun: true }, context)
+    const preview = await context.executors.apply_patch(input, { ...context, previewOnly: true })
 
     return {
       type: "approval_required",

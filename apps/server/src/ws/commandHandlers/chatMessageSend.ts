@@ -7,7 +7,7 @@ import {
   type SocratesAgent,
   type SocratesAgentEvent,
 } from "@socrates/core"
-import type { CandidateRetrievalStatus, ClientCommand, MemoryCandidate, SocratesFinalAnswer } from "@socrates/contracts"
+import type { CandidateRetrievalStatus, CapabilityCandidate, ClientCommand, MemoryCandidate, SocratesFinalAnswer } from "@socrates/contracts"
 import type { McpRuntime } from "@socrates/mcp"
 import type { ModelMessage, ModelProvider, ModelUsage } from "@socrates/providers"
 import { normalizeError, nowIso, SocratesError } from "@socrates/shared"
@@ -220,9 +220,11 @@ export const handleChatMessageSend = async (
       })
     : undefined
   let memoryCandidates: readonly MemoryCandidate[] = []
+  let capabilityCandidates: readonly CapabilityCandidate[] = []
   let retrievalStatus: CandidateRetrievalStatus = {
     goalCandidates: "completed",
     memoryCandidates: "completed",
+    capabilityCandidates: "completed",
     warnings: [],
   }
 
@@ -275,7 +277,11 @@ export const handleChatMessageSend = async (
       }
       activeGoal = routed.goal
       memoryCandidates = routed.memoryCandidates
+      capabilityCandidates = routed.capabilityCandidates
       retrievalStatus = routed.retrieval
+      for (const candidate of capabilityCandidates) {
+        if (candidate.kind === "mcp") exposedMcpServers.add(candidate.name)
+      }
       store.indexGoalRetrieval(projectId, activeGoal.goalId)
     }
     if (continuation && flowStore && !activeGoal) {
@@ -324,6 +330,7 @@ export const handleChatMessageSend = async (
           userMessage: activeGoal.taskRequest ?? created.userMessage?.content ?? activeGoal.title,
           goal: activeGoal,
         }),
+        resolvedTurnCapabilities: capabilityCandidates.map(({ resultNumber: _resultNumber, ...candidate }) => candidate),
       } : {}),
       toolExecutors: createClassicToolExecutors(store, projectId, created.turnId, activeTurns, terminals, mcpRuntime, {
         exposeMcpServer: (serverId) => exposedMcpServers.add(serverId),

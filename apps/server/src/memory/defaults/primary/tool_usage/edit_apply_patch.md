@@ -1,7 +1,7 @@
 ---
 socrates_doc: tool_doc
 schema_version: 1
-owner_tool: tool_docs
+owner_tool: read
 scope: global
 index_tags: [tool_usage]
 ---
@@ -12,7 +12,7 @@ index_tags: [tool_usage]
 <!-- socrates:section id="purpose" kind="purpose" tags="tools" -->
 ## Purpose
 
-- `edit`: Create or modify one file in the active project workspace. Path is workspace-relative. Call this only after reading existing target files in the current turn. When creating a deliverable, scratch file, or generated file derived from files in a subfolder, use an explicit path in that same subfolder or nearest relevant existing folder; do not default to the workspace root unless the user asks or the artifact is truly project-level. For existing files, use oldString and newString for targeted multiline replacement; set replaceAll only when every occurrence should change. Use content for new files. Use content with overwrite: true only for a deliberate full-file rewrite of an existing file.
+- `edit`: Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.
 - `apply_patch`: Apply a patch to one or more files in the active project workspace. Call this only after reading existing target files in the current turn. Use patchText with the structured *** Begin Patch format by default: *** Update File, @@ hunks, *** Add File, *** Delete File, and *** Move to. This format does not require unified-diff line counts. Read existing files before patching, deleting, or renaming them, and read a file again before another mutation after a successful edit or patch. Standard unified diffs with ---/+++/@@ headers are accepted only when you already have a valid diff. Use for multi-hunk or multi-file changes.
 <!-- /socrates:section -->
 
@@ -21,13 +21,109 @@ index_tags: [tool_usage]
 
 - Use `edit` when the active task requires its cataloged mutation/execution capability.
 - Use `apply_patch` when the active task requires its cataloged mutation/execution capability.
+- Read an existing target first. Targeted edits use one edits array; every match is resolved against the same original content, overlaps fail, and the write is atomic.
+- The model never supplies dryRun. Approval previews are an internal runtime concern. Re-read a changed target when later work depends on its exact new contents.
+- Use the structured Begin Patch format for multi-file or multi-hunk work. The model never supplies dryRun; approval preview and verified application are internal runtime phases.
 <!-- /socrates:section -->
 
 <!-- socrates:section id="inputs" kind="schema" tags="tools" -->
 ## Inputs
 
-- `edit` uses the one canonical schema owned by `tool.edit`; send only documented fields and do not add aliases or placeholder values.
-- `apply_patch` uses the one canonical schema owned by `tool.apply_patch`; send only documented fields and do not add aliases or placeholder values.
+### `edit`
+
+Canonical capability: `tool.edit`. Send only fields accepted by this generated provider schema; do not add aliases or placeholder values.
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Workspace-relative target path. For deliverables or generated files derived from files in a subfolder, use an explicit path in that same subfolder or nearest relevant existing folder; use the workspace root only when requested or truly project-level."
+        },
+        "edits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "oldString": {
+                "type": "string",
+                "minLength": 1
+              },
+              "newString": {
+                "type": "string"
+              },
+              "replaceAll": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "oldString",
+              "newString"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 32
+        }
+      },
+      "required": [
+        "path",
+        "edits"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Workspace-relative target path. For deliverables or generated files derived from files in a subfolder, use an explicit path in that same subfolder or nearest relevant existing folder; use the workspace root only when requested or truly project-level."
+        },
+        "content": {
+          "type": "string"
+        },
+        "overwrite": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object"
+}
+```
+### `apply_patch`
+
+Canonical capability: `tool.apply_patch`. Send only fields accepted by this generated provider schema; do not add aliases or placeholder values.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "patchText": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Patch text to apply. Prefer structured format: *** Begin Patch, then file sections like *** Update File: path with @@ hunks, *** Add File: path, or *** Delete File: path, ending with *** End Patch. In Update hunks, prefix unchanged lines with space, removed lines with -, and added lines with +. Add File content lines should start with +."
+    }
+  },
+  "required": [
+    "patchText"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
 <!-- /socrates:section -->
 
 <!-- socrates:section id="workflow" kind="workflow" tags="tools" -->

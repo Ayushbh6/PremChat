@@ -1,7 +1,7 @@
 ---
 socrates_doc: tool_doc
 schema_version: 1
-owner_tool: tool_docs
+owner_tool: read
 scope: global
 index_tags: [tool_usage]
 ---
@@ -27,7 +27,290 @@ index_tags: [tool_usage]
 <!-- socrates:section id="inputs" kind="schema" tags="tools" -->
 ## Inputs
 
-- `trace_retrieve` uses the one canonical schema owned by `tool.trace_retrieve.main`; send only documented fields and do not add aliases or placeholder values.
+### `trace_retrieve`
+
+Canonical capability: `tool.trace_retrieve.main`. Send only fields accepted by this generated provider schema; do not add aliases or placeholder values.
+
+```json
+{
+  "anyOf": [
+    {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "search"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "presented_context",
+                "current_goal",
+                "project"
+              ]
+            },
+            "conversationTitle": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "user",
+                "assistant",
+                "any"
+              ]
+            },
+            "createdAfter": {
+              "type": "string",
+              "minLength": 1
+            },
+            "createdBefore": {
+              "type": "string",
+              "minLength": 1
+            },
+            "limit": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 8
+            },
+            "mode": {
+              "type": "string",
+              "const": "lexical"
+            },
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "turnNo": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 10000
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "search"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "presented_context",
+                "current_goal",
+                "project"
+              ]
+            },
+            "conversationTitle": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "user",
+                "assistant",
+                "any"
+              ]
+            },
+            "createdAfter": {
+              "type": "string",
+              "minLength": 1
+            },
+            "createdBefore": {
+              "type": "string",
+              "minLength": 1
+            },
+            "limit": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 8
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "semantic",
+                "combined"
+              ]
+            },
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          "required": [
+            "mode",
+            "query"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "search"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "presented_context",
+                "current_goal",
+                "project"
+              ]
+            },
+            "conversationTitle": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "user",
+                "assistant",
+                "any"
+              ]
+            },
+            "createdAfter": {
+              "type": "string",
+              "minLength": 1
+            },
+            "createdBefore": {
+              "type": "string",
+              "minLength": 1
+            },
+            "limit": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 8
+            },
+            "mode": {
+              "type": "string",
+              "const": "audit"
+            },
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "include": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "tool_calls",
+                  "shell",
+                  "files",
+                  "errors"
+                ]
+              }
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "maxItems": 20
+            },
+            "command": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "toolNames": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "read",
+                      "search",
+                      "url_fetch",
+                      "edit",
+                      "apply_patch",
+                      "bash",
+                      "wait",
+                      "handover_to_frontier",
+                      "current_time",
+                      "trace_retrieve",
+                      "projects",
+                      "edit_files",
+                      "memory_note",
+                      "memory_notes",
+                      "read_memory_journal",
+                      "skill_write",
+                      "capability_manager",
+                      "context_disposition"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^mcp__[a-z0-9_-]+__[a-zA-Z0-9_-]+$"
+                  }
+                ]
+              },
+              "maxItems": 20
+            }
+          },
+          "required": [
+            "mode",
+            "query"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "const": "inspect"
+        },
+        "resultNumber": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 8
+        },
+        "conversationTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "turnNo": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 10000
+        },
+        "charLimit": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 80000
+        }
+      },
+      "required": [
+        "operation"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object"
+}
+```
 <!-- /socrates:section -->
 
 <!-- socrates:section id="workflow" kind="workflow" tags="tools" -->

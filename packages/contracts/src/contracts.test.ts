@@ -150,6 +150,7 @@ import {
   memoryCandidateRetrievalSchema,
   goalCandidateRetrievalSchema,
   baseToolNameSchema,
+  capabilityManagerToolInputSchema,
   mcpRegistryToolInputSchema,
   mcpRegistryToolOutputSchema,
   normalizedToolCallSchema,
@@ -1475,15 +1476,18 @@ describe("tool contracts", () => {
         truncation: { truncated: false, charLimit: 20_000, returnedLength: 10 },
       }).success,
     ).toBe(true)
-    expect(editToolInputSchema.safeParse({ path: "README.md", oldString: "old", newString: "new" }).success).toBe(true)
+    expect(editToolInputSchema.safeParse({ path: "README.md", edits: [{ oldString: "old", newString: "new" }] }).success).toBe(true)
+    expect(editToolInputSchema.safeParse({ path: "README.md", edits: [{ oldString: "one", newString: "1" }, { oldString: "two", newString: "2", replaceAll: true }] }).success).toBe(true)
     expect(editToolInputSchema.safeParse({ path: "README.md", content: "new" }).success).toBe(true)
     expect(editToolInputSchema.safeParse({ path: "README.md", content: "new", overwrite: true }).success).toBe(true)
-    expect(editToolInputSchema.safeParse({ path: "README.md", oldString: "old", newString: "new", overwrite: true }).success).toBe(false)
-    expect(editToolInputSchema.safeParse({ path: "README.md", oldString: "old", newString: "new", replaceAll: true }).success).toBe(true)
+    expect(editToolInputSchema.safeParse({ path: "README.md", edits: [{ oldString: "old", newString: "new" }], overwrite: true }).success).toBe(false)
+    expect(editToolInputSchema.safeParse({ path: "README.md", oldString: "old", newString: "new" }).success).toBe(false)
+    expect(editToolInputSchema.safeParse({ path: "README.md", edits: [{ oldString: "old", newString: "new" }], dryRun: true }).success).toBe(false)
     expect(editToolInputSchema.safeParse({ path: "README.md" }).success).toBe(false)
     expect(applyPatchToolInputSchema.safeParse({ patch: "--- a/README.md\n+++ b/README.md\n" }).success).toBe(false)
     expect(applyPatchToolInputSchema.safeParse({ patchText: "*** Begin Patch\n*** End Patch" }).success).toBe(true)
     expect(applyPatchToolInputSchema.safeParse({ patch: "one", patchText: "two" }).success).toBe(false)
+    expect(applyPatchToolInputSchema.safeParse({ patchText: "*** Begin Patch\n*** End Patch", dryRun: true }).success).toBe(false)
     expect(
       readToolOutputSchema.safeParse({
         path: "README.md",
@@ -1526,22 +1530,27 @@ describe("tool contracts", () => {
         truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
       }).success,
     ).toBe(true)
-    expect(bashToolInputSchema.safeParse({ command: "pnpm test", timeoutMs: 120_000 }).success).toBe(true)
-    expect(bashToolInputSchema.safeParse({ argv: ["git", "status", "--short"] }).success).toBe(true)
-    expect(bashToolInputSchema.safeParse({ command: "pwd", argv: ["pwd"] }).success).toBe(false)
-    expect(bashToolInputSchema.safeParse({ operation: "start", argv: ["git", "status"] }).success).toBe(false)
-    expect(bashToolInputSchema.safeParse({ operation: "start", command: "pnpm dev" }).success).toBe(true)
-    expect(bashToolInputSchema.safeParse({ operation: "start", command: "node -e 'process.stdin.resume()'", inputMode: "user" }).success).toBe(true)
+    expect(bashToolInputSchema.safeParse({ operation: "run", command: "pnpm test", timeoutMs: 120_000 }).success).toBe(true)
+    expect(bashToolInputSchema.safeParse({ command: "pnpm test" }).success).toBe(false)
+    expect(bashToolInputSchema.safeParse({ operation: "run", argv: ["git", "status", "--short"] }).success).toBe(false)
+    expect(bashToolInputSchema.safeParse({ operation: "start", command: "pnpm dev", name: "dev" }).success).toBe(true)
+    expect(bashToolInputSchema.safeParse({ operation: "start", command: "pnpm dev" }).success).toBe(false)
+    expect(bashToolInputSchema.safeParse({ operation: "start", command: "node -e 'process.stdin.resume()'", name: "interactive", inputMode: "user" }).success).toBe(true)
     expect(bashToolInputSchema.safeParse({ operation: "status", inputMode: "user" }).success).toBe(false)
-    expect(bashToolInputSchema.safeParse({ operation: "output", processId: "proc_1", outputSequence: 0 }).success).toBe(true)
-    expect(bashToolInputSchema.safeParse({ operation: "status", terminalId: "term_1" }).success).toBe(true)
-    expect(bashToolInputSchema.safeParse({ operation: "output" }).success).toBe(true)
-    expect(bashToolInputSchema.safeParse({ operation: "stop" }).success).toBe(true)
-    expect(bashToolInputSchema.safeParse({ operation: "list", limit: 12, charLimit: 12_000 }).success).toBe(true)
-    expect(bashToolInputSchema.safeParse({ operation: "list", limit: 13 }).success).toBe(false)
-    expect(bashToolInputSchema.safeParse({ operation: "list", charLimit: 16_001 }).success).toBe(false)
-    expect(bashToolInputSchema.safeParse({ operation: "status", name: "dev-server" }).success).toBe(true)
-    expect(bashToolInputSchema.safeParse({ operation: "output", target: "frontend" }).success).toBe(true)
+    expect(bashToolInputSchema.safeParse({ operation: "inspect", name: "dev-server" }).success).toBe(true)
+    expect(bashToolInputSchema.safeParse({ operation: "inspect", terminalId: "term_1" }).success).toBe(false)
+    expect(bashToolInputSchema.safeParse({ operation: "output", name: "dev-server" }).success).toBe(false)
+    expect(bashToolInputSchema.safeParse({ operation: "stop", name: "dev-server" }).success).toBe(true)
+    expect(bashToolInputSchema.safeParse({ operation: "stop" }).success).toBe(false)
+    expect(bashToolInputSchema.safeParse({ operation: "list" }).success).toBe(true)
+    expect(bashToolInputSchema.safeParse({ operation: "list", limit: 12 }).success).toBe(false)
+    expect(capabilityManagerToolInputSchema.safeParse({ operation: "skill_create", scope: "path", name: "release-auditor", request: "Create an evidence-driven release workflow." }).success).toBe(true)
+    expect(capabilityManagerToolInputSchema.safeParse({ operation: "mcp_check", id: "playwright" }).success).toBe(true)
+    expect(capabilityManagerToolInputSchema.safeParse({ operation: "skill_list" }).success).toBe(false)
+    expect(baseToolNameSchema.safeParse("capability_manager").success).toBe(true)
+    for (const retired of ["tool_docs", "skills", "skill_manager", "project_docs", "repo_docs", "soul", "user_profile", "list_project_resources", "mcp_registry"]) {
+      expect(baseToolNameSchema.safeParse(retired).success).toBe(false)
+    }
     expect(waitToolInputSchema.safeParse({ terminalNames: ["tests"], wakeOn: ["completed", "failed"], reason: "Waiting for integration test results" }).success).toBe(true)
     expect(waitToolInputSchema.safeParse({ terminalNames: ["tests"], wakeOn: ["completed"], reason: "one two three four five six seven eight" }).success).toBe(false)
     expect(waitToolInputSchema.safeParse({ terminalNames: ["tests"], wakeOn: ["completed"], reason: "x".repeat(65) }).success).toBe(false)

@@ -14,9 +14,7 @@ export function ToolDetails({ tool }: { tool: ToolTimelineItem }) {
           ? <ReadDetails tool={tool} />
           : tool.toolName === "trace_retrieve"
             ? <TraceDetails tool={tool} />
-            : tool.toolName === "list_project_resources"
-              ? <ResourceDetails tool={tool} />
-              : <GenericDetails tool={tool} />;
+            : <GenericDetails tool={tool} />;
 
   return (
     <div className="space-y-2">
@@ -204,24 +202,6 @@ function formatTraceResult(result: unknown): string {
   }`.trim();
 }
 
-function ResourceDetails({ tool }: { tool: ToolTimelineItem }) {
-  const result = asRecord(tool.result);
-  const resources = Array.isArray(result?.resources) ? result.resources : [];
-
-  return (
-    <div className="space-y-2">
-      {tool.argsPreview && <LabeledCode label="filters" value={tool.argsPreview} />}
-      {resources.length > 0 ? (
-        <pre className="max-h-56 overflow-auto rounded-md bg-white p-2 font-mono text-xs leading-5 text-brand-text-dark">
-          {resources.slice(0, 50).map(formatResource).join("\n")}
-        </pre>
-      ) : tool.resultPreview ? (
-        <LabeledCode label="preview" value={tool.resultPreview} />
-      ) : null}
-    </div>
-  );
-}
-
 function GenericDetails({ tool }: { tool: ToolTimelineItem }) {
   return (
     <div className="space-y-2">
@@ -271,16 +251,6 @@ function formatSearchMatch(match: unknown): string {
   const line = typeof record?.line === "number" || typeof record?.line === "string" ? `:${record.line}` : "";
   const text = typeof record?.text === "string" ? ` ${record.text}` : "";
   return `${path}${line}${text}`;
-}
-
-function formatResource(resource: unknown): string {
-  const record = asRecord(resource);
-  const name = typeof record?.name === "string" ? record.name : "resource";
-  const kind = typeof record?.kind === "string" ? ` ${record.kind}` : "";
-  const source = typeof record?.source === "string" ? ` ${record.source}` : "";
-  const status = typeof record?.status === "string" ? ` ${record.status}` : "";
-  const uri = typeof record?.uri === "string" ? ` ${record.uri}` : "";
-  return `${name}${kind}${source}${status}${uri}`.trim();
 }
 
 function commandFromPreview(preview: string | undefined): string | undefined {

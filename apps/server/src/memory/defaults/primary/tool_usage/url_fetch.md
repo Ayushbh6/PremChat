@@ -1,7 +1,7 @@
 ---
 socrates_doc: tool_doc
 schema_version: 1
-owner_tool: tool_docs
+owner_tool: read
 scope: global
 index_tags: [tool_usage]
 ---
@@ -24,7 +24,39 @@ index_tags: [tool_usage]
 <!-- socrates:section id="inputs" kind="schema" tags="tools" -->
 ## Inputs
 
-- `url_fetch` uses the one canonical schema owned by `tool.url_fetch`; send only documented fields and do not add aliases or placeholder values.
+### `url_fetch`
+
+Canonical capability: `tool.url_fetch`. Send only fields accepted by this generated provider schema; do not add aliases or placeholder values.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Exact http(s) URL to fetch. This tool does not crawl links, search the web, save files, or download binary bodies."
+    },
+    "charLimit": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 80000,
+      "description": "Character cap for returned text. The backend also enforces a byte cap before decoding."
+    },
+    "timeoutMs": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 30000,
+      "description": "Network timeout in milliseconds. Defaults to 15 seconds."
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
 <!-- /socrates:section -->
 
 <!-- socrates:section id="workflow" kind="workflow" tags="tools" -->

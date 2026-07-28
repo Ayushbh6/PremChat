@@ -1,5 +1,7 @@
 import type {
   CandidateRetrievalStatus,
+  CapabilityCandidate,
+  CapabilityCandidateRetrieval,
   GoalCandidate,
   GoalCandidateRetrieval,
   MemoryCandidate,
@@ -17,6 +19,7 @@ const INITIAL_MEMORY_FAILURE = "Memory retrieval failed; no retrieved memory was
 export type TurnCandidateRetrievalResult = Readonly<{
   goalCandidates: readonly GoalCandidate[]
   memoryCandidates: readonly MemoryCandidate[]
+  capabilityCandidates: readonly CapabilityCandidate[]
   status: CandidateRetrievalStatus
 }>
 
@@ -66,12 +69,15 @@ export const memoryCandidateQueryForTurn = (input: {
 export const retrieveTurnCandidates = async (input: {
   retrieveGoals: () => Promise<GoalCandidateRetrieval>
   retrieveMemory: () => Promise<MemoryCandidateRetrieval>
+  retrieveCapabilities: () => Promise<CapabilityCandidateRetrieval>
 }): Promise<TurnCandidateRetrievalResult> => {
   const goalPromise = Promise.resolve().then(input.retrieveGoals)
   const memoryPromise = Promise.resolve().then(input.retrieveMemory)
-  const [goalResult, memoryResult] = await Promise.allSettled([
+  const capabilityPromise = Promise.resolve().then(input.retrieveCapabilities)
+  const [goalResult, memoryResult, capabilityResult] = await Promise.allSettled([
     goalPromise,
     memoryPromise,
+    capabilityPromise,
   ])
   const warnings: string[] = []
   if (goalResult.status === "rejected") {
@@ -80,12 +86,17 @@ export const retrieveTurnCandidates = async (input: {
   if (memoryResult.status === "rejected") {
     warnings.push(INITIAL_MEMORY_FAILURE)
   }
+  if (capabilityResult.status === "rejected") {
+    warnings.push("Capability retrieval failed; use search on socrates://capabilities before declaring a capability unavailable.")
+  }
   return {
     goalCandidates: goalResult.status === "fulfilled" ? goalResult.value.results : [],
     memoryCandidates: memoryResult.status === "fulfilled" ? memoryResult.value.results : [],
+    capabilityCandidates: capabilityResult.status === "fulfilled" ? capabilityResult.value.results : [],
     status: {
       goalCandidates: goalResult.status === "fulfilled" ? "completed" : "failed",
       memoryCandidates: memoryResult.status === "fulfilled" ? "completed" : "failed",
+      capabilityCandidates: capabilityResult.status === "fulfilled" ? "completed" : "failed",
       warnings,
     },
   }

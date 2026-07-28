@@ -13,21 +13,13 @@ export const baseToolNameSchema = z.enum([
   "handover_to_frontier",
   "current_time",
   "trace_retrieve",
-  "tool_docs",
-  "skills",
   "projects",
   "edit_files",
-  "project_docs",
-  "repo_docs",
-  "soul",
-  "user_profile",
-  "list_project_resources",
-  "mcp_registry",
   "memory_note",
   "memory_notes",
   "read_memory_journal",
   "skill_write",
-  "skill_manager",
+  "capability_manager",
   "context_disposition",
 ])
 export const dynamicMcpToolNameSchema = z.string().regex(/^mcp__[a-z0-9_-]+__[a-zA-Z0-9_-]+$/)
@@ -143,7 +135,7 @@ export type ReadToolInput = z.infer<typeof readToolInputSchema>
 export const readToolOutputSchema = z
   .object({
     path: z.string().min(1),
-    kind: z.enum(["file", "directory", "pdf", "document", "presentation", "spreadsheet", "image", "binary", "missing"]),
+    kind: z.enum(["file", "directory", "resource", "pdf", "document", "presentation", "spreadsheet", "image", "binary", "missing"]),
     content: z.string().optional(),
     entries: z
       .array(
@@ -313,24 +305,21 @@ const terminalCommandDescription =
   "Command to execute. Before commands create files or directories, verify the intended parent directory and use an explicit relative path or cwd so outputs do not accidentally land in the workspace root."
 const terminalCwdDescription =
   "Workspace-relative working directory. Use this for subfolder commands instead of prefixing the command with cd."
-const terminalArgvDescription =
-  "Structured executable and literal arguments for a safe foreground diagnostic. This runs without a shell, so it cannot use pipes, redirects, substitutions, or shell syntax. Use only for small diagnostics such as [\"git\", \"status\", \"--short\"] or [\"pwd\"]. Use command for a real shell command, which requires approval outside full-access mode."
-
 const editWholeFileInputSchema = z
   .object({
     path: z.string().min(1).describe(editTargetPathDescription),
     content: z.string(),
     overwrite: z.literal(true).optional(),
-    dryRun: z.boolean().optional(),
   })
   .strict()
 const editTargetedReplaceInputSchema = z
   .object({
     path: z.string().min(1).describe(editTargetPathDescription),
-    oldString: z.string().min(1),
-    newString: z.string(),
-    replaceAll: z.boolean().optional(),
-    dryRun: z.boolean().optional(),
+    edits: z.array(z.object({
+      oldString: z.string().min(1),
+      newString: z.string(),
+      replaceAll: z.boolean().optional(),
+    }).strict()).min(1).max(32),
   })
   .strict()
 
@@ -348,7 +337,6 @@ export const applyPatchToolInputSchema = z
       .describe(
         "Patch text to apply. Prefer structured format: *** Begin Patch, then file sections like *** Update File: path with @@ hunks, *** Add File: path, or *** Delete File: path, ending with *** End Patch. In Update hunks, prefix unchanged lines with space, removed lines with -, and added lines with +. Add File content lines should start with +.",
       ),
-    dryRun: z.boolean().optional(),
   })
   .strict()
 export type ApplyPatchToolInput = z.infer<typeof applyPatchToolInputSchema>
@@ -400,52 +388,31 @@ export const bashTerminalMetadataSchema = z
   .strict()
 export type BashTerminalMetadata = z.infer<typeof bashTerminalMetadataSchema>
 
-const terminalSelectorShape = {
-    processId: z.string().min(1).optional(),
-    terminalId: z.string().min(1).optional(),
-    name: z.string().min(1).optional(),
-    target: z.string().min(1).optional(),
-}
 const terminalRunCommandInputSchema = z
   .object({
-    operation: z.literal("run").optional(),
+    operation: z.literal("run"),
     command: z.string().min(1).describe(terminalCommandDescription),
     cwd: z.string().min(1).optional().describe(terminalCwdDescription),
     timeoutMs: z.number().int().positive().max(600_000).optional(),
-    charLimit: z.number().int().positive().max(16_000).optional(),
-  })
-  .strict()
-const terminalRunArgvInputSchema = z
-  .object({
-    operation: z.literal("run").optional(),
-    argv: z.array(z.string().min(1)).min(1).max(32).describe(terminalArgvDescription),
-    cwd: z.string().min(1).optional().describe(terminalCwdDescription),
-    timeoutMs: z.number().int().positive().max(600_000).optional(),
-    charLimit: z.number().int().positive().max(16_000).optional(),
   })
   .strict()
 const terminalStartInputSchema = z
   .object({
     operation: z.literal("start"),
     command: z.string().min(1).describe(terminalCommandDescription),
-    name: z.string().min(1).optional(),
+    name: z.string().min(1),
     cwd: z.string().min(1).optional().describe(terminalCwdDescription),
-    charLimit: z.number().int().positive().max(16_000).optional(),
-    outputSequence: z.number().int().nonnegative().optional(),
     inputMode: z.enum(["none", "user"]).optional(),
   })
   .strict()
-const terminalStatusInputSchema = z.object({ operation: z.literal("status"), ...terminalSelectorShape, outputSequence: z.number().int().nonnegative().optional(), charLimit: z.number().int().positive().max(16_000).optional() }).strict()
-const terminalOutputInputSchema = z.object({ operation: z.literal("output"), ...terminalSelectorShape, outputSequence: z.number().int().nonnegative().optional(), charLimit: z.number().int().positive().max(16_000).optional() }).strict()
-const terminalStopInputSchema = z.object({ operation: z.literal("stop"), ...terminalSelectorShape, outputSequence: z.number().int().nonnegative().optional(), charLimit: z.number().int().positive().max(16_000).optional() }).strict()
-const terminalListInputSchema = z.object({ operation: z.literal("list"), limit: z.number().int().positive().max(12).optional(), charLimit: z.number().int().positive().max(16_000).optional() }).strict()
+const terminalInspectInputSchema = z.object({ operation: z.literal("inspect"), name: z.string().min(1) }).strict()
+const terminalStopInputSchema = z.object({ operation: z.literal("stop"), name: z.string().min(1) }).strict()
+const terminalListInputSchema = z.object({ operation: z.literal("list") }).strict()
 
 export const bashToolInputSchema = z.union([
   terminalRunCommandInputSchema,
-  terminalRunArgvInputSchema,
   terminalStartInputSchema,
-  terminalStatusInputSchema,
-  terminalOutputInputSchema,
+  terminalInspectInputSchema,
   terminalStopInputSchema,
   terminalListInputSchema,
 ])
@@ -453,7 +420,7 @@ export const bashToolInputSchema = z.union([
 // remains the sole validation and provider authority; this structural type keeps
 // those already-validated internal transitions ergonomic without duplicating a schema.
 export type BashToolInput = {
-  operation?: "run" | "start" | "status" | "output" | "stop" | "list" | undefined
+  operation?: "run" | "start" | "inspect" | "status" | "output" | "stop" | "list" | undefined
   command?: string | undefined
   argv?: string[] | undefined
   processId?: string | undefined
@@ -470,7 +437,7 @@ export type BashToolInput = {
 
 export const bashToolOutputSchema = z
   .object({
-    operation: z.enum(["run", "start", "status", "output", "stop", "list"]).optional(),
+    operation: z.enum(["run", "start", "inspect", "status", "output", "stop", "list"]).optional(),
     command: z.string().min(1).optional(),
     cwd: z.string().min(1),
     exitCode: z.number().int().nullable(),
@@ -1897,6 +1864,86 @@ export const mcpRegistryToolOutputSchema = z
   })
   .strict()
 export type McpRegistryToolOutput = z.infer<typeof mcpRegistryToolOutputSchema>
+
+export const capabilityManagerScopeSchema = z.enum(["global", "path"])
+export type CapabilityManagerScope = z.infer<typeof capabilityManagerScopeSchema>
+
+const capabilityManagerSkillNameSchema = z.string().min(1).max(64).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+const capabilityManagerSkillBuildSchema = (operation: "skill_create" | "skill_update") => z.object({
+  operation: z.literal(operation),
+  scope: capabilityManagerScopeSchema.default("path"),
+  name: capabilityManagerSkillNameSchema,
+  request: z.string().trim().min(1).max(4_000),
+}).strict()
+const capabilityManagerSkillStateSchema = (operation: "skill_delete" | "skill_enable" | "skill_disable") => z.object({
+  operation: z.literal(operation),
+  scope: capabilityManagerScopeSchema.default("path"),
+  name: capabilityManagerSkillNameSchema,
+}).strict()
+const capabilityManagerMcpServerSchema = z.object({
+  id: z.string().min(1).max(64).regex(/^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$/),
+  label: z.string().min(1).max(120).optional(),
+  command: z.string().min(1),
+  args: z.array(z.string()).max(40).optional(),
+  env: z.record(z.string(), z.string()).optional().describe("Non-secret environment values only."),
+  secretBindings: mcpSecretBindingsSchema.describe("Secret key names and sources only. Never provide secret values."),
+}).strict()
+
+export const capabilityManagerToolInputSchema = z.union([
+  capabilityManagerSkillBuildSchema("skill_create"),
+  capabilityManagerSkillBuildSchema("skill_update"),
+  capabilityManagerSkillStateSchema("skill_delete"),
+  capabilityManagerSkillStateSchema("skill_enable"),
+  capabilityManagerSkillStateSchema("skill_disable"),
+  z.object({
+    operation: z.literal("skill_preview_import"),
+    scope: capabilityManagerScopeSchema.default("path"),
+    url: skillImportUrlSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("skill_preview_import"),
+    scope: capabilityManagerScopeSchema.default("path"),
+    attachmentPath: skillImportAttachmentPathSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("skill_commit_import"),
+    scope: capabilityManagerScopeSchema.default("path"),
+    previewId: skillImportPreviewIdSchema,
+    conflictStrategy: z.enum(["reject", "replace"]).optional(),
+  }).strict(),
+  z.object({ operation: z.literal("mcp_check"), id: z.string().min(1) }).strict(),
+  z.object({
+    operation: z.literal("mcp_configure"),
+    scope: capabilityManagerScopeSchema.default("path"),
+    server: capabilityManagerMcpServerSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("mcp_delete"),
+    scope: capabilityManagerScopeSchema.default("path"),
+    id: z.string().min(1),
+  }).strict(),
+])
+export type CapabilityManagerToolInput = z.infer<typeof capabilityManagerToolInputSchema>
+
+export const capabilityManagerToolOutputSchema = z.object({
+  operation: z.enum([
+    "skill_create",
+    "skill_update",
+    "skill_delete",
+    "skill_enable",
+    "skill_disable",
+    "skill_preview_import",
+    "skill_commit_import",
+    "mcp_check",
+    "mcp_configure",
+    "mcp_delete",
+  ]),
+  status: z.enum(["completed", "preview_ready", "unchanged"]),
+  summary: z.string().min(1),
+  resource: z.string().min(1).optional(),
+  details: z.unknown().optional(),
+}).strict()
+export type CapabilityManagerToolOutput = z.infer<typeof capabilityManagerToolOutputSchema>
 
 export const normalizedToolCallSchema = z
   .object({

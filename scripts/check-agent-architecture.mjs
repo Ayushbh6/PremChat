@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises"
+import { access, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises"
 import { dirname, extname, join, relative, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import process from "node:process"
@@ -13,6 +13,7 @@ const definitions = core.phaseOneAgentDefinitionInventory()
 const capabilities = core.capabilityInventory()
 const modelTools = capabilities.filter((capability) => capability.kind === "model_tool")
 const commands = capabilities.filter((capability) => capability.kind === "typed_user_command")
+const retiredModelTools = ["tool_docs", "skills", "skill_manager", "project_docs", "repo_docs", "soul", "user_profile", "list_project_resources", "mcp_registry"]
 const forbiddenProductionPatterns = [
   ["Legacy ToolRegistry authority", /\b(?:ToolRegistry|create[A-Za-z0-9_]*ToolRegistry)\b/],
   ["Shadow model input schema", /\b(?:modelInputSchema|[A-Za-z0-9_]+ToolModelInputSchema|normalizeBashModelInput)\b/],
@@ -45,7 +46,7 @@ const generatedFiles = new Map([
   ["architecture/agent-definitions.generated.json", json({
     schemaVersion: 2,
     generatedFrom: "packages/core/src/agent/agentDefinitions.ts",
-    phase: "phase-2-shared-capability-catalog",
+    phase: "unified-capability-tool-convergence",
     definitions,
     executionOwners,
   })],
@@ -94,12 +95,13 @@ const generatedFiles = new Map([
 ])
 
 for (const [path, content] of generatedToolDocs(capabilities)) generatedFiles.set(path, content)
+if (writeMode) await removeStaleGeneratedToolDocs(new Set(generatedFiles.keys()))
 for (const [path, content] of generatedFiles) await writeOrCheck(path, content)
 
 assertUnique(definitions.map((definition) => definition.id), "Agent definition ids")
 assertUnique(capabilities.map((capability) => capability.id), "Capability ids")
 assertUnique(commands.map((command) => command.executorBinding), "Typed user command bindings")
-if (modelTools.length !== 28) throw new Error(`Expected 28 static model-tool capabilities, found ${modelTools.length}.`)
+if (modelTools.length !== 19) throw new Error(`Expected 19 static model-tool capabilities, found ${modelTools.length}.`)
 if (commands.length !== 24) throw new Error(`Expected 24 typed user-command capabilities, found ${commands.length}.`)
 for (const kind of ["model_tool", "automatic_retrieval", "structured_worker", "context_stage", "deterministic_authority", "typed_user_command"]) {
   if (!capabilities.some((capability) => capability.kind === kind)) throw new Error(`Capability kind ${kind} is missing.`)
@@ -112,6 +114,31 @@ for (const definition of core.phaseOneAgentDefinitions) {
   }
   const names = resolved.modelDefinitions().map((tool) => tool.name)
   assertUnique(names, `${definition.id} model tool names`)
+}
+
+const mainModelTools = roleMatrix.find((entry) => entry.definitionId === "socrates-main")?.modelTools ?? []
+const expectedMainModelTools = [
+  "read", "search", "url_fetch", "edit", "apply_patch", "bash", "wait", "handover_to_frontier",
+  "current_time", "trace_retrieve", "capability_manager", "memory_note", "context_disposition",
+]
+if (JSON.stringify(mainModelTools) !== JSON.stringify(expectedMainModelTools)) {
+  throw new Error(`Main Socrates model-tool surface drifted. Expected [${expectedMainModelTools.join(", ")}], found [${mainModelTools.join(", ")}].`)
+}
+for (const retired of retiredModelTools) {
+  if (modelTools.some((tool) => tool.modelToolName === retired)) throw new Error(`Retired model tool remains provider-reachable: ${retired}.`)
+}
+for (const retiredPath of [
+  "packages/core/src/tools/toolDocsTool.ts",
+  "packages/core/src/tools/skillsTool.ts",
+  "packages/core/src/tools/skillManagerTool.ts",
+  "packages/core/src/tools/projectDocsTool.ts",
+  "packages/core/src/tools/repoDocsTool.ts",
+  "packages/core/src/tools/soulTool.ts",
+  "packages/core/src/tools/userProfileTool.ts",
+  "packages/core/src/tools/listProjectResourcesTool.ts",
+  "packages/core/src/tools/mcpRegistryTool.ts",
+]) {
+  if (await exists(retiredPath)) throw new Error(`Retired model-tool definition remains on disk: ${retiredPath}.`)
 }
 
 for (const capability of capabilities) {
@@ -212,6 +239,11 @@ for (const { path, source } of await readSources(auxiliaryFiles)) {
   for (const [label, pattern] of forbiddenProductionPatterns) {
     if (pattern.test(code)) throw new Error(`${label} remains in executable script: ${relativePath(path)}.`)
   }
+  const retiredCapabilityId = retiredModelTools.find((tool) => source.includes(`"tool.${tool}"`) || source.includes(`'tool.${tool}'`))
+  const retiredExecutor = retiredModelTools.find((tool) => new RegExp(`^\\s*${tool}\\s*:`, "m").test(source))
+  if (retiredCapabilityId || retiredExecutor) {
+    throw new Error(`Retired model-facing authority remains in executable script ${relativePath(path)}: ${retiredCapabilityId ?? retiredExecutor}.`)
+  }
 }
 
 for (const migratedCaller of [
@@ -233,7 +265,7 @@ if (/\b(?:prepareContextForModelCall|precomputeContextSnapshot)\b/.test(corePubl
   throw new Error("Legacy raw context-preparation functions remain exported from the public core entrypoint.")
 }
 
-process.stdout.write(`Agent architecture Phase 2 OK: ${definitions.length} agents, ${capabilities.length} capabilities, ${modelTools.length} static tools, ${commands.length} typed commands.\n`)
+process.stdout.write(`Agent architecture OK: ${definitions.length} agents, ${capabilities.length} capabilities, ${modelTools.length} static tools, ${commands.length} typed commands.\n`)
 
 function generatedToolDocs(inventory) {
   const groups = new Map()
@@ -258,13 +290,21 @@ function generatedToolDocs(inventory) {
           : `- Use \`${entry.modelToolName}\` when the active task requires its cataloged ${entry.policy.approval === "automatic" ? "read/retrieval" : "mutation/execution"} capability.`),
       ...entries.flatMap((entry) => entry.documentationGuidance.slice(1).map((guidance) => `- ${guidance}`)),
     ]
-    const inputs = entries.map((entry) => `- \`${entry.modelToolName}\` uses the one canonical schema owned by \`${entry.id}\`; send only documented fields and do not add aliases or placeholder values.`)
+    const inputs = entries.flatMap((entry) => [
+      `### \`${entry.modelToolName}\``,
+      "",
+      `Canonical capability: \`${entry.id}\`. Send only fields accepted by this generated provider schema; do not add aliases or placeholder values.`,
+      "",
+      "```json",
+      JSON.stringify(entry.providerSchema, null, 2),
+      "```",
+    ])
     const workflow = entries.map((entry, index) => `${index + 1}. Select \`${entry.modelToolName}\` only for the behavior described above, pass an exact valid input, and use its persisted result as evidence before continuing.`)
     const lines = [
       "---",
       "socrates_doc: tool_doc",
       "schema_version: 1",
-      "owner_tool: tool_docs",
+      "owner_tool: read",
       "scope: global",
       "index_tags: [tool_usage]",
       "---",
@@ -309,6 +349,18 @@ function generatedToolDocs(inventory) {
   }))
 }
 
+async function removeStaleGeneratedToolDocs(expectedPaths) {
+  const directory = resolve(root, "apps/server/src/memory/defaults/primary/tool_usage")
+  for (const absolute of await listFiles(directory)) {
+    if (extname(absolute) !== ".md") continue
+    const path = relative(root, absolute).replaceAll("\\", "/")
+    if (expectedPaths.has(path)) continue
+    const content = await readFile(absolute, "utf8")
+    if (!content.includes("Generated by scripts/check-agent-architecture.mjs from CapabilityCatalog")) continue
+    await unlink(absolute)
+  }
+}
+
 async function writeOrCheck(path, expected) {
   const absolute = resolve(root, path)
   if (writeMode) {
@@ -324,6 +376,10 @@ async function requirePath(path, capabilityId) {
   await access(resolve(root, path)).catch(() => {
     throw new Error(`Capability ${capabilityId} references missing path ${path}.`)
   })
+}
+
+async function exists(path) {
+  return access(resolve(root, path)).then(() => true, () => false)
 }
 
 function assertUnique(values, label) {
@@ -359,6 +415,17 @@ async function listSourceFiles(directory) {
     }
     if (!entry.isFile() || ![".ts", ".mjs"].includes(extname(entry.name)) || entry.name.endsWith(".test.ts")) continue
     paths.push(path)
+  }
+  return paths
+}
+
+async function listFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true })
+  const paths = []
+  for (const entry of entries) {
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) paths.push(...await listFiles(path))
+    else if (entry.isFile()) paths.push(path)
   }
   return paths
 }

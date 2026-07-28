@@ -125,11 +125,11 @@ export const assertNotProjectNotesMutation = (workspacePath: string, targetPath:
   }
   const area = relativePath === memoryPath ? "memory" : "notes"
   throw new SocratesError(
-    "project_docs_dedicated_tool_required",
-    ".socrates/MEMORY.md and PROJECT_NOTES.md can only be edited through the project_docs tool. Retry with project_docs operation=\"edit\" and the correct area; normal read/search may still inspect them.",
+    "governed_resource_edit_required",
+    ".socrates/MEMORY.md and PROJECT_NOTES.md can only be edited through governed socrates://project/memory or socrates://project/notes resources. Read the exact URI, then use edit with targeted replacements.",
     {
       recoverable: true,
-      details: { path: requestedPath ?? relativePath, tool: "project_docs", operation: "edit", area },
+      details: { path: requestedPath ?? relativePath, tool: "edit", operation: "edit", area },
     },
   )
 }
@@ -140,11 +140,11 @@ export const assertNotRepoDocsMutation = (workspacePath: string, targetPath: str
     return
   }
   throw new SocratesError(
-    "repo_docs_dedicated_tool_required",
-    ".socrates/repo_docs/*.md can only be edited through the repo_docs tool. Retry with repo_docs operation=\"edit\"; normal read/search may still inspect these files.",
+    "governed_resource_edit_required",
+    ".socrates/repo_docs/*.md can only be edited through governed socrates://project/repo-docs/<file> resources. Read the exact URI, then use edit with targeted replacements.",
     {
       recoverable: true,
-      details: { path: requestedPath ?? relativePath, tool: "repo_docs", operation: "edit" },
+      details: { path: requestedPath ?? relativePath, tool: "edit", operation: "edit" },
     },
   )
 }
@@ -155,11 +155,11 @@ export const assertNotProjectSkillsMutation = (workspacePath: string, targetPath
     return
   }
   throw new SocratesError(
-    "project_skills_dedicated_builder_required",
-    ".socrates/skills/* can only be changed through the backend skill builder. Use the project dashboard Skills + flow; normal read/search may still inspect project skills.",
+    "capability_manager_required",
+    ".socrates/skills/* can only be changed through capability_manager and the backend Skill Writer. Use read/search with socrates://skills for inspection.",
     {
       recoverable: true,
-      details: { path: requestedPath ?? relativePath, tool: "skills", operation: "read" },
+      details: { path: requestedPath ?? relativePath, tool: "capability_manager", operation: "skill_update" },
     },
   )
 }
@@ -206,7 +206,7 @@ export const assertNoProtectedSocratesPathMentions = (
   }
   throw new SocratesError(
     "terminal_protected_socrates_path_rejected",
-    "Terminal command rejected because it mentions Socrates-owned memory, docs, tool-usage, soul, user-profile, or skills paths. Use project_docs, repo_docs, tool_docs, soul, user_profile, skills, or the dashboard skill builder instead.",
+    "Terminal command rejected because it mentions protected Socrates-owned memory, docs, tool guidance, identity, profile, or skill paths. Use read/search on the corresponding socrates:// resource, edit only governed project docs, capability_manager for skills, and memory_note for identity or profile changes.",
     {
       recoverable: true,
       details: {

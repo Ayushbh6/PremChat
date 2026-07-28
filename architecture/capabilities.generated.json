@@ -7,7 +7,9 @@
       "description": "Read a bounded file, directory, document, structured data file, or image from the active project workspace. Call this for exact file evidence and before editing existing files so freshness can be verified. Output is capped to an estimated 4k tokens by default and 6k tokens max; use charLimit, tokenLimit, and offset for large files.",
       "kind": "model_tool",
       "allowedRoles": [
-        "socrates"
+        "socrates",
+        "global_memory",
+        "skill_writer"
       ],
       "runtimeScopes": [
         "turn",
@@ -66,22 +68,26 @@
       "documentationTitle": "read",
       "documentationGuidance": [
         "Read a bounded file, directory, document, structured data file, or image from the active project workspace. Call this for exact file evidence and before editing existing files so freshness can be verified. Output is capped to an estimated 4k tokens by default and 6k tokens max; use charLimit, tokenLimit, and offset for large files.",
-        "Use read/search tools to find candidate workspace files, inspect exact evidence, and avoid editing or explaining code from guesses."
+        "Use read/search for workspace files and governed socrates:// resources. Search socrates://capabilities before claiming a skill or MCP capability is unavailable."
       ],
       "documentationPaths": [
-        "read_search.md"
+        "read_search.md",
+        "memory_agent/read_search.md"
       ],
       "source": {
-        "owner": "packages/workspace",
+        "owner": "apps/server",
         "definitionPath": "packages/core/src/tools/readTool.ts",
-        "implementationPath": "packages/workspace/src/tools/readTool.ts",
+        "implementationPath": "apps/server/src/services/resources/socratesResourceService.ts",
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/v2/runtime.ts",
+          "apps/server/src/services/store/memoryAgentRunner.ts",
+          "apps/server/src/services/store/skillWriterAgentRunner.ts"
         ],
         "tests": [
-          "packages/workspace/src/workspace.test.ts"
+          "packages/workspace/src/workspace.test.ts",
+          "apps/server/src/services/resources/socratesResourceService.test.ts"
         ],
         "status": "canonical"
       }
@@ -91,7 +97,9 @@
       "description": "Find files by name/path or search file contents in the active project workspace. Call this for targeted discovery before reading exact files. Use mode='files' for file discovery and mode='text' for grep-style content search. Set regex=true when using regex syntax such as |, .*, or word boundaries; otherwise prefer simple literal terms.",
       "kind": "model_tool",
       "allowedRoles": [
-        "socrates"
+        "socrates",
+        "global_memory",
+        "skill_writer"
       ],
       "runtimeScopes": [
         "turn",
@@ -166,19 +174,23 @@
         "Find files by name/path or search file contents in the active project workspace. Call this for targeted discovery before reading exact files. Use mode='files' for file discovery and mode='text' for grep-style content search. Set regex=true when using regex syntax such as |, .*, or word boundaries; otherwise prefer simple literal terms."
       ],
       "documentationPaths": [
-        "read_search.md"
+        "read_search.md",
+        "memory_agent/read_search.md"
       ],
       "source": {
-        "owner": "packages/workspace",
+        "owner": "apps/server",
         "definitionPath": "packages/core/src/tools/searchTool.ts",
-        "implementationPath": "packages/workspace/src/tools/searchTool.ts",
+        "implementationPath": "apps/server/src/services/resources/socratesResourceService.ts",
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/v2/runtime.ts",
+          "apps/server/src/services/store/memoryAgentRunner.ts",
+          "apps/server/src/services/store/skillWriterAgentRunner.ts"
         ],
         "tests": [
-          "packages/workspace/src/workspace.test.ts"
+          "packages/workspace/src/workspace.test.ts",
+          "apps/server/src/services/resources/socratesResourceService.test.ts"
         ],
         "status": "canonical"
       }
@@ -263,7 +275,7 @@
     },
     {
       "id": "tool.edit",
-      "description": "Create or modify one file in the active project workspace. Path is workspace-relative. Call this only after reading existing target files in the current turn. When creating a deliverable, scratch file, or generated file derived from files in a subfolder, use an explicit path in that same subfolder or nearest relevant existing folder; do not default to the workspace root unless the user asks or the artifact is truly project-level. For existing files, use oldString and newString for targeted multiline replacement; set replaceAll only when every occurrence should change. Use content for new files. Use content with overwrite: true only for a deliberate full-file rewrite of an existing file.",
+      "description": "Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates"
@@ -284,24 +296,35 @@
                 "minLength": 1,
                 "description": "Workspace-relative target path. For deliverables or generated files derived from files in a subfolder, use an explicit path in that same subfolder or nearest relevant existing folder; use the workspace root only when requested or truly project-level."
               },
-              "oldString": {
-                "type": "string",
-                "minLength": 1
-              },
-              "newString": {
-                "type": "string"
-              },
-              "replaceAll": {
-                "type": "boolean"
-              },
-              "dryRun": {
-                "type": "boolean"
+              "edits": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "oldString": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "newString": {
+                      "type": "string"
+                    },
+                    "replaceAll": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "oldString",
+                    "newString"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "maxItems": 32
               }
             },
             "required": [
               "path",
-              "oldString",
-              "newString"
+              "edits"
             ],
             "additionalProperties": false
           },
@@ -319,9 +342,6 @@
               "overwrite": {
                 "type": "boolean",
                 "const": true
-              },
-              "dryRun": {
-                "type": "boolean"
               }
             },
             "required": [
@@ -352,7 +372,9 @@
       },
       "documentationTitle": "edit",
       "documentationGuidance": [
-        "Create or modify one file in the active project workspace. Path is workspace-relative. Call this only after reading existing target files in the current turn. When creating a deliverable, scratch file, or generated file derived from files in a subfolder, use an explicit path in that same subfolder or nearest relevant existing folder; do not default to the workspace root unless the user asks or the artifact is truly project-level. For existing files, use oldString and newString for targeted multiline replacement; set replaceAll only when every occurrence should change. Use content for new files. Use content with overwrite: true only for a deliberate full-file rewrite of an existing file."
+        "Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
+        "Read an existing target first. Targeted edits use one edits array; every match is resolved against the same original content, overlaps fail, and the write is atomic.",
+        "The model never supplies dryRun. Approval previews are an internal runtime concern. Re-read a changed target when later work depends on its exact new contents."
       ],
       "documentationPaths": [
         "edit_apply_patch.md"
@@ -392,9 +414,6 @@
             "type": "string",
             "minLength": 1,
             "description": "Patch text to apply. Prefer structured format: *** Begin Patch, then file sections like *** Update File: path with @@ hunks, *** Add File: path, or *** Delete File: path, ending with *** End Patch. In Update hunks, prefix unchanged lines with space, removed lines with -, and added lines with +. Add File content lines should start with +."
-          },
-          "dryRun": {
-            "type": "boolean"
           }
         },
         "required": [
@@ -421,7 +440,8 @@
       },
       "documentationTitle": "apply_patch",
       "documentationGuidance": [
-        "Apply a patch to one or more files in the active project workspace. Call this only after reading existing target files in the current turn. Use patchText with the structured *** Begin Patch format by default: *** Update File, @@ hunks, *** Add File, *** Delete File, and *** Move to. This format does not require unified-diff line counts. Read existing files before patching, deleting, or renaming them, and read a file again before another mutation after a successful edit or patch. Standard unified diffs with ---/+++/@@ headers are accepted only when you already have a valid diff. Use for multi-hunk or multi-file changes."
+        "Apply a patch to one or more files in the active project workspace. Call this only after reading existing target files in the current turn. Use patchText with the structured *** Begin Patch format by default: *** Update File, @@ hunks, *** Add File, *** Delete File, and *** Move to. This format does not require unified-diff line counts. Read existing files before patching, deleting, or renaming them, and read a file again before another mutation after a successful edit or patch. Standard unified diffs with ---/+++/@@ headers are accepted only when you already have a valid diff. Use for multi-hunk or multi-file changes.",
+        "Use the structured Begin Patch format for multi-file or multi-hunk work. The model never supplies dryRun; approval preview and verified application are internal runtime phases."
       ],
       "documentationPaths": [
         "edit_apply_patch.md"
@@ -443,7 +463,7 @@
     },
     {
       "id": "tool.bash",
-      "description": "Terminal command execution tool. This current definition is authoritative: interactive start/input and persistent Terminal controls are available even if stale project memory claims otherwise. The compatibility tool id is bash, but product copy should call it Terminal. Behavior is platform-native: POSIX on macOS/Linux and PowerShell/cmd on Windows. Use operation=list first when several conversation Terminals may exist; it returns a compact bounded inventory. For a small no-shell diagnostic allowlist, prefer argv such as [\"git\", \"status\", \"--short\"] or [\"pwd\"]; argv runs a literal executable with literal arguments and cannot use shell operators. Use command for a real shell command, script, test, build, local server, REPL, or bounded one-off script; raw shell commands require approval outside full-access mode. For any program that must accept user input, use operation=start, inputMode=user, a clear name, and a portable program (prefer a small Node.js or Python stdin program). inputMode is the explicit reliable signal; prompt wording alone is not. Never assume Bash-specific syntax such as read -p on POSIX because the actual shell may be zsh. The user alone types raw input in the visible Terminal; keep the process alive until all answers are received, then wait on completed/failed when the task depends on its result. Foreground raw runs complete normally when quick, otherwise automatically become a named background Terminal after the configured foreground window without being killed or restarted. Supports run plus conversation-scoped start/status/output/stop/list operations. Returned output and list rows are bounded; charLimit is at most 16000 and list limit is at most 12. Prefer read/search/edit/url_fetch for exact structured reads, but use Terminal when a real command, test, build, local server, CLI, or bounded one-off script is needed. For status/output/stop, omit the target when there is exactly one active Terminal, or use the Terminal name shown in context.",
+      "description": "Run commands or manage named persistent Terminals in the active workspace. Use run for a bounded foreground command, start with a unique name for a server or interactive process, inspect with that name to receive status plus new output, stop with that name, and list to discover existing names. Prefer read, search, edit, and apply_patch for structured file work. Use inputMode=user when the visible Terminal must accept user input.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates"
@@ -477,53 +497,11 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 600000
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 16000
               }
             },
             "required": [
+              "operation",
               "command"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "run"
-              },
-              "argv": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "minItems": 1,
-                "maxItems": 32,
-                "description": "Structured executable and literal arguments for a safe foreground diagnostic. This runs without a shell, so it cannot use pipes, redirects, substitutions, or shell syntax. Use only for small diagnostics such as [\"git\", \"status\", \"--short\"] or [\"pwd\"]. Use command for a real shell command, which requires approval outside full-access mode."
-              },
-              "cwd": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Workspace-relative working directory. Use this for subfolder commands instead of prefixing the command with cd."
-              },
-              "timeoutMs": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 600000
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 16000
-              }
-            },
-            "required": [
-              "argv"
             ],
             "additionalProperties": false
           },
@@ -548,15 +526,6 @@
                 "minLength": 1,
                 "description": "Workspace-relative working directory. Use this for subfolder commands instead of prefixing the command with cd."
               },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 16000
-              },
-              "outputSequence": {
-                "type": "integer",
-                "minimum": 0
-              },
               "inputMode": {
                 "type": "string",
                 "enum": [
@@ -567,7 +536,8 @@
             },
             "required": [
               "operation",
-              "command"
+              "command",
+              "name"
             ],
             "additionalProperties": false
           },
@@ -576,74 +546,16 @@
             "properties": {
               "operation": {
                 "type": "string",
-                "const": "status"
-              },
-              "processId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "terminalId": {
-                "type": "string",
-                "minLength": 1
+                "const": "inspect"
               },
               "name": {
                 "type": "string",
                 "minLength": 1
-              },
-              "target": {
-                "type": "string",
-                "minLength": 1
-              },
-              "outputSequence": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 16000
               }
             },
             "required": [
-              "operation"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "output"
-              },
-              "processId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "terminalId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1
-              },
-              "target": {
-                "type": "string",
-                "minLength": 1
-              },
-              "outputSequence": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 16000
-              }
-            },
-            "required": [
-              "operation"
+              "operation",
+              "name"
             ],
             "additionalProperties": false
           },
@@ -654,34 +566,14 @@
                 "type": "string",
                 "const": "stop"
               },
-              "processId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "terminalId": {
-                "type": "string",
-                "minLength": 1
-              },
               "name": {
                 "type": "string",
                 "minLength": 1
-              },
-              "target": {
-                "type": "string",
-                "minLength": 1
-              },
-              "outputSequence": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 16000
               }
             },
             "required": [
-              "operation"
+              "operation",
+              "name"
             ],
             "additionalProperties": false
           },
@@ -691,16 +583,6 @@
               "operation": {
                 "type": "string",
                 "const": "list"
-              },
-              "limit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 12
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 16000
               }
             },
             "required": [
@@ -730,7 +612,8 @@
       },
       "documentationTitle": "bash",
       "documentationGuidance": [
-        "Terminal command execution tool. This current definition is authoritative: interactive start/input and persistent Terminal controls are available even if stale project memory claims otherwise. The compatibility tool id is bash, but product copy should call it Terminal. Behavior is platform-native: POSIX on macOS/Linux and PowerShell/cmd on Windows. Use operation=list first when several conversation Terminals may exist; it returns a compact bounded inventory. For a small no-shell diagnostic allowlist, prefer argv such as [\"git\", \"status\", \"--short\"] or [\"pwd\"]; argv runs a literal executable with literal arguments and cannot use shell operators. Use command for a real shell command, script, test, build, local server, REPL, or bounded one-off script; raw shell commands require approval outside full-access mode. For any program that must accept user input, use operation=start, inputMode=user, a clear name, and a portable program (prefer a small Node.js or Python stdin program). inputMode is the explicit reliable signal; prompt wording alone is not. Never assume Bash-specific syntax such as read -p on POSIX because the actual shell may be zsh. The user alone types raw input in the visible Terminal; keep the process alive until all answers are received, then wait on completed/failed when the task depends on its result. Foreground raw runs complete normally when quick, otherwise automatically become a named background Terminal after the configured foreground window without being killed or restarted. Supports run plus conversation-scoped start/status/output/stop/list operations. Returned output and list rows are bounded; charLimit is at most 16000 and list limit is at most 12. Prefer read/search/edit/url_fetch for exact structured reads, but use Terminal when a real command, test, build, local server, CLI, or bounded one-off script is needed. For status/output/stop, omit the target when there is exactly one active Terminal, or use the Terminal name shown in context."
+        "Run commands or manage named persistent Terminals in the active workspace. Use run for a bounded foreground command, start with a unique name for a server or interactive process, inspect with that name to receive status plus new output, stop with that name, and list to discover existing names. Prefer read, search, edit, and apply_patch for structured file work. Use inputMode=user when the visible Terminal must accept user input.",
+        "The model-facing operations are exactly run, start, inspect, stop, and list. Use human-readable Terminal names; runtime ids and output cursors are internal."
       ],
       "documentationPaths": [
         "terminal.md"
@@ -1195,21 +1078,13 @@
                             "handover_to_frontier",
                             "current_time",
                             "trace_retrieve",
-                            "tool_docs",
-                            "skills",
                             "projects",
                             "edit_files",
-                            "project_docs",
-                            "repo_docs",
-                            "soul",
-                            "user_profile",
-                            "list_project_resources",
-                            "mcp_registry",
                             "memory_note",
                             "memory_notes",
                             "read_memory_journal",
                             "skill_write",
-                            "skill_manager",
+                            "capability_manager",
                             "context_disposition"
                           ]
                         },
@@ -1647,21 +1522,13 @@
                             "handover_to_frontier",
                             "current_time",
                             "trace_retrieve",
-                            "tool_docs",
-                            "skills",
                             "projects",
                             "edit_files",
-                            "project_docs",
-                            "repo_docs",
-                            "soul",
-                            "user_profile",
-                            "list_project_resources",
-                            "mcp_registry",
                             "memory_note",
                             "memory_notes",
                             "read_memory_journal",
                             "skill_write",
-                            "skill_manager",
+                            "capability_manager",
                             "context_disposition"
                           ]
                         },
@@ -1767,873 +1634,6 @@
         ],
         "tests": [
           "packages/core/src/test/memoryPrompt.test.ts"
-        ],
-        "status": "canonical"
-      }
-    },
-    {
-      "id": "tool.tool_docs",
-      "description": "Read or search audience-scoped Socrates tool-usage guidance under ~/.Socrates/tool_usage. Main Socrates sees root tool docs; the memory agent sees tool_usage/memory_agent docs. Call before retrying a failed tool, when exact tool behavior is uncertain, or before complex/edge-case tool use. Read-only for model callers.",
-      "kind": "model_tool",
-      "allowedRoles": [
-        "socrates",
-        "global_memory"
-      ],
-      "runtimeScopes": [
-        "turn",
-        "project"
-      ],
-      "executorBinding": "tool_docs",
-      "modelToolName": "tool_docs",
-      "providerSchema": {
-        "type": "object",
-        "properties": {
-          "operation": {
-            "type": "string",
-            "enum": [
-              "search",
-              "read"
-            ]
-          },
-          "area": {
-            "type": "string",
-            "const": "tool_usage"
-          },
-          "path": {
-            "type": "string",
-            "minLength": 1
-          },
-          "query": {
-            "type": "string",
-            "minLength": 1
-          },
-          "searchMode": {
-            "type": "string",
-            "enum": [
-              "exact_phrase",
-              "keyword_all",
-              "keyword_any",
-              "whole_word",
-              "regex"
-            ]
-          },
-          "includeSections": {
-            "type": "boolean"
-          },
-          "limit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 20
-          },
-          "offset": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "contextLines": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 100
-          },
-          "charLimit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 80000
-          }
-        },
-        "required": [
-          "operation"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "hasInputSchema": true,
-      "hasResultSchema": true,
-      "policy": {
-        "approval": "automatic",
-        "sandbox": "backend_authority",
-        "concurrency": "parallel",
-        "retry": "model_correction",
-        "timeout": "runtime_default",
-        "idempotency": "idempotent"
-      },
-      "persistence": {
-        "evidence": "tool_events",
-        "usage": "model_call",
-        "errors": "typed_and_persisted",
-        "audit": "full"
-      },
-      "documentationTitle": "tool_docs",
-      "documentationGuidance": [
-        "Read or search audience-scoped Socrates tool-usage guidance under ~/.Socrates/tool_usage. Main Socrates sees root tool docs; the memory agent sees tool_usage/memory_agent docs. Call before retrying a failed tool, when exact tool behavior is uncertain, or before complex/edge-case tool use. Read-only for model callers."
-      ],
-      "documentationPaths": [
-        "tool_docs.md",
-        "memory_agent/tool_docs.md"
-      ],
-      "source": {
-        "owner": "apps/server",
-        "definitionPath": "packages/core/src/tools/toolDocsTool.ts",
-        "implementationPath": "apps/server/src/services/store/toolDocsStore.ts",
-        "callers": [
-          "packages/core/src/agent/SocratesAgent.ts",
-          "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts",
-          "apps/server/src/services/store/memoryAgentRunner.ts"
-        ],
-        "tests": [
-          "apps/server/src/services/store/memoryDocParser.test.ts"
-        ],
-        "status": "canonical"
-      }
-    },
-    {
-      "id": "tool.skills.manage",
-      "description": "Discover and use Socrates skills, or import one Agent Skill ZIP from an exact user-supplied public HTTPS URL or ZIP attached to the current user message. Call list before domain tools for a saved workflow, named skill, checklist, recurring procedure, closure/handoff request, or specialized task; use describe with the exact canonical id to load SKILL.md, and use read for referenced supporting files. For imports, call preview_import with exactly one url or attachmentPath, report its metadata, conflicts, file counts, and security warnings, then call commit_import only after the user has asked to install that reviewed preview. Project is the default scope. Importing is not web search: never invent or discover a URL, never use Terminal to bypass preview, and never fake skill results.",
-      "kind": "model_tool",
-      "allowedRoles": [
-        "socrates"
-      ],
-      "runtimeScopes": [
-        "turn",
-        "project"
-      ],
-      "executorBinding": "skills",
-      "modelToolName": "skills",
-      "providerSchema": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "list"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "n": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 35
-              },
-              "limit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 50
-              },
-              "offset": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "search"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "query": {
-                "type": "string",
-                "minLength": 1
-              },
-              "n": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 35
-              },
-              "limit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 50
-              },
-              "offset": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "query"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "describe"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Canonical skill id copied from skills list."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "id"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "describe"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Exact listed skill name. Prefer canonical id when available."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "name"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Canonical skill id copied from skills list."
-              },
-              "path": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 240,
-                "description": "Relative supporting file path; defaults to SKILL.md."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "id"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Exact listed skill name. Prefer canonical id when available."
-              },
-              "path": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 240,
-                "description": "Relative supporting file path; defaults to SKILL.md."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "name"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "preview_import"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "global",
-                  "project"
-                ]
-              },
-              "url": {
-                "type": "string",
-                "format": "uri",
-                "maxLength": 2048
-              }
-            },
-            "required": [
-              "operation",
-              "url"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "preview_import"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "global",
-                  "project"
-                ]
-              },
-              "attachmentPath": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 240,
-                "pattern": "^\\.socrates\\/attachments\\/[^/]+\\.zip$"
-              }
-            },
-            "required": [
-              "operation",
-              "attachmentPath"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "commit_import"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "global",
-                  "project"
-                ]
-              },
-              "previewId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80,
-                "pattern": "^skillimp_[a-f0-9]{32}$"
-              },
-              "conflictStrategy": {
-                "type": "string",
-                "enum": [
-                  "reject",
-                  "replace"
-                ]
-              }
-            },
-            "required": [
-              "operation",
-              "previewId"
-            ],
-            "additionalProperties": false
-          }
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object"
-      },
-      "hasInputSchema": true,
-      "hasResultSchema": true,
-      "policy": {
-        "approval": "runtime_policy",
-        "sandbox": "backend_authority",
-        "concurrency": "serialized",
-        "retry": "model_correction",
-        "timeout": "runtime_default",
-        "idempotency": "conditional"
-      },
-      "persistence": {
-        "evidence": "tool_events",
-        "usage": "model_call",
-        "errors": "typed_and_persisted",
-        "audit": "full"
-      },
-      "documentationTitle": "skills",
-      "documentationGuidance": [
-        "Discover and use Socrates skills, or import one Agent Skill ZIP from an exact user-supplied public HTTPS URL or ZIP attached to the current user message. Call list before domain tools for a saved workflow, named skill, checklist, recurring procedure, closure/handoff request, or specialized task; use describe with the exact canonical id to load SKILL.md, and use read for referenced supporting files. For imports, call preview_import with exactly one url or attachmentPath, report its metadata, conflicts, file counts, and security warnings, then call commit_import only after the user has asked to install that reviewed preview. Project is the default scope. Importing is not web search: never invent or discover a URL, never use Terminal to bypass preview, and never fake skill results."
-      ],
-      "documentationPaths": [
-        "skills.md"
-      ],
-      "source": {
-        "owner": "apps/server",
-        "definitionPath": "packages/core/src/tools/skillsTool.ts",
-        "implementationPath": "apps/server/src/services/store/memorySkills.ts",
-        "callers": [
-          "packages/core/src/agent/SocratesAgent.ts",
-          "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
-        ],
-        "tests": [
-          "apps/server/src/services/store/memorySkills.test.ts"
-        ],
-        "status": "canonical"
-      }
-    },
-    {
-      "id": "tool.skills.read",
-      "description": "List, describe, or read supporting files from installed Socrates skills in builtin, global, and project roots. Use list to discover exact ids, describe to load SKILL.md, and read for an exact referenced supporting path. This specialized-agent surface cannot import or mutate skills.",
-      "kind": "model_tool",
-      "allowedRoles": [
-        "global_memory",
-        "skill_writer"
-      ],
-      "runtimeScopes": [
-        "turn",
-        "project"
-      ],
-      "executorBinding": "skills",
-      "modelToolName": "skills",
-      "providerSchema": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "list"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "n": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 35
-              },
-              "limit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 50
-              },
-              "offset": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "search"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "query": {
-                "type": "string",
-                "minLength": 1
-              },
-              "n": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 35
-              },
-              "limit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 50
-              },
-              "offset": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "query"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "describe"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Canonical skill id copied from skills list."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "id"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "describe"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Exact listed skill name. Prefer canonical id when available."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "name"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Canonical skill id copied from skills list."
-              },
-              "path": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 240,
-                "description": "Relative supporting file path; defaults to SKILL.md."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "id"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read"
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
-                ]
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Exact listed skill name. Prefer canonical id when available."
-              },
-              "path": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 240,
-                "description": "Relative supporting file path; defaults to SKILL.md."
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "name"
-            ],
-            "additionalProperties": false
-          }
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object"
-      },
-      "hasInputSchema": true,
-      "hasResultSchema": true,
-      "policy": {
-        "approval": "automatic",
-        "sandbox": "backend_authority",
-        "concurrency": "parallel",
-        "retry": "model_correction",
-        "timeout": "runtime_default",
-        "idempotency": "idempotent"
-      },
-      "persistence": {
-        "evidence": "tool_events",
-        "usage": "model_call",
-        "errors": "typed_and_persisted",
-        "audit": "full"
-      },
-      "documentationTitle": "skills",
-      "documentationGuidance": [
-        "List, describe, or read supporting files from installed Socrates skills in builtin, global, and project roots. Use list to discover exact ids, describe to load SKILL.md, and read for an exact referenced supporting path. This specialized-agent surface cannot import or mutate skills."
-      ],
-      "documentationPaths": [
-        "memory_agent/skills.md"
-      ],
-      "source": {
-        "owner": "apps/server",
-        "definitionPath": "packages/core/src/tools/skillsTool.ts",
-        "implementationPath": "apps/server/src/services/store/memorySkills.ts",
-        "callers": [
-          "apps/server/src/services/store/memoryAgentRunner.ts",
-          "apps/server/src/services/store/skillWriterAgentRunner.ts"
-        ],
-        "tests": [
-          "packages/core/src/test/memoryPrompt.test.ts"
-        ],
-        "status": "canonical"
-      }
-    },
-    {
-      "id": "tool.skill_manager",
-      "description": "Create or delete a reusable project skill only when the user explicitly asks. Create delegates the approved request to the configured structured Skill Writer agent; never write .socrates/skills directly. Delete removes only the exact named project skill after approval. Use skills list or describe to verify the result.",
-      "kind": "model_tool",
-      "allowedRoles": [
-        "socrates"
-      ],
-      "runtimeScopes": [
-        "turn",
-        "project"
-      ],
-      "executorBinding": "skill_manager",
-      "modelToolName": "skill_manager",
-      "providerSchema": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "create"
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 64,
-                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-              },
-              "request": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 4000
-              }
-            },
-            "required": [
-              "operation",
-              "name",
-              "request"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "delete"
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 64,
-                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-              }
-            },
-            "required": [
-              "operation",
-              "name"
-            ],
-            "additionalProperties": false
-          }
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object"
-      },
-      "hasInputSchema": true,
-      "hasResultSchema": true,
-      "policy": {
-        "approval": "runtime_policy",
-        "sandbox": "backend_authority",
-        "concurrency": "serialized",
-        "retry": "model_correction",
-        "timeout": "runtime_default",
-        "idempotency": "conditional"
-      },
-      "persistence": {
-        "evidence": "tool_events",
-        "usage": "model_call",
-        "errors": "typed_and_persisted",
-        "audit": "full"
-      },
-      "documentationTitle": "skill_manager",
-      "documentationGuidance": [
-        "Create or delete a reusable project skill only when the user explicitly asks. Create delegates the approved request to the configured structured Skill Writer agent; never write .socrates/skills directly. Delete removes only the exact named project skill after approval. Use skills list or describe to verify the result."
-      ],
-      "documentationPaths": [],
-      "source": {
-        "owner": "apps/server",
-        "definitionPath": "packages/core/src/tools/skillManagerTool.ts",
-        "implementationPath": "apps/server/src/services/store/memorySkills.ts",
-        "callers": [
-          "packages/core/src/agent/SocratesAgent.ts",
-          "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
-        ],
-        "tests": [
-          "apps/server/src/services/store/memorySkills.test.ts"
         ],
         "status": "canonical"
       }
@@ -2909,728 +1909,8 @@
       }
     },
     {
-      "id": "tool.project_docs",
-      "description": "Read, search, index, or edit workspace-local project docs under .socrates. area=\"memory\" targets MEMORY.md; area=\"notes\" targets PROJECT_NOTES.md, the state ledger, and protected backend-owned runtime_context. Prefer operation=\"read_index\" first, then \"read_section\" or \"patch_section\" by sectionId. For patch_section, provide sectionId plus exact oldText and newText; do not pass text. For append, use operation=\"edit\", editMode=\"append\", and text. Generic edit/apply_patch cannot mutate these files.",
-      "kind": "model_tool",
-      "allowedRoles": [
-        "socrates",
-        "skill_writer"
-      ],
-      "runtimeScopes": [
-        "turn",
-        "project"
-      ],
-      "executorBinding": "project_docs",
-      "modelToolName": "project_docs",
-      "providerSchema": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read"
-              },
-              "area": {
-                "type": "string",
-                "enum": [
-                  "memory",
-                  "notes"
-                ]
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "area"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "search"
-              },
-              "area": {
-                "type": "string",
-                "enum": [
-                  "memory",
-                  "notes"
-                ]
-              },
-              "query": {
-                "type": "string",
-                "minLength": 1
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "area",
-              "query"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read_index"
-              },
-              "area": {
-                "type": "string",
-                "enum": [
-                  "memory",
-                  "notes"
-                ]
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "area"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read_section"
-              },
-              "area": {
-                "type": "string",
-                "enum": [
-                  "memory",
-                  "notes"
-                ]
-              },
-              "sectionId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "area",
-              "sectionId"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "patch_section"
-              },
-              "area": {
-                "type": "string",
-                "enum": [
-                  "memory",
-                  "notes"
-                ]
-              },
-              "sectionId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "oldText": {
-                "type": "string"
-              },
-              "newText": {
-                "type": "string"
-              },
-              "replaceAll": {
-                "type": "boolean"
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "area",
-              "sectionId",
-              "oldText",
-              "newText"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "edit"
-              },
-              "area": {
-                "type": "string",
-                "enum": [
-                  "memory",
-                  "notes"
-                ]
-              },
-              "editMode": {
-                "type": "string",
-                "const": "append"
-              },
-              "text": {
-                "type": "string"
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "area",
-              "editMode",
-              "text"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "edit"
-              },
-              "area": {
-                "type": "string",
-                "enum": [
-                  "memory",
-                  "notes"
-                ]
-              },
-              "editMode": {
-                "type": "string",
-                "const": "replace"
-              },
-              "oldText": {
-                "type": "string"
-              },
-              "newText": {
-                "type": "string"
-              },
-              "replaceAll": {
-                "type": "boolean"
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "area",
-              "editMode",
-              "oldText",
-              "newText"
-            ],
-            "additionalProperties": false
-          }
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object"
-      },
-      "hasInputSchema": true,
-      "hasResultSchema": true,
-      "policy": {
-        "approval": "runtime_policy",
-        "sandbox": "workspace",
-        "concurrency": "serialized",
-        "retry": "model_correction",
-        "timeout": "runtime_default",
-        "idempotency": "conditional"
-      },
-      "persistence": {
-        "evidence": "tool_events",
-        "usage": "model_call",
-        "errors": "typed_and_persisted",
-        "audit": "full"
-      },
-      "documentationTitle": "project_docs",
-      "documentationGuidance": [
-        "Read, search, index, or edit workspace-local project docs under .socrates. area=\"memory\" targets MEMORY.md; area=\"notes\" targets PROJECT_NOTES.md, the state ledger, and protected backend-owned runtime_context. Prefer operation=\"read_index\" first, then \"read_section\" or \"patch_section\" by sectionId. For patch_section, provide sectionId plus exact oldText and newText; do not pass text. For append, use operation=\"edit\", editMode=\"append\", and text. Generic edit/apply_patch cannot mutate these files.",
-        "Use `area: \"memory\"` for `.socrates/MEMORY.md` and `area: \"notes\"` for `.socrates/PROJECT_NOTES.md`; generic workspace editors cannot mutate either authority file."
-      ],
-      "documentationPaths": [
-        "project_docs.md"
-      ],
-      "source": {
-        "owner": "apps/server",
-        "definitionPath": "packages/core/src/tools/projectDocsTool.ts",
-        "implementationPath": "apps/server/src/services/store/memoryStore.ts",
-        "callers": [
-          "packages/core/src/agent/SocratesAgent.ts",
-          "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts",
-          "apps/server/src/services/store/skillWriterAgentRunner.ts"
-        ],
-        "tests": [
-          "apps/server/src/services/store/memoryDocParser.test.ts"
-        ],
-        "status": "canonical"
-      }
-    },
-    {
-      "id": "tool.repo_docs",
-      "description": "Read, search, index, or edit the active workspace's four .socrates/repo_docs/*.md doctrine files. Call this before nontrivial repo work when repo rules, architecture, contracts, workflows, or durable pitfalls may matter. Prefer read_index first, then read_section or patch_section by sectionId. For patch_section, provide path, sectionId, exact oldText, and newText; do not pass text. For whole-doc replacement, use edit with path plus oldText/newText. Generic edit/apply_patch cannot mutate these files.",
-      "kind": "model_tool",
-      "allowedRoles": [
-        "socrates",
-        "skill_writer"
-      ],
-      "runtimeScopes": [
-        "turn",
-        "project"
-      ],
-      "executorBinding": "repo_docs",
-      "modelToolName": "repo_docs",
-      "providerSchema": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read"
-              },
-              "path": {
-                "type": "string",
-                "enum": [
-                  "CORE_IDEA.md",
-                  "REPO_NAVIGATION.md",
-                  "REPO_RULES.md",
-                  "CONTRACTS.md"
-                ]
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "search"
-              },
-              "path": {
-                "type": "string",
-                "enum": [
-                  "CORE_IDEA.md",
-                  "REPO_NAVIGATION.md",
-                  "REPO_RULES.md",
-                  "CONTRACTS.md"
-                ]
-              },
-              "query": {
-                "type": "string",
-                "minLength": 1
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "query"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read_index"
-              },
-              "path": {
-                "type": "string",
-                "enum": [
-                  "CORE_IDEA.md",
-                  "REPO_NAVIGATION.md",
-                  "REPO_RULES.md",
-                  "CONTRACTS.md"
-                ]
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "read_section"
-              },
-              "path": {
-                "type": "string",
-                "enum": [
-                  "CORE_IDEA.md",
-                  "REPO_NAVIGATION.md",
-                  "REPO_RULES.md",
-                  "CONTRACTS.md"
-                ]
-              },
-              "sectionId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "path",
-              "sectionId"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "patch_section"
-              },
-              "path": {
-                "type": "string",
-                "enum": [
-                  "CORE_IDEA.md",
-                  "REPO_NAVIGATION.md",
-                  "REPO_RULES.md",
-                  "CONTRACTS.md"
-                ]
-              },
-              "sectionId": {
-                "type": "string",
-                "minLength": 1
-              },
-              "oldText": {
-                "type": "string"
-              },
-              "newText": {
-                "type": "string"
-              },
-              "replaceAll": {
-                "type": "boolean"
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "path",
-              "sectionId",
-              "oldText",
-              "newText"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "const": "edit"
-              },
-              "path": {
-                "type": "string",
-                "enum": [
-                  "CORE_IDEA.md",
-                  "REPO_NAVIGATION.md",
-                  "REPO_RULES.md",
-                  "CONTRACTS.md"
-                ]
-              },
-              "oldText": {
-                "type": "string"
-              },
-              "newText": {
-                "type": "string"
-              },
-              "replaceAll": {
-                "type": "boolean"
-              },
-              "charLimit": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 80000
-              }
-            },
-            "required": [
-              "operation",
-              "path",
-              "oldText",
-              "newText"
-            ],
-            "additionalProperties": false
-          }
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object"
-      },
-      "hasInputSchema": true,
-      "hasResultSchema": true,
-      "policy": {
-        "approval": "runtime_policy",
-        "sandbox": "workspace",
-        "concurrency": "serialized",
-        "retry": "model_correction",
-        "timeout": "runtime_default",
-        "idempotency": "conditional"
-      },
-      "persistence": {
-        "evidence": "tool_events",
-        "usage": "model_call",
-        "errors": "typed_and_persisted",
-        "audit": "full"
-      },
-      "documentationTitle": "repo_docs",
-      "documentationGuidance": [
-        "Read, search, index, or edit the active workspace's four .socrates/repo_docs/*.md doctrine files. Call this before nontrivial repo work when repo rules, architecture, contracts, workflows, or durable pitfalls may matter. Prefer read_index first, then read_section or patch_section by sectionId. For patch_section, provide path, sectionId, exact oldText, and newText; do not pass text. For whole-doc replacement, use edit with path plus oldText/newText. Generic edit/apply_patch cannot mutate these files."
-      ],
-      "documentationPaths": [
-        "repo_docs.md"
-      ],
-      "source": {
-        "owner": "apps/server",
-        "definitionPath": "packages/core/src/tools/repoDocsTool.ts",
-        "implementationPath": "apps/server/src/services/store/memoryStore.ts",
-        "callers": [
-          "packages/core/src/agent/SocratesAgent.ts",
-          "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts",
-          "apps/server/src/services/store/skillWriterAgentRunner.ts"
-        ],
-        "tests": [
-          "apps/server/src/services/store/memoryDocParser.test.ts"
-        ],
-        "status": "canonical"
-      }
-    },
-    {
-      "id": "tool.soul",
-      "description": "Read-only access to Socrates core identity document. Call this when the user asks about Socrates' soul, identity, voice, operating principles, safety boundaries, or exact stored self-description. Prefer read_index first, then read_section with a known sectionId for focused context. Use full read only when the whole identity document is genuinely needed; it returns bounded markdown and should use a tight charLimit. This is not the user profile. This tool cannot edit identity; identity updates are backend-memory-agent controlled.",
-      "kind": "model_tool",
-      "allowedRoles": [
-        "socrates",
-        "global_memory",
-        "skill_writer"
-      ],
-      "runtimeScopes": [
-        "turn",
-        "global"
-      ],
-      "executorBinding": "soul",
-      "modelToolName": "soul",
-      "providerSchema": {
-        "type": "object",
-        "properties": {
-          "operation": {
-            "type": "string",
-            "enum": [
-              "read",
-              "read_index",
-              "read_section"
-            ]
-          },
-          "sectionId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "charLimit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 80000
-          }
-        },
-        "required": [
-          "operation"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "hasInputSchema": true,
-      "hasResultSchema": true,
-      "policy": {
-        "approval": "automatic",
-        "sandbox": "backend_authority",
-        "concurrency": "parallel",
-        "retry": "model_correction",
-        "timeout": "runtime_default",
-        "idempotency": "idempotent"
-      },
-      "persistence": {
-        "evidence": "tool_events",
-        "usage": "model_call",
-        "errors": "typed_and_persisted",
-        "audit": "full"
-      },
-      "documentationTitle": "soul",
-      "documentationGuidance": [
-        "Read-only access to Socrates core identity document. Call this when the user asks about Socrates' soul, identity, voice, operating principles, safety boundaries, or exact stored self-description. Prefer read_index first, then read_section with a known sectionId for focused context. Use full read only when the whole identity document is genuinely needed; it returns bounded markdown and should use a tight charLimit. This is not the user profile. This tool cannot edit identity; identity updates are backend-memory-agent controlled."
-      ],
-      "documentationPaths": [
-        "soul.md",
-        "memory_agent/soul.md"
-      ],
-      "source": {
-        "owner": "apps/server",
-        "definitionPath": "packages/core/src/tools/soulTool.ts",
-        "implementationPath": "apps/server/src/services/store/memoryStore.ts",
-        "callers": [
-          "packages/core/src/agent/SocratesAgent.ts",
-          "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts",
-          "apps/server/src/services/store/memoryAgentRunner.ts",
-          "apps/server/src/services/store/skillWriterAgentRunner.ts"
-        ],
-        "tests": [
-          "apps/server/src/services/store/memoryDocParser.test.ts"
-        ],
-        "status": "canonical"
-      }
-    },
-    {
-      "id": "tool.user_profile",
-      "description": "Read-only access to the global user profile and stable cross-project preferences. Call this when the user asks what Socrates knows about them, asks about their preferences/profile, or when durable user context would materially improve an answer. Prefer read_index first, then read_section with a known sectionId for focused context. Use full read only when the whole profile is genuinely needed; it returns bounded markdown and should use a tight charLimit. This tool cannot edit the profile; user_profile updates are backend-memory-agent controlled.",
-      "kind": "model_tool",
-      "allowedRoles": [
-        "socrates",
-        "global_memory",
-        "skill_writer"
-      ],
-      "runtimeScopes": [
-        "turn",
-        "global"
-      ],
-      "executorBinding": "user_profile",
-      "modelToolName": "user_profile",
-      "providerSchema": {
-        "type": "object",
-        "properties": {
-          "operation": {
-            "type": "string",
-            "enum": [
-              "read",
-              "read_index",
-              "read_section"
-            ]
-          },
-          "sectionId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "charLimit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 80000
-          }
-        },
-        "required": [
-          "operation"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "hasInputSchema": true,
-      "hasResultSchema": true,
-      "policy": {
-        "approval": "automatic",
-        "sandbox": "backend_authority",
-        "concurrency": "parallel",
-        "retry": "model_correction",
-        "timeout": "runtime_default",
-        "idempotency": "idempotent"
-      },
-      "persistence": {
-        "evidence": "tool_events",
-        "usage": "model_call",
-        "errors": "typed_and_persisted",
-        "audit": "full"
-      },
-      "documentationTitle": "user_profile",
-      "documentationGuidance": [
-        "Read-only access to the global user profile and stable cross-project preferences. Call this when the user asks what Socrates knows about them, asks about their preferences/profile, or when durable user context would materially improve an answer. Prefer read_index first, then read_section with a known sectionId for focused context. Use full read only when the whole profile is genuinely needed; it returns bounded markdown and should use a tight charLimit. This tool cannot edit the profile; user_profile updates are backend-memory-agent controlled."
-      ],
-      "documentationPaths": [
-        "user_profile.md",
-        "memory_agent/user_profile.md"
-      ],
-      "source": {
-        "owner": "apps/server",
-        "definitionPath": "packages/core/src/tools/userProfileTool.ts",
-        "implementationPath": "apps/server/src/services/store/memoryStore.ts",
-        "callers": [
-          "packages/core/src/agent/SocratesAgent.ts",
-          "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts",
-          "apps/server/src/services/store/memoryAgentRunner.ts",
-          "apps/server/src/services/store/skillWriterAgentRunner.ts"
-        ],
-        "tests": [
-          "apps/server/src/services/store/memoryDocParser.test.ts"
-        ],
-        "status": "canonical"
-      }
-    },
-    {
-      "id": "tool.list_project_resources",
-      "description": "List active project resources known to Socrates, especially uploaded files stored under .socrates/resources. Optional inputs: kind and limit. Use this before shell directory probing when the user asks about uploaded project files.",
+      "id": "tool.capability_manager",
+      "description": "Manage installed skills and MCP servers only when the user asks to add, update, enable, disable, or remove one. Skill create/update delegates to the Skill Writer; skill imports use the secure preview then commit flow. MCP configure validates before enabling and collects declared secrets through private credential input. Discovery is handled by automatic capability retrieval and read/search under socrates://capabilities, not by this tool.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates"
@@ -3639,84 +1919,8 @@
         "turn",
         "project"
       ],
-      "executorBinding": "list_project_resources",
-      "modelToolName": "list_project_resources",
-      "providerSchema": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "pdf",
-              "document",
-              "text",
-              "image",
-              "url",
-              "local_file",
-              "note",
-              "other"
-            ]
-          },
-          "limit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 100
-          }
-        },
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "hasInputSchema": true,
-      "hasResultSchema": true,
-      "policy": {
-        "approval": "automatic",
-        "sandbox": "workspace",
-        "concurrency": "parallel",
-        "retry": "model_correction",
-        "timeout": "runtime_default",
-        "idempotency": "idempotent"
-      },
-      "persistence": {
-        "evidence": "tool_events",
-        "usage": "model_call",
-        "errors": "typed_and_persisted",
-        "audit": "full"
-      },
-      "documentationTitle": "list_project_resources",
-      "documentationGuidance": [
-        "List active project resources known to Socrates, especially uploaded files stored under .socrates/resources. Optional inputs: kind and limit. Use this before shell directory probing when the user asks about uploaded project files."
-      ],
-      "documentationPaths": [
-        "list_project_resources.md"
-      ],
-      "source": {
-        "owner": "apps/server",
-        "definitionPath": "packages/core/src/tools/listProjectResourcesTool.ts",
-        "implementationPath": "apps/server/src/services/mainToolExecutors.ts",
-        "callers": [
-          "packages/core/src/agent/SocratesAgent.ts",
-          "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
-        ],
-        "tests": [
-          "apps/server/src/test/server.test.ts"
-        ],
-        "status": "canonical"
-      }
-    },
-    {
-      "id": "tool.mcp_registry",
-      "description": "Discover, validate, add, or delete Model Context Protocol servers. When a user asks for a helper, extension, server, integration, or custom capability, use list then describe with the canonical id. When the user explicitly asks to add a server and provides its trusted command/config, configure saves it disabled, checks the handshake/tools, and enables only on success. Declare required secret key names in secretBindings; never read, request, infer, or provide secret values yourself. Use source=workspace_env only when the user explicitly asked to reuse that exact key from a workspace .env file; otherwise use source=user_input so Socrates can collect it privately. Use delete only after an explicit user request. Do not invent packages, commands, URLs, or credentials.",
-      "kind": "model_tool",
-      "allowedRoles": [
-        "socrates"
-      ],
-      "runtimeScopes": [
-        "turn",
-        "project"
-      ],
-      "executorBinding": "mcp_registry",
-      "modelToolName": "mcp_registry",
+      "executorBinding": "capability_manager",
+      "modelToolName": "capability_manager",
       "providerSchema": {
         "anyOf": [
           {
@@ -3724,44 +1928,32 @@
             "properties": {
               "operation": {
                 "type": "string",
-                "const": "list"
+                "const": "skill_create"
               },
-              "n": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 35
-              }
-            },
-            "required": [
-              "operation"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "operation": {
+              "scope": {
                 "type": "string",
-                "const": "describe"
-              },
-              "id": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Canonical MCP id copied from mcp_registry list. Prefer this for describe."
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
               },
               "name": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Exact listed MCP display name. Use only when matching by name."
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
               },
-              "n": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 35
+              "request": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
               }
             },
             "required": [
-              "operation"
+              "operation",
+              "name",
+              "request"
             ],
             "additionalProperties": false
           },
@@ -3770,7 +1962,215 @@
             "properties": {
               "operation": {
                 "type": "string",
-                "const": "check"
+                "const": "skill_update"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              },
+              "request": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              }
+            },
+            "required": [
+              "operation",
+              "name",
+              "request"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "skill_delete"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              }
+            },
+            "required": [
+              "operation",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "skill_enable"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              }
+            },
+            "required": [
+              "operation",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "skill_disable"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              }
+            },
+            "required": [
+              "operation",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "skill_preview_import"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "maxLength": 2048
+              }
+            },
+            "required": [
+              "operation",
+              "url"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "skill_preview_import"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
+              },
+              "attachmentPath": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240,
+                "pattern": "^\\.socrates\\/attachments\\/[^/]+\\.zip$"
+              }
+            },
+            "required": [
+              "operation",
+              "attachmentPath"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "skill_commit_import"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "global",
+                  "path"
+                ],
+                "default": "path"
+              },
+              "previewId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "pattern": "^skillimp_[a-f0-9]{32}$"
+              },
+              "conflictStrategy": {
+                "type": "string",
+                "enum": [
+                  "reject",
+                  "replace"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "previewId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "mcp_check"
               },
               "id": {
                 "type": "string",
@@ -3788,15 +2188,15 @@
             "properties": {
               "operation": {
                 "type": "string",
-                "const": "configure"
+                "const": "mcp_configure"
               },
               "scope": {
                 "type": "string",
                 "enum": [
                   "global",
-                  "project"
+                  "path"
                 ],
-                "default": "project"
+                "default": "path"
               },
               "server": {
                 "type": "object",
@@ -3877,15 +2277,15 @@
             "properties": {
               "operation": {
                 "type": "string",
-                "const": "delete"
+                "const": "mcp_delete"
               },
               "scope": {
                 "type": "string",
                 "enum": [
                   "global",
-                  "project"
+                  "path"
                 ],
-                "default": "project"
+                "default": "path"
               },
               "id": {
                 "type": "string",
@@ -3918,24 +2318,25 @@
         "errors": "typed_and_persisted",
         "audit": "full"
       },
-      "documentationTitle": "mcp_registry",
+      "documentationTitle": "capability_manager",
       "documentationGuidance": [
-        "Discover, validate, add, or delete Model Context Protocol servers. When a user asks for a helper, extension, server, integration, or custom capability, use list then describe with the canonical id. When the user explicitly asks to add a server and provides its trusted command/config, configure saves it disabled, checks the handshake/tools, and enables only on success. Declare required secret key names in secretBindings; never read, request, infer, or provide secret values yourself. Use source=workspace_env only when the user explicitly asked to reuse that exact key from a workspace .env file; otherwise use source=user_input so Socrates can collect it privately. Use delete only after an explicit user request. Do not invent packages, commands, URLs, or credentials."
+        "Manage installed skills and MCP servers only when the user asks to add, update, enable, disable, or remove one. Skill create/update delegates to the Skill Writer; skill imports use the secure preview then commit flow. MCP configure validates before enabling and collects declared secrets through private credential input. Discovery is handled by automatic capability retrieval and read/search under socrates://capabilities, not by this tool.",
+        "Automatic retrieval and socrates://capabilities search handle discovery. Use this manager only to check or mutate skills and MCP configuration; mutations require approval."
       ],
       "documentationPaths": [
-        "mcp_registry.md"
+        "capability_manager.md"
       ],
       "source": {
-        "owner": "packages/mcp",
-        "definitionPath": "packages/core/src/tools/mcpRegistryTool.ts",
-        "implementationPath": "packages/mcp/src/index.ts",
+        "owner": "apps/server",
+        "definitionPath": "packages/core/src/tools/capabilityManagerTool.ts",
+        "implementationPath": "apps/server/src/services/mainToolExecutors.ts",
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
           "apps/server/src/v2/runtime.ts"
         ],
         "tests": [
-          "packages/mcp/src/index.test.ts"
+          "apps/server/src/services/resources/socratesResourceService.test.ts"
         ],
         "status": "canonical"
       }
@@ -4457,6 +2858,50 @@
         "runtime"
       ],
       "executorBinding": "retrieval.memory_candidates",
+      "hasInputSchema": true,
+      "hasResultSchema": true,
+      "policy": {
+        "approval": "not_applicable",
+        "sandbox": "backend_authority",
+        "concurrency": "single_flight",
+        "retry": "runtime_owned",
+        "timeout": "runtime_default",
+        "idempotency": "idempotent"
+      },
+      "persistence": {
+        "evidence": "lifecycle_receipt",
+        "usage": "none",
+        "errors": "typed_and_persisted",
+        "audit": "summary"
+      },
+      "documentationGuidance": [],
+      "documentationPaths": [],
+      "source": {
+        "owner": "apps/server",
+        "definitionPath": "packages/core/src/capabilities/CapabilityCatalog.ts",
+        "implementationPath": "apps/server/src/services/turn/turnCandidateRetrieval.ts",
+        "callers": [
+          "apps/server/src/services/turn/turnCandidateRetrieval.ts"
+        ],
+        "tests": [
+          "apps/server/src/test/v2FlowRuntime.test.ts"
+        ],
+        "status": "canonical"
+      }
+    },
+    {
+      "id": "retrieval.capability_candidates",
+      "description": "Retrieve ranked installed skill and MCP capability candidates in parallel with goal and memory candidates.",
+      "kind": "automatic_retrieval",
+      "allowedRoles": [
+        "socrates"
+      ],
+      "runtimeScopes": [
+        "project",
+        "global",
+        "runtime"
+      ],
+      "executorBinding": "retrieval.capability_candidates",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {

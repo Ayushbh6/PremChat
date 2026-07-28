@@ -217,6 +217,10 @@ export class ConversationTerminalManager {
     if (operation === "start") {
       return this.startTerminal(input, context, false)
     }
+    if (operation === "inspect") {
+      const output = await this.terminalOutput(input, context)
+      return { ...output, operation: "inspect" }
+    }
     if (operation === "status") {
       return this.terminalStatus(input, context)
     }

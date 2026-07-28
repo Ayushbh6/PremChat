@@ -38,7 +38,7 @@ describe("CapabilityCatalog", () => {
       (capability): capability is ModelToolCapabilityDefinition => capability.kind === "model_tool",
     )
 
-    expect(tools).toHaveLength(28)
+    expect(tools).toHaveLength(19)
     for (const capability of tools) {
       expect(capability.providerProjection.inputSchema).toBe(capability.tool.inputSchema)
       expect(capability.providerProjection.resultSchema).toBe(capability.tool.resultSchema)
@@ -60,6 +60,21 @@ describe("CapabilityCatalog", () => {
       capabilityCatalog.resolve(socratesMainAgentDefinition.roleManifest).getCapability("read")!,
       capabilityCatalog.resolve(socratesMainAgentDefinition.roleManifest).getCapability("read")!,
     ])).toThrow(/duplicate model tool read/)
+    expect(capabilityCatalog.resolve(socratesMainAgentDefinition.roleManifest).list().map((capability) => capability.tool.name)).toEqual([
+      "read",
+      "search",
+      "url_fetch",
+      "edit",
+      "apply_patch",
+      "bash",
+      "wait",
+      "handover_to_frontier",
+      "current_time",
+      "trace_retrieve",
+      "capability_manager",
+      "memory_note",
+      "context_disposition",
+    ])
   })
 
   it("catalogs every Classic and Flow user command with its canonical strict schema", () => {

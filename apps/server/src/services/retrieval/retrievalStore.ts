@@ -1,5 +1,6 @@
 import path from "node:path"
 import type {
+  CapabilityCandidateRetrieval,
   GoalCandidateRetrieval,
   MemoryDocIndex,
   MemoryCandidateQuery,
@@ -9,7 +10,7 @@ import type {
   TraceRetrieveMainToolOutput,
   TraceRetrieveVisibleStatus,
 } from "@socrates/contracts"
-import { goalCandidateRetrievalSchema, memoryCandidateRetrievalSchema } from "@socrates/contracts"
+import { capabilityCandidateRetrievalSchema, goalCandidateRetrievalSchema, memoryCandidateRetrievalSchema } from "@socrates/contracts"
 import type { RankedRetrievalParent } from "@socrates/core"
 import { sha256Hex } from "@socrates/core"
 import { createId, nowIso, SocratesError } from "@socrates/shared"
@@ -23,11 +24,11 @@ import {
 } from "../../db/schema"
 import type { EmbeddingStore } from "../store/embeddingStore"
 import type { StoreContext } from "../store/shared"
-import { canonicalMemoryParentId, loadCanonicalGoalRows, loadCanonicalMemoryRows, loadCanonicalTraceRows } from "./canonicalSources"
+import { canonicalMemoryParentId, loadCanonicalCapabilityRows, loadCanonicalGoalRows, loadCanonicalMemoryRows, loadCanonicalTraceRows } from "./canonicalSources"
 import { LanceDbIndex } from "./lanceDbIndex"
 import type { RetrievalIndexRow, RetrievalSearchFilters, RetrievalSearchMode } from "./types"
 
-const RETRIEVAL_INDEX_VERSION = 3
+const RETRIEVAL_INDEX_VERSION = 4
 const EMBEDDING_BATCH_SIZE = 16
 
 type RetrievalStateRow = typeof retrievalIndexStates.$inferSelect
@@ -42,7 +43,7 @@ export class RetrievalStore {
   constructor(
     private readonly context: StoreContext,
     private readonly embeddings: EmbeddingStore,
-    socratesHome: string,
+    private readonly socratesHome: string,
   ) {
     this.lance = new LanceDbIndex(path.join(socratesHome, "retrieval", "lance"))
   }
@@ -277,6 +278,36 @@ export class RetrievalStore {
     })
   }
 
+  async retrieveCapabilityCandidates(projectId: string, query: string, limit = 5): Promise<CapabilityCandidateRetrieval> {
+    const ranked = await this.search({
+      projectId,
+      query,
+      mode: "combined",
+      filters: { corpusKind: "capability_card", scope: "all" },
+      limit: Math.max(1, Math.min(8, limit)),
+      automaticFallback: true,
+    })
+    return capabilityCandidateRetrievalSchema.parse({
+      results: ranked.map((result) => {
+        const [kind, rawScope, ...nameParts] = result.parentId.split(":")
+        const name = nameParts.join(":") || result.metadata.sectionHeading
+        const scope = rawScope === "project" ? "path" : rawScope
+        return {
+          resultNumber: result.rank,
+          id: result.parentId,
+          kind,
+          name,
+          description: result.content,
+          scope,
+          uri: kind === "skill"
+            ? `socrates://skills/${scope}/${encodeURIComponent(name)}`
+            : `socrates://capabilities/${encodeURIComponent(result.parentId)}`,
+        }
+      }),
+      totalMatches: ranked.length,
+    })
+  }
+
   status(projectId: string): RetrievalStateRow | undefined {
     return this.state(projectId)
   }
@@ -350,7 +381,8 @@ export class RetrievalStore {
       const traceRows = loadCanonicalTraceRows(this.context.handle, projectId)
       const memoryRows = loadCanonicalMemoryRows(this.context.handle, projectId)
       const goalRows = loadCanonicalGoalRows(this.context.handle, projectId)
-      const embedded = await this.attachVectors(projectId, [...traceRows, ...memoryRows, ...goalRows])
+      const capabilityRows = loadCanonicalCapabilityRows(this.context.handle, projectId, this.socratesHome)
+      const embedded = await this.attachVectors(projectId, [...traceRows, ...memoryRows, ...goalRows, ...capabilityRows])
       if (embedded.configFingerprint !== this.activeEmbeddingFingerprint(projectId)) {
         const completedAt = nowIso()
         this.writeState(projectId, { status: "rebuilding", vectorReady: false, lastError: null })

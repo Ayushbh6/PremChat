@@ -156,9 +156,9 @@ describe("AI SDK provider metadata", () => {
   })
 
   it("uses the catalog projection while retaining the canonical runtime schema", () => {
-    expect(editToolInputSchema.safeParse({ path: "README.md", oldString: "old", newString: "new" }).success).toBe(true)
+    expect(editToolInputSchema.safeParse({ path: "README.md", edits: [{ oldString: "old", newString: "new" }] }).success).toBe(true)
     expect(editToolInputSchema.safeParse({ path: "README.md", content: "new" }).success).toBe(true)
-    expect(editToolInputSchema.safeParse({ path: "README.md", content: "new", oldString: "old", newString: "new" }).success).toBe(false)
+    expect(editToolInputSchema.safeParse({ path: "README.md", content: "new", edits: [{ oldString: "old", newString: "new" }] }).success).toBe(false)
   })
 
   it("passes the exact catalog schema to AI SDK and validates with the canonical schema", async () => {
@@ -168,8 +168,14 @@ describe("AI SDK provider metadata", () => {
       required: ["path"],
       properties: {
         path: { type: "string" },
-        oldString: { type: "string" },
-        newString: { type: "string" },
+        edits: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["oldString", "newString"],
+            properties: { oldString: { type: "string" }, newString: { type: "string" }, replaceAll: { type: "boolean" } },
+          },
+        },
         content: { type: "string" },
         overwrite: { enum: [true] },
       },
@@ -184,21 +190,26 @@ describe("AI SDK provider metadata", () => {
 
     expect(schema.jsonSchema).toBe(providerInputSchema)
 
-    await expect(Promise.resolve(schema.validate?.({ path: "README.md", oldString: "old", newString: "new" }))).resolves.toEqual({
+    await expect(Promise.resolve(schema.validate?.({ path: "README.md", edits: [{ oldString: "old", newString: "new" }] }))).resolves.toEqual({
       success: true,
-      value: { path: "README.md", oldString: "old", newString: "new" },
+      value: { path: "README.md", edits: [{ oldString: "old", newString: "new" }] },
     })
     await expect(Promise.resolve(schema.validate?.({ path: "README.md", content: "new", overwrite: true }))).resolves.toEqual({
       success: true,
       value: { path: "README.md", content: "new", overwrite: true },
     })
     await expect(Promise.resolve(schema.validate?.({ path: "README.md", content: "new", overwrite: false }))).resolves.toMatchObject({ success: false })
-    const invalid = await Promise.resolve(schema.validate?.({ path: "README.md", content: "new", oldString: "old", newString: "new" }))
+    const invalid = await Promise.resolve(schema.validate?.({ path: "README.md", content: "new", edits: [{ oldString: "old", newString: "new" }] }))
     expect(invalid?.success).toBe(false)
   })
 
   it("rejects malformed Terminal calls instead of repairing provider output", async () => {
-    const providerInputSchema = { type: "object", additionalProperties: false, properties: { command: { type: "string" }, argv: { type: "array", items: { type: "string" } } } }
+    const providerInputSchema = {
+      oneOf: [
+        { type: "object", additionalProperties: false, required: ["operation", "command"], properties: { operation: { const: "run" }, command: { type: "string" } } },
+        { type: "object", additionalProperties: false, required: ["operation", "name"], properties: { operation: { const: "inspect" }, name: { type: "string" } } },
+      ],
+    }
     const schema = inputSchemaForAiTool({
       name: "bash",
       description: "Run a Terminal command.",
@@ -208,7 +219,11 @@ describe("AI SDK provider metadata", () => {
     }) as Schema
 
     expect(schema.jsonSchema).toBe(providerInputSchema)
-    await expect(Promise.resolve(schema.validate?.({ command: "pnpm run build", argv: ["pnpm", "run", "build"] }))).resolves.toMatchObject({ success: false })
+    await expect(Promise.resolve(schema.validate?.({ operation: "run", command: "pnpm run build" }))).resolves.toEqual({
+      success: true,
+      value: { operation: "run", command: "pnpm run build" },
+    })
+    await expect(Promise.resolve(schema.validate?.({ command: "pnpm run build" }))).resolves.toMatchObject({ success: false })
     await expect(Promise.resolve(schema.validate?.({ operation: "start", argv: ["pnpm", "dev"] }))).resolves.toMatchObject({ success: false })
   })
 

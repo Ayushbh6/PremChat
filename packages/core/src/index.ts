@@ -147,7 +147,7 @@ export type {
   ModelToolCapabilityDefinition,
 } from "./capabilities/CapabilityDefinition"
 export { canonicalProviderInputSchema, projectModelTool } from "./capabilities/providerProjection"
-export type { ApprovalDecision, ApprovalRequest, ToolExecutorContext, ToolExecutors, ToolLifecycleEvent } from "./tools/types"
+export type { ApprovalDecision, ApprovalRequest, FileFreshnessTracker, ToolExecutorContext, ToolExecutors, ToolLifecycleEvent } from "./tools/types"
 export * from "./retrieval"
 export * from "./v2"
 export { SOCRATES_SURFACES, renderSocratesSurfaceMap, socratesSurface, type SocratesSurface } from "@socrates/contracts"

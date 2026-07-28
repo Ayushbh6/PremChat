@@ -6,10 +6,8 @@ import { z } from "zod"
 import { SocratesAgent, capabilityCatalog, socratesMainAgentDefinition, type SocratesAgentEvent, type ToolExecutors } from "../index"
 import type { ModelEvent, ModelMessage, ModelProvider } from "@socrates/providers"
 import { bashTool } from "../tools/bashTool"
+import { capabilityManagerTool } from "../tools/capabilityManagerTool"
 import { frontierHandoverTool } from "../tools/frontierHandoverTool"
-import { mcpRegistryTool } from "../tools/mcpRegistryTool"
-import { skillManagerTool } from "../tools/skillManagerTool"
-import { skillsTool } from "../tools/skillsTool"
 
 describe("SocratesAgent", () => {
   it("streams through the provider with Socrates prompt and history", async () => {
@@ -50,17 +48,17 @@ describe("SocratesAgent", () => {
     expect(requestJson).toContain("do not mutate user workspace artifacts")
     expect(requestJson).toContain("project-doc reconciliation remains governed by the durable-state rules")
     expect(requestJson).toContain("Product copy says Terminal; tool id is bash")
-    expect(requestJson).toContain("tool_docs")
-    expect(requestJson).toContain("skills")
-    expect(requestJson).toContain("closure/handoff request")
+    expect(requestJson).toContain("socrates://tool-guidance")
+    expect(requestJson).toContain("socrates://skills")
+    expect(requestJson).toContain("search `socrates://capabilities`")
     expect(requestJson).toContain("current_time")
-    expect(requestJson).toContain("project_docs")
-    expect(requestJson).toContain("Use regex=true for regex syntax")
+    expect(requestJson).toContain("socrates://project/memory")
+    expect(requestJson).toContain("Use regex=true only for regex syntax")
     expect(requestJson).toContain(".socrates/MEMORY.md")
     expect(requestJson).toContain("live cross-conversation project memory")
     expect(requestJson).toContain("active assistant notebook")
     expect(requestJson).toContain("Durable-state operating loop")
-    expect(requestJson).toContain("repo_docs")
+    expect(requestJson).toContain("socrates://project/repo-docs")
     expect(requestJson).toContain("A separate Global Memory Agent runs in the background")
     expect(requestJson).toContain("A genuine user instruction not to remember")
     expect(requestJson).toContain("Interpret intent from the full semantic meaning, not by keyword")
@@ -463,13 +461,11 @@ describe("SocratesAgent", () => {
       },
     }
     const executors = emptyToolExecutors()
-    executors.soul = async (input) => ({
-      operation: input.operation,
-      path: "identity.md",
-      content: input.sectionId === "core_identity" ? "Calm, exact, and collaborative." : "Warm and direct.",
-      section: memoryDocSection(input.sectionId ?? "core_identity", input.sectionId === "core_identity" ? "Calm, exact, and collaborative." : "Warm and direct."),
-      truncation: { truncated: false, charLimit: 4_000, returnedLength: 30 },
-    })
+    executors.read = async (input) => {
+      const sectionId = String(input.path).split("/").at(-1) ?? "core_identity"
+      const content = sectionId === "core_identity" ? "Calm, exact, and collaborative." : "Warm and direct."
+      return governedResourceOutput(input.path, content)
+    }
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
@@ -506,7 +502,7 @@ describe("SocratesAgent", () => {
 
   it("uses a backend stable snapshot without emitting standing or routed reads", async () => {
     const requests: Array<{ messages: ModelMessage[] }> = []
-    const projectDocsInputs: unknown[] = []
+    const readInputs: unknown[] = []
     const provider: ModelProvider = {
       countTokens: fakeCountTokens,
       async *stream(request) {
@@ -516,10 +512,9 @@ describe("SocratesAgent", () => {
       },
     }
     const executors = emptyToolExecutors()
-    executors.project_docs = async (input) => {
-      projectDocsInputs.push(input)
-      if (input.operation !== "read_section") throw new Error(`Unexpected project_docs operation: ${input.operation}`)
-      return projectDocsSectionOutput(input.area, input.sectionId, "- Dynamic note.")
+    executors.read = async (input) => {
+      readInputs.push(input)
+      return governedResourceOutput(input.path, "- Dynamic note.")
     }
 
     const events: SocratesAgentEvent[] = []
@@ -558,7 +553,7 @@ describe("SocratesAgent", () => {
       events.push(event)
     }
 
-    expect(projectDocsInputs).toEqual([])
+    expect(readInputs).toEqual([])
     expect(events.filter((event) => event.type === "tool.call.started")).toEqual([])
     const messages = requests.find((request) => JSON.stringify(request.messages).includes("socrates_stable_cache_prelude"))?.messages ?? []
     const serializedMessages = JSON.stringify(messages)
@@ -580,13 +575,11 @@ describe("SocratesAgent", () => {
         },
       }
       const executors = emptyToolExecutors()
-      executors.soul = async (input) => ({
-        operation: input.operation,
-        path: "identity.md",
-        content: input.sectionId === "core_identity" ? identityCore : "Stable voice section.",
-        section: memoryDocSection(input.sectionId ?? "core_identity", input.sectionId === "core_identity" ? identityCore : "Stable voice section."),
-        truncation: { truncated: false, charLimit: 4_000, returnedLength: identityCore.length },
-      })
+      executors.read = async (input) => {
+        const sectionId = String(input.path).split("/").at(-1)
+        const content = sectionId === "core_identity" ? identityCore : "Stable voice section."
+        return governedResourceOutput(input.path, content)
+      }
       const agent = new SocratesAgent(provider)
       for await (const _event of agent.streamTurn({
       completionMode: "worker_text",
@@ -637,25 +630,12 @@ describe("SocratesAgent", () => {
       "handover_to_frontier",
       "current_time",
       "trace_retrieve",
-      "tool_docs",
-      "skills",
-      "skill_manager",
-      "project_docs",
-      "repo_docs",
-      "soul",
-      "user_profile",
-      "list_project_resources",
-      "mcp_registry",
+      "capability_manager",
       "memory_note",
       "context_disposition",
     ])
     expect(tools.map((tool) => tool.name).some((name) => name.startsWith("mcp__playwright__"))).toBe(false)
-    expect(tools.find((tool) => tool.name === "mcp_registry")?.description).toContain("helper, extension, server")
-    expect(tools.find((tool) => tool.name === "mcp_registry")?.description).toContain("canonical id")
-    expect(tools.find((tool) => tool.name === "skills")?.description).toContain("saved workflow")
-    expect(tools.find((tool) => tool.name === "skills")?.description).toContain("closure/handoff request")
-    expect(tools.find((tool) => tool.name === "skills")?.description).toContain("canonical id")
-    expect(tools.find((tool) => tool.name === "skills")?.description).toContain("preview_import")
+    expect(tools.find((tool) => tool.name === "capability_manager")?.description).toContain("skills and MCP")
     expect(tools.find((tool) => tool.name === "memory_note")?.description).toContain("Memory Agent")
     expect(tools.find((tool) => tool.name === "memory_note")?.description).toContain("not to remember")
     expect(tools.find((tool) => tool.name === "edit")?.inputSchema.safeParse({ path: "README.md", content: "new" }).success).toBe(true)
@@ -889,16 +869,16 @@ describe("SocratesAgent", () => {
             type: "model.tool_call.completed",
             toolCall: {
               toolCallId: "tcall_project_notes_once",
-              toolName: "project_docs",
-              input: { operation: "read", area: "notes" },
+              toolName: "read",
+              input: { path: "socrates://project/notes" },
             },
           }
           yield {
             type: "model.tool_call.completed",
             toolCall: {
               toolCallId: "tcall_project_notes_1",
-              toolName: "project_docs",
-              input: { operation: "read", area: "notes" },
+              toolName: "read",
+              input: { path: "socrates://project/notes" },
             },
           }
           yield {
@@ -918,83 +898,10 @@ describe("SocratesAgent", () => {
       },
     }
 
-    const executors: ToolExecutors = {
-      read: async () => ({
-        path: "README.md",
-        kind: "file",
-        content: "Socrates",
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 8 },
-      }),
-      search: async () => ({ mode: "files", query: "", matches: [], totalMatches: 0, truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 } }),
-      url_fetch: async () => ({
-        url: "https://example.com",
-        finalUrl: "https://example.com",
-        status: 200,
-        ok: true,
-        redirected: false,
-        sizeBytes: 0,
-        text: "",
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
-      }),
-      edit: async () => ({ changedFiles: [], diff: "", dryRun: false, truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 } }),
-      apply_patch: async () => ({ changedFiles: [], diff: "", dryRun: false, truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 } }),
-      bash: async () => bashOk(),
-      current_time: async () => ({
-        currentDate: "2026-06-19",
-        currentDateTime: "2026-06-19T06:30:00.000Z",
-        timeZone: "Europe/Vienna",
-        source: "system",
-      }),
-      trace_retrieve: async () => ({
-        results: [],
-        totalMatches: 0,
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
-        appliedFilters: { operation: "search", scope: "current_conversation", mode: "combined" },
-      }),
-      tool_docs: async () => ({
-        operation: "search",
-        results: [],
-        totalMatches: 0,
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 2 },
-      }),
-      skills: async () => ({
-        operation: "list",
-        skills: [],
-        totalMatches: 0,
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 2 },
-      }),
-      project_docs: async () => ({
-        operation: "read",
-        area: "notes",
-        path: ".socrates/PROJECT_NOTES.md",
-        content: "",
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
-      }),
-      repo_docs: async () => ({
-        operation: "read",
-        paths: [".socrates/repo_docs/REPO_RULES.md"],
-        content: "- .socrates/repo_docs/REPO_RULES.md",
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 36 },
-      }),
-      soul: async () => ({
-        operation: "read",
-        path: "identity.md",
-        content: "",
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
-      }),
-      user_profile: async () => ({
-        operation: "read",
-        path: "user_profile.md",
-        content: "",
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
-      }),
-      list_project_resources: async () => ({
-        resources: [],
-        summary: "Listed 0 project resources.",
-        totalResources: 0,
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 2 },
-      }),
-    }
+    const executors = emptyToolExecutors()
+    executors.read = async (input) => input.path === "README.md"
+      ? { path: "README.md", kind: "file", content: "Socrates", truncation: { truncated: false, charLimit: 20_000, returnedLength: 8 } }
+      : governedResourceOutput(input.path, "")
 
     const streamed: SocratesAgentEvent[] = []
     const agent = new SocratesAgent(provider)
@@ -1026,15 +933,15 @@ describe("SocratesAgent", () => {
     expect(streamed.some((event) => event.type === "tool.call.completed")).toBe(true)
     expect(streamed.some((event) => event.type === "model.answer.delta")).toBe(true)
     expect(countRequests).toHaveLength(2)
-    expect(countRequests[0]?.toolCount).toBe(20)
-    expect(countRequests[1]?.toolCount).toBe(20)
+    expect(countRequests[0]?.toolCount).toBe(12)
+    expect(countRequests[1]?.toolCount).toBe(12)
     expect(JSON.stringify(countRequests[0]?.messages)).not.toContain("tool-result")
     expect(JSON.stringify(countRequests[1]?.messages)).toContain("tool-result")
     expect(JSON.stringify(seenMessages.at(-1))).toContain("tool-result")
     expect(JSON.stringify(seenMessages.at(-1))).toContain("thoughtSignature")
   })
 
-  it("keeps structured doc indexes out of the next model request", async () => {
+  it("feeds governed resource content into the next model request", async () => {
     const requests: unknown[] = []
     let calls = 0
     const provider: ModelProvider = {
@@ -1045,7 +952,7 @@ describe("SocratesAgent", () => {
         if (calls === 1) {
           yield {
             type: "model.tool_call.completed",
-            toolCall: { toolCallId: "repo_index", toolName: "repo_docs", input: { operation: "read_index" } },
+            toolCall: { toolCallId: "repo_index", toolName: "read", input: { path: "socrates://project/repo-docs" } },
           }
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
@@ -1055,33 +962,7 @@ describe("SocratesAgent", () => {
       },
     }
     const executors = emptyToolExecutors()
-    executors.repo_docs = async () => ({
-      operation: "read_index",
-      paths: [".socrates/repo_docs/REPO_RULES.md"],
-      content: "VISIBLE_REPO_DOC_INDEX",
-      indexes: [{
-        path: ".socrates/repo_docs/REPO_RULES.md",
-        scope: "workspace",
-        projectId: "proj_1",
-        docType: "repo_rules",
-        ownerTool: "repo_docs",
-        schemaVersion: 1,
-        contentHash: "index_hash",
-        sections: [{
-          sectionId: "hard_rules",
-          kind: "rules",
-          tags: ["test"],
-          heading: "Hard rules",
-          content: "HIDDEN_DUPLICATE_INDEX_PAYLOAD",
-          lineStart: 1,
-          lineEnd: 1,
-          contentHash: "section_hash",
-          summary: "Hidden duplicate payload.",
-          tokenEstimate: 10,
-        }],
-      }],
-      truncation: { truncated: true, charLimit: 24, originalLength: 9_999, returnedLength: 22 },
-    })
+    executors.read = async (input) => governedResourceOutput(input.path, "VISIBLE_REPO_DOC_CONTENT")
 
     const agent = new SocratesAgent(provider)
     for await (const _event of agent.streamTurn({
@@ -1106,8 +987,7 @@ describe("SocratesAgent", () => {
     }
 
     expect(requests).toHaveLength(2)
-    expect(JSON.stringify(requests[1])).toContain("VISIBLE_REPO_DOC_INDEX")
-    expect(JSON.stringify(requests[1])).not.toContain("HIDDEN_DUPLICATE_INDEX_PAYLOAD")
+    expect(JSON.stringify(requests[1])).toContain("VISIBLE_REPO_DOC_CONTENT")
   })
 
   it("piggybacks release-only tool-output control on the next functional tool call", async () => {
@@ -1393,8 +1273,7 @@ describe("SocratesAgent", () => {
 
   it("loads stable always-apply context without a model-driven memory router", async () => {
     const streamRequests: ModelRequestLike[] = []
-    const projectDocsInputs: unknown[] = []
-    const userProfileInputs: unknown[] = []
+    const readInputs: unknown[] = []
     const provider: ModelProvider = {
       countTokens: fakeCountTokens,
       async *stream(request) {
@@ -1404,28 +1283,14 @@ describe("SocratesAgent", () => {
       },
     }
     const executors = emptyToolExecutors()
-    executors.project_docs = async (input) => {
-      projectDocsInputs.push(input)
-      const sectionId = input.operation === "read_section" ? input.sectionId : "always_apply_rules"
-      return projectDocsSectionOutput("memory", sectionId, "- Existing project rule.")
-    }
-    executors.repo_docs = async (input) => ({
-      operation: "read_index",
-      paths: [".socrates/repo_docs/REPO_RULES.md"],
-      content: "hard_rules",
-      truncation: { truncated: false, charLimit: 20_000, returnedLength: 10 },
-    })
-    executors.user_profile = async (input) => {
-      userProfileInputs.push(input)
-      const isSectionRead = input.operation === "read_section"
-      const content = "- Existing global rule."
-      return {
-        operation: input.operation,
-        path: "user_profile.md",
-        content: isSectionRead ? content : "Profile index only.",
-        section: isSectionRead ? memoryDocSection(input.sectionId ?? "global_always_apply_rules", content) : undefined,
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: content.length },
-      }
+    executors.read = async (input) => {
+      readInputs.push(input)
+      const content = input.path === "socrates://project/memory/always_apply_rules"
+        ? "- Existing project rule."
+        : input.path === "socrates://user/profile/global_always_apply_rules"
+          ? "- Existing global rule."
+          : "Stable identity section."
+      return governedResourceOutput(input.path, content)
     }
     const streamed: SocratesAgentEvent[] = []
     const agent = new SocratesAgent(provider)
@@ -1453,14 +1318,15 @@ describe("SocratesAgent", () => {
       streamed.push(event)
     }
 
-    expect(projectDocsInputs).toEqual([
-      { operation: "read_section", area: "memory", sectionId: "always_apply_rules", charLimit: 10_000 },
-    ])
-    expect(userProfileInputs).toEqual([
-      { operation: "read_section", sectionId: "global_always_apply_rules", charLimit: 10_000 },
+    expect(readInputs).toEqual([
+      { path: "socrates://project/memory/always_apply_rules", charLimit: 10_000 },
+      { path: "socrates://user/profile/global_always_apply_rules", charLimit: 10_000 },
+      { path: "socrates://identity/core_identity", charLimit: 4_000 },
+      { path: "socrates://identity/voice_and_presence", charLimit: 4_000 },
+      { path: "socrates://identity/relationship_to_user", charLimit: 4_000 },
     ])
     const toolNames = streamed.filter((event) => event.type === "tool.call.started").map((event) => event.toolName)
-    expect(toolNames).toEqual(["project_docs", "user_profile", "soul", "soul", "soul"])
+    expect(toolNames).toEqual(["read", "read", "read", "read", "read"])
     const firstRequestMessages = streamRequests[0]?.messages ?? []
     const firstRequestJson = JSON.stringify(firstRequestMessages)
     const firstRequestText = stringMessageContents(firstRequestMessages).join("\n")
@@ -1480,7 +1346,7 @@ describe("SocratesAgent", () => {
   it("uses the same Socrates checkpoint to reconcile and verify project memory before finalization", async () => {
     const streamRequests: ModelRequestLike[] = []
     const structuredSystems: string[] = []
-    const projectDocsInputs: unknown[] = []
+    const resourceInputs: Array<{ toolName: string; input: unknown }> = []
     let streamCalls = 0
     const provider: ModelProvider = {
       countTokens: fakeCountTokens,
@@ -1505,17 +1371,17 @@ describe("SocratesAgent", () => {
           return
         }
         if (streamCalls === 3) {
-          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "tcall_memory_read", toolName: "project_docs", input: { operation: "read_section", area: "memory", sectionId: "durable_decisions", charLimit: 20_000 } } }
+          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "tcall_memory_read", toolName: "read", input: { path: "socrates://project/memory/durable_decisions", charLimit: 20_000 } } }
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
         if (streamCalls === 4) {
-          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "tcall_memory_patch", toolName: "project_docs", input: { operation: "patch_section", area: "memory", sectionId: "durable_decisions", oldText: "- Existing durable decision.", newText: "- Verified README mentions the Socrates memory loop." } } }
+          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "tcall_memory_patch", toolName: "edit", input: { path: "socrates://project/memory/durable_decisions", edits: [{ oldString: "- Existing durable decision.", newString: "- Verified README mentions the Socrates memory loop." }] } } }
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
         if (streamCalls === 5) {
-          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "tcall_memory_verify", toolName: "project_docs", input: { operation: "read_section", area: "memory", sectionId: "durable_decisions", charLimit: 20_000 } } }
+          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "tcall_memory_verify", toolName: "read", input: { path: "socrates://project/memory/durable_decisions", charLimit: 20_000 } } }
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
@@ -1523,41 +1389,23 @@ describe("SocratesAgent", () => {
       },
     }
     const executors = emptyToolExecutors()
-    executors.read = async () => ({
-      path: "README.md",
-      kind: "file",
-      content: "Socrates memory loop",
-      truncation: { truncated: false, charLimit: 20_000, returnedLength: 20 },
-    })
     let durableDecision = "- Existing durable decision."
-    executors.project_docs = async (input) => {
-      projectDocsInputs.push(input)
-      if (input.operation === "read_section") {
-        const sectionId = input.sectionId ?? "always_apply_rules"
-        return projectDocsSectionOutput(input.area, sectionId, sectionId === "durable_decisions" ? durableDecision : "- Add at most 10 short project hard rules here.")
+    executors.read = async (input) => {
+      resourceInputs.push({ toolName: "read", input })
+      if (input.path === "README.md") {
+        return { path: "README.md", kind: "file", content: "Socrates memory loop", truncation: { truncated: false, charLimit: 20_000, returnedLength: 20 } }
       }
-      if (input.operation === "patch_section") {
-        const sectionId = input.sectionId ?? "durable_decisions"
-        const newText = input.newText ?? ""
-        durableDecision = newText
-        return {
-          operation: "patch_section",
-          area: input.area,
-          path: ".socrates/MEMORY.md",
-          changed: true,
-          content: newText,
-          section: memoryDocSection(sectionId, newText),
-          truncation: { truncated: false, charLimit: 20_000, returnedLength: newText.length },
-        }
-      }
-      return {
-        operation: "edit",
-        area: "memory",
-        path: ".socrates/MEMORY.md",
-        changed: true,
-        content: "- Verified README mentions the Socrates memory loop.",
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 70 },
-      }
+      const content = input.path.endsWith("/durable_decisions")
+        ? durableDecision
+        : input.path.endsWith("/always_apply_rules")
+          ? "- Add at most 10 short project hard rules here."
+          : ""
+      return governedResourceOutput(input.path, content)
+    }
+    executors.edit = async (input) => {
+      resourceInputs.push({ toolName: "edit", input })
+      if ("edits" in input) durableDecision = input.edits[0]?.newString ?? durableDecision
+      return { changedFiles: [{ path: input.path, operation: "edited" }], diff: durableDecision, dryRun: false, truncation: { truncated: false, charLimit: 20_000, returnedLength: durableDecision.length } }
     }
 
     const streamed: SocratesAgentEvent[] = []
@@ -1588,30 +1436,12 @@ describe("SocratesAgent", () => {
 
     expect(structuredSystems).toHaveLength(1)
     expect(structuredSystems[0]).toContain("You are Socrates")
-    expect(projectDocsInputs).toEqual([
-      { operation: "read_section", area: "memory", sectionId: "always_apply_rules", charLimit: 10_000 },
-      {
-        operation: "read_section",
-        area: "memory",
-        sectionId: "durable_decisions",
-        charLimit: 20_000,
-      },
-      {
-        operation: "patch_section",
-        area: "memory",
-        sectionId: "durable_decisions",
-        oldText: "- Existing durable decision.",
-        newText: "- Verified README mentions the Socrates memory loop.",
-      },
-      {
-        operation: "read_section",
-        area: "memory",
-        sectionId: "durable_decisions",
-        charLimit: 20_000,
-      },
-    ])
+    expect(resourceInputs).toContainEqual({ toolName: "edit", input: {
+      path: "socrates://project/memory/durable_decisions",
+      edits: [{ oldString: "- Existing durable decision.", newString: "- Verified README mentions the Socrates memory loop." }],
+    } })
     const toolNames = streamed.filter((event) => event.type === "tool.call.started").map((event) => event.toolName)
-    expect(toolNames).toEqual(["project_docs", "user_profile", "soul", "soul", "soul", "read", "project_docs", "project_docs", "project_docs"])
+    expect(toolNames).toEqual(["read", "read", "read", "read", "read", "read", "read", "edit", "read"])
     expect(streamRequests).toHaveLength(6)
     expect(JSON.stringify(streamRequests[2]?.messages)).toContain("socrates_reconciliation_checkpoint")
     expect(JSON.stringify(streamRequests[5]?.messages)).toContain("Verified README mentions the Socrates memory loop")
@@ -1626,7 +1456,6 @@ describe("SocratesAgent", () => {
   })
 
   it("keeps pre-turn routing read-only and skips final writes when no reconciliation is needed", async () => {
-    const projectDocsInputs: Array<Record<string, unknown>> = []
     const memoryNoteInputs: unknown[] = []
     const streamRequests: ModelRequestLike[] = []
     let streamCalls = 0
@@ -1657,24 +1486,6 @@ describe("SocratesAgent", () => {
     }
     const executors = emptyToolExecutors()
     executors.read = async () => ({ path: ".", kind: "directory", entries: [], truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 } })
-    executors.project_docs = async (input) => {
-      projectDocsInputs.push(input)
-      if (input.operation === "read_section") {
-        const content = input.area === "memory" ? "- Add at most 10 short project hard rules here." : "- Existing active context."
-        return projectDocsSectionOutput(input.area, input.sectionId, content)
-      }
-      if (input.operation !== "patch_section") throw new Error(`Unexpected project_docs operation: ${input.operation}`)
-      const newText = input.newText
-      return {
-        operation: "patch_section",
-        area: "notes",
-        path: ".socrates/PROJECT_NOTES.md",
-        changed: true,
-        content: newText,
-        section: memoryDocSection("active_context", newText),
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: newText.length },
-      }
-    }
     executors.memory_note = async (input) => {
       memoryNoteInputs.push(input)
       return { noteNumber: 1, status: "open", attachedSource: "current_user_message", result: "created" }
@@ -1705,7 +1516,6 @@ describe("SocratesAgent", () => {
       // Drain the turn.
     }
 
-    expect(projectDocsInputs.filter((input) => input.operation === "patch_section")).toHaveLength(0)
     expect(memoryNoteInputs).toHaveLength(0)
     expect(streamRequests).toHaveLength(3)
     expect(JSON.stringify(streamRequests[2]?.messages)).toContain("socrates_reconciliation_checkpoint")
@@ -1962,32 +1772,32 @@ describe("SocratesAgent", () => {
             type: "model.tool_call.completed",
             toolCall: {
               toolCallId: "tcall_project_notes_1",
-              toolName: "project_docs",
-              input: { operation: "read", area: "notes" },
+              toolName: "read",
+              input: { path: "socrates://project/notes" },
             },
           }
           yield {
             type: "model.tool_call.completed",
             toolCall: {
               toolCallId: "tcall_project_notes_1",
-              toolName: "project_docs",
-              input: { operation: "read", area: "notes" },
+              toolName: "read",
+              input: { path: "socrates://project/notes" },
             },
           }
           yield {
             type: "model.tool_call.completed",
             toolCall: {
               toolCallId: "tcall_project_notes_once",
-              toolName: "project_docs",
-              input: { operation: "read", area: "notes" },
+              toolName: "read",
+              input: { path: "socrates://project/notes" },
             },
           }
           yield {
             type: "model.tool_call.completed",
             toolCall: {
               toolCallId: "tcall_project_notes_1",
-              toolName: "project_docs",
-              input: { operation: "read", area: "notes" },
+              toolName: "read",
+              input: { path: "socrates://project/notes" },
             },
           }
           yield {
@@ -2034,7 +1844,7 @@ describe("SocratesAgent", () => {
     }
 
     expect(streamed.some((event) => event.type === "tool.call.failed")).toBe(true)
-    expect(countRequests[0]?.toolCount).toBe(20)
+    expect(countRequests[0]?.toolCount).toBe(12)
     expect(countRequests[1]?.toolCount).toBe(0)
     expect(streamRequests[1]?.tools).toHaveLength(0)
     expect(JSON.stringify(countRequests[1]?.messages)).toContain("tool-result")
@@ -2093,7 +1903,7 @@ describe("SocratesAgent", () => {
     }
 
     const followUpMessages = JSON.stringify(countRequests[1]?.messages)
-    expect(followUpMessages).toContain("Refer to tool_docs for tool usage before retrying this tool or choosing another tool.")
+    expect(followUpMessages).toContain("socrates://tool-guidance")
     expect(followUpMessages).toContain("Runtime action ledger for this turn")
     expect(followUpMessages).toContain("failed read")
   })
@@ -2116,16 +1926,16 @@ describe("SocratesAgent", () => {
             type: "model.tool_call.completed",
             toolCall: {
               toolCallId: "tcall_project_notes_once",
-              toolName: "project_docs",
-              input: { operation: "read", area: "notes" },
+              toolName: "read",
+              input: { path: "socrates://project/notes" },
             },
           }
           yield {
             type: "model.tool_call.completed",
             toolCall: {
               toolCallId: "tcall_project_notes_once",
-              toolName: "project_docs",
-              input: { operation: "read", area: "notes" },
+              toolName: "read",
+              input: { path: "socrates://project/notes" },
             },
           }
           yield {
@@ -2155,17 +1965,9 @@ describe("SocratesAgent", () => {
           yield {
             type: "model.tool_call.completed",
             toolCall: {
-              toolCallId: "tcall_project_notes_preflight",
-              toolName: "project_docs",
-              input: { operation: "read", area: "notes" },
-            },
-          }
-          yield {
-            type: "model.tool_call.completed",
-            toolCall: {
-              toolCallId: "tcall_repo_docs_preflight",
-              toolName: "repo_docs",
-              input: { operation: "read", path: "REPO_RULES.md" },
+              toolCallId: "tcall_capability_guidance",
+              toolName: "read",
+              input: { path: "socrates://tool-guidance/edit" },
             },
           }
           yield {
@@ -2174,18 +1976,6 @@ describe("SocratesAgent", () => {
               toolCallId: "tcall_good_edit_3",
               toolName: "edit",
               input: { path: "socrates_natural_e2e.md", content: "# Natural E2E\n" },
-            },
-          }
-          yield { type: "model.completed", finishReason: "tool-calls" }
-          return
-        }
-        if (calls === 4) {
-          yield {
-            type: "model.tool_call.completed",
-            toolCall: {
-              toolCallId: "tcall_project_memory_review",
-              toolName: "project_docs",
-              input: { operation: "read", area: "memory" },
             },
           }
           yield { type: "model.completed", finishReason: "tool-calls" }
@@ -2492,14 +2282,14 @@ describe("SocratesAgent", () => {
     const failed = streamed.filter((event) => event.type === "tool.call.failed")
     expect(failed).toHaveLength(10)
     expect(countRequests).toHaveLength(11)
-    expect(countRequests[0]?.toolCount).toBe(20)
+    expect(countRequests[0]?.toolCount).toBe(12)
     expect(countRequests[10]?.toolCount).toBe(0)
     expect(streamRequests[10]?.tools).toHaveLength(0)
     expect(JSON.stringify(countRequests[10]?.messages)).toContain("10 confirmed tool-call execution errors")
     expect(JSON.stringify(countRequests[10]?.messages)).toContain("invalid_tool_input")
   })
 
-  it("includes dry-run edit diff in approval requests before applying the edit", async () => {
+  it("uses an internal preview to include an edit diff in approval requests", async () => {
     let calls = 0
     const streamRequests: ModelRequestLike[] = []
     const provider: ModelProvider = {
@@ -2511,17 +2301,9 @@ describe("SocratesAgent", () => {
           yield {
             type: "model.tool_call.completed",
             toolCall: {
-              toolCallId: "tcall_project_notes_1",
-              toolName: "project_docs",
-              input: { operation: "read", area: "notes" },
-            },
-          }
-          yield {
-            type: "model.tool_call.completed",
-            toolCall: {
-              toolCallId: "tcall_repo_docs_1",
-              toolName: "repo_docs",
-              input: { operation: "read", path: "REPO_RULES.md" },
+              toolCallId: "tcall_read_1",
+              toolName: "read",
+              input: { path: "README.md" },
             },
           }
           yield {
@@ -2529,19 +2311,7 @@ describe("SocratesAgent", () => {
             toolCall: {
               toolCallId: "tcall_edit_1",
               toolName: "edit",
-              input: { path: "README.md", oldString: "old", newString: "new" },
-            },
-          }
-          yield { type: "model.completed", finishReason: "tool-calls" }
-          return
-        }
-        if (calls === 2) {
-          yield {
-            type: "model.tool_call.completed",
-            toolCall: {
-              toolCallId: "tcall_project_memory_1",
-              toolName: "project_docs",
-              input: { operation: "read", area: "memory" },
+              input: { path: "README.md", edits: [{ oldString: "old", newString: "new" }] },
             },
           }
           yield { type: "model.completed", finishReason: "tool-calls" }
@@ -2571,12 +2341,12 @@ describe("SocratesAgent", () => {
         text: "",
         truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
       }),
-      edit: async (input) => {
-        editDryRuns.push(input.dryRun === true)
+      edit: async (_input, context) => {
+        editDryRuns.push(context.previewOnly === true)
         return {
           changedFiles: [{ path: "README.md", operation: "edited" }],
           diff: "--- a/README.md\n+++ b/README.md\n@@ -1,1 +1,1 @@\n-old\n+new",
-          dryRun: input.dryRun ?? false,
+          dryRun: context.previewOnly ?? false,
           truncation: { truncated: false, charLimit: 20_000, returnedLength: 57 },
         }
       },
@@ -2593,49 +2363,6 @@ describe("SocratesAgent", () => {
         totalMatches: 0,
         truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
         appliedFilters: { operation: "search", scope: "current_conversation", mode: "combined" },
-      }),
-      tool_docs: async () => ({
-        operation: "search",
-        results: [],
-        totalMatches: 0,
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 2 },
-      }),
-      skills: async () => ({
-        operation: "list",
-        skills: [],
-        totalMatches: 0,
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 2 },
-      }),
-      project_docs: async () => ({
-        operation: "read",
-        area: "notes",
-        path: ".socrates/PROJECT_NOTES.md",
-        content: "",
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
-      }),
-      repo_docs: async () => ({
-        operation: "read",
-        paths: [".socrates/repo_docs/REPO_RULES.md"],
-        content: "- .socrates/repo_docs/REPO_RULES.md",
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 36 },
-      }),
-      soul: async () => ({
-        operation: "read",
-        path: "identity.md",
-        content: "",
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
-      }),
-      user_profile: async () => ({
-        operation: "read",
-        path: "user_profile.md",
-        content: "",
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
-      }),
-      list_project_resources: async () => ({
-        resources: [],
-        summary: "Listed 0 project resources.",
-        totalResources: 0,
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: 2 },
       }),
     }
 
@@ -2688,9 +2415,17 @@ describe("SocratesAgent", () => {
           yield {
             type: "model.tool_call.completed",
             toolCall: {
+              toolCallId: "tcall_read_without_repo_docs",
+              toolName: "read",
+              input: { path: "README.md" },
+            },
+          }
+          yield {
+            type: "model.tool_call.completed",
+            toolCall: {
               toolCallId: "tcall_edit_without_repo_docs",
               toolName: "edit",
-              input: { path: "README.md", oldString: "old", newString: "new" },
+              input: { path: "README.md", edits: [{ oldString: "old", newString: "new" }] },
             },
           }
           yield { type: "model.completed", finishReason: "tool-calls" }
@@ -2702,12 +2437,12 @@ describe("SocratesAgent", () => {
     }
     const streamed: SocratesAgentEvent[] = []
     const executors = emptyToolExecutors()
-    executors.edit = async (input) => {
+    executors.edit = async (input, context) => {
       editInputs.push(input)
       return {
         changedFiles: [{ path: "README.md", operation: "edited" }],
         diff: "real diff",
-        dryRun: input.dryRun ?? false,
+        dryRun: context.previewOnly ?? false,
         truncation: { truncated: false, charLimit: 20_000, returnedLength: 9 },
       }
     }
@@ -2759,17 +2494,9 @@ describe("SocratesAgent", () => {
           yield {
             type: "model.tool_call.completed",
             toolCall: {
-              toolCallId: "tcall_project_notes_once",
-              toolName: "project_docs",
-              input: { operation: "read", area: "notes" },
-            },
-          }
-          yield {
-            type: "model.tool_call.completed",
-            toolCall: {
-              toolCallId: "tcall_repo_docs_once",
-              toolName: "repo_docs",
-              input: { operation: "read", path: "REPO_RULES.md" },
+              toolCallId: "tcall_read_once",
+              toolName: "read",
+              input: { path: "README.md" },
             },
           }
           yield {
@@ -2777,7 +2504,7 @@ describe("SocratesAgent", () => {
             toolCall: {
               toolCallId: "tcall_edit_once",
               toolName: "edit",
-              input: { path: "README.md", oldString: "old", newString: "new" },
+              input: { path: "README.md", edits: [{ oldString: "old", newString: "new" }] },
             },
           }
           yield { type: "model.completed", finishReason: "tool-calls" }
@@ -2795,27 +2522,15 @@ describe("SocratesAgent", () => {
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
-        if (calls === 3) {
-          yield {
-            type: "model.tool_call.completed",
-            toolCall: {
-              toolCallId: "tcall_project_memory_after_actions",
-              toolName: "project_docs",
-              input: { operation: "read", area: "memory" },
-            },
-          }
-          yield { type: "model.completed", finishReason: "tool-calls" }
-          return
-        }
         yield { type: "model.answer.delta", text: "Done." }
         yield { type: "model.completed" }
       },
     }
     const executors = emptyToolExecutors()
-    executors.edit = async (input) => ({
+    executors.edit = async (_input, context) => ({
       changedFiles: [{ path: "README.md", operation: "edited" }],
-      diff: input.dryRun ? "dry diff" : "real diff",
-      dryRun: input.dryRun ?? false,
+      diff: context.previewOnly ? "dry diff" : "real diff",
+      dryRun: context.previewOnly ?? false,
       truncation: { truncated: false, charLimit: 20_000, returnedLength: 8 },
     })
     executors.bash = async () => bashOk()
@@ -2845,9 +2560,9 @@ describe("SocratesAgent", () => {
       // Drain stream.
     }
 
-    expect(streamRequests).toHaveLength(4)
+    expect(streamRequests).toHaveLength(3)
     const firstRequest = JSON.stringify(streamRequests[0]?.messages)
-    const finalRequest = JSON.stringify(streamRequests[3]?.messages)
+    const finalRequest = JSON.stringify(streamRequests[2]?.messages)
     expect(countSubstring(firstRequest, "<runtime_socrates_docs_preflight>")).toBe(0)
     expect(countSubstring(finalRequest, "<runtime_socrates_docs_preflight>")).toBe(0)
     expect(countSubstring(finalRequest, "<runtime_docs_sync_checkpoint>")).toBe(0)
@@ -2985,40 +2700,12 @@ describe("SocratesAgent", () => {
           yield {
             type: "model.tool_call.completed",
             toolCall: {
-              toolCallId: "call_project_notes_before_terminal",
-              toolName: "project_docs",
-              input: { operation: "read", area: "notes" },
-            },
-          }
-          yield {
-            type: "model.tool_call.completed",
-            toolCall: {
-              toolCallId: "call_repo_docs_before_terminal",
-              toolName: "repo_docs",
-              input: { operation: "read", path: "REPO_RULES.md" },
-            },
-          }
-          yield {
-            type: "model.tool_call.completed",
-            toolCall: {
               toolCallId: "call_terminal_output",
               toolName: "bash",
-              input: { operation: "output", name: "dev-server" },
+              input: { operation: "inspect", name: "dev-server" },
             },
           }
-          yield { type: "model.completed" }
-          return
-        }
-        if (call === 2) {
-          yield {
-            type: "model.tool_call.completed",
-            toolCall: {
-              toolCallId: "call_project_memory_after_terminal",
-              toolName: "project_docs",
-              input: { operation: "read", area: "memory" },
-            },
-          }
-          yield { type: "model.completed" }
+          yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
         yield { type: "model.answer.delta", text: "Terminal output checked." }
@@ -3028,7 +2715,7 @@ describe("SocratesAgent", () => {
     const executors = emptyToolExecutors()
     executors.bash = async () => ({
       ...bashOk(),
-      operation: "output",
+      operation: "inspect",
       stdout: "ready on http://localhost:5173\n",
       process: {
         processId: "proc_secret",
@@ -3116,11 +2803,11 @@ describe("SocratesAgent", () => {
     expect(dynamicContext).toContain("Local-first AI workspace.")
     expect(dynamicContext).toContain("Read repo_docs before answering.")
     expect(request.system).toContain("If the current date or exact time matters, call current_time")
-    expect(request.system).toContain("greetings do not require a ceremonial docs call")
+    expect(request.system).toContain("greetings do not require ceremonial reads")
     expect(request.system).toContain("prepared capsule and latest exact exchange")
-    expect(request.system).toContain("Project notes include an `active_context` section")
-    expect(request.system).toContain("write one compact entry to project_docs notes `active_context`")
-    expect(request.system).toContain("backend-owned `runtime_context` section with compact generated workspace scan facts")
+    expect(request.system).toContain("Project notes include `active_context`")
+    expect(request.system).toContain("socrates://project/notes/active_context")
+    expect(request.system).toContain("backend-owned `runtime_context` section")
     expect(request.system).toContain("Be human first: warm, curious, grounded, and quietly wise")
     expect(request.system).toContain("Translate them into plain human language before speaking")
     expect(request.system).toContain("do not give a backend status report")
@@ -3131,45 +2818,41 @@ describe("SocratesAgent", () => {
     expect(request.system).not.toContain("Python Environment Hints")
     expect(request.system).not.toContain("Workspace command environment:")
     expect(request.system).not.toContain("Semantic retrieval status:")
-    expect(request.system).toContain("Playwright is bundled by default")
-    expect(request.system).toContain('mcp_registry({operation:"list"|"describe"')
-    expect(request.system).toContain("preview_import")
-    expect(request.system).toContain("This is not web search")
-    expect(request.system).toContain("Do not simulate extensions")
-    expect(request.system).toContain("ask the echo helper")
-    expect(request.system).toContain("Do not simulate skills")
-    expect(request.system).toContain("named checklist or saved project workflow")
-    expect(request.system).toContain("After any list operation, prefer canonical ids")
+    expect(request.system).toContain("search `socrates://capabilities`")
+    expect(request.system).toContain("capability_manager handles skill create/update/delete/enable/disable")
+    expect(request.system).toContain("skill_preview_import")
+    expect(request.system).toContain("Do not simulate skills or extensions")
+    expect(request.system).toContain("Never claim a capability is missing before this fallback")
+    expect(request.system).toContain("five operations")
     expect(request.system).toContain("Use lexical with a concise literal phrase")
     expect(request.system).toContain("Cross-project selectors are not available to the main agent")
     expect(request.system).toContain("Do not begin with guessed absolute cd paths")
     expect(request.system).toContain("Terminal commands start in the active workspace")
   })
 
-  it("requires approval only for committing a reviewed skill import", async () => {
-    const context = {} as Parameters<typeof skillsTool.decidePolicy>[1]
-    expect(await skillsTool.decidePolicy({ operation: "list" }, context)).toEqual({ type: "auto" })
-    expect(await skillsTool.decidePolicy({ operation: "preview_import", scope: "project", url: "https://example.com/review.zip" }, context)).toEqual({ type: "auto" })
+  it("keeps skill import preview automatic and requires approval for commit", async () => {
+    const context = {} as Parameters<typeof capabilityManagerTool.decidePolicy>[1]
+    expect(await capabilityManagerTool.decidePolicy({ operation: "skill_preview_import", scope: "path", url: "https://example.com/review.zip" }, context)).toEqual({ type: "auto" })
     expect(
-      await skillsTool.decidePolicy(
-        { operation: "commit_import", scope: "global", previewId: `skillimp_${"a".repeat(32)}`, conflictStrategy: "replace" },
+      await capabilityManagerTool.decidePolicy(
+        { operation: "skill_commit_import", scope: "global", previewId: `skillimp_${"a".repeat(32)}`, conflictStrategy: "replace" },
         context,
       ),
-    ).toMatchObject({ type: "approval_required", request: { risk: "medium" } })
+    ).toMatchObject({ type: "approval_required", request: { risk: "low" } })
   })
 
-  it("requires approval for both project skill lifecycle mutations", async () => {
-    const context = {} as Parameters<typeof skillManagerTool.decidePolicy>[1]
+  it("requires approval for skill lifecycle mutations", async () => {
+    const context = {} as Parameters<typeof capabilityManagerTool.decidePolicy>[1]
 
-    expect(await skillManagerTool.decidePolicy(
-      { operation: "create", name: "release-auditor", request: "Check release notes for missing verification evidence." },
+    expect(await capabilityManagerTool.decidePolicy(
+      { operation: "skill_create", scope: "path", name: "release-auditor", request: "Check release notes for missing verification evidence." },
       context,
     )).toMatchObject({
       type: "approval_required",
       request: { actionKind: "file_write", risk: "low" },
     })
-    expect(await skillManagerTool.decidePolicy(
-      { operation: "delete", name: "release-auditor" },
+    expect(await capabilityManagerTool.decidePolicy(
+      { operation: "skill_delete", scope: "path", name: "release-auditor" },
       context,
     )).toMatchObject({
       type: "approval_required",
@@ -3182,20 +2865,18 @@ describe("SocratesAgent", () => {
     let executorInput: unknown
     let executorSecrets: Readonly<Record<string, string>> | undefined
     const executors = emptyToolExecutors()
-    executors.mcp_registry = async (input, _context, resolvedSecretEnv) => {
+    executors.capability_manager = async (input, _context, resolvedSecretEnv) => {
       executorInput = input
       executorSecrets = resolvedSecretEnv
       return {
-        operation: "configure",
-        configPath: ".socrates/mcp.json",
-        envPath: ".socrates/.env",
-        configured: true,
+        operation: "mcp_configure",
+        status: "completed",
         summary: "Configured safely.",
       }
     }
-    const result = await mcpRegistryTool.execute({
-      operation: "configure",
-      scope: "project",
+    const result = await capabilityManagerTool.execute({
+      operation: "mcp_configure",
+      scope: "path",
       server: {
         id: "multi-secret",
         command: "trusted-mcp-command",
@@ -3258,8 +2939,8 @@ describe("SocratesAgent", () => {
         streamRequests.push(request)
         streamCalls += 1
         if (streamCalls === 1) {
-          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "notes", toolName: "project_docs", input: { operation: "read", area: "notes" } } }
-          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "rules", toolName: "repo_docs", input: { operation: "read", path: "REPO_RULES.md" } } }
+          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "notes", toolName: "read", input: { path: "socrates://project/notes" } } }
+          yield { type: "model.tool_call.completed", toolCall: { toolCallId: "rules", toolName: "read", input: { path: "socrates://project/repo-docs/REPO_RULES.md" } } }
           yield { type: "model.tool_call.completed", toolCall: { toolCallId: "patch", toolName: "apply_patch", input: { patchText: "*** Begin Patch" } } }
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
@@ -3318,34 +2999,33 @@ describe("SocratesAgent", () => {
 })
 
 describe("bash tool policy", () => {
-  it("auto-allows only the structured safe diagnostic lane and gates raw shell text", async () => {
+  it("keeps only inspection operations automatic and gates executable commands", async () => {
     const context = {
       runtimeConfig: { sandboxMode: "workspace_write", approvalMode: "manual" },
     } as Parameters<typeof bashTool.decidePolicy>[1]
 
-    expect(await bashTool.decidePolicy({ argv: ["git", "status", "--short"] }, context)).toEqual({ type: "auto" })
-    expect(await bashTool.decidePolicy({ argv: ["pwd"] }, context)).toEqual({ type: "auto" })
-    expect(await bashTool.decidePolicy({ command: "Get-Content package.json" }, context)).toMatchObject({ type: "approval_required" })
-    expect(await bashTool.decidePolicy({ command: "cat package.json > copied.json" }, context)).toMatchObject({ type: "approval_required" })
-    expect(await bashTool.decidePolicy({ argv: ["pnpm", "test"] }, context)).toMatchObject({ type: "approval_required" })
-    expect(await bashTool.decidePolicy({ operation: "output", processId: "proc_1" }, context)).toEqual({ type: "auto" })
+    expect(await bashTool.decidePolicy({ operation: "run", command: "git status --short" }, context)).toMatchObject({ type: "approval_required" })
+    expect(await bashTool.decidePolicy({ operation: "run", command: "Get-Content package.json" }, context)).toMatchObject({ type: "approval_required" })
+    expect(await bashTool.decidePolicy({ operation: "run", command: "cat package.json > copied.json" }, context)).toMatchObject({ type: "approval_required" })
+    expect(await bashTool.decidePolicy({ operation: "inspect", name: "dev" }, context)).toEqual({ type: "auto" })
+    expect(await bashTool.decidePolicy({ operation: "stop", name: "dev" }, context)).toEqual({ type: "auto" })
     expect(await bashTool.decidePolicy({ operation: "list" }, context)).toEqual({ type: "auto" })
 
-    const dockerPolicy = await bashTool.decidePolicy({ command: "docker compose up -d" }, context)
+    const dockerPolicy = await bashTool.decidePolicy({ operation: "run", command: "docker compose up -d" }, context)
     expect(dockerPolicy.type).toBe("approval_required")
     if (dockerPolicy.type === "approval_required") {
       expect(dockerPolicy.request.risk).toBe("high")
     }
   })
 
-  it("allows safe argv but denies raw shell text in read-only mode", async () => {
+  it("denies all executable commands in read-only mode", async () => {
     const context = {
       runtimeConfig: { sandboxMode: "read_only", approvalMode: "read_only_auto" },
     } as Parameters<typeof bashTool.decidePolicy>[1]
 
-    expect(await bashTool.decidePolicy({ argv: ["git", "diff", "--stat"] }, context)).toEqual({ type: "auto" })
-    expect(await bashTool.decidePolicy({ command: "git diff --stat" }, context)).toMatchObject({ type: "denied" })
-    expect(await bashTool.decidePolicy({ argv: ["pnpm", "test"] }, context)).toMatchObject({ type: "denied" })
+    expect(await bashTool.decidePolicy({ operation: "run", command: "git diff --stat" }, context)).toMatchObject({ type: "denied" })
+    expect(await bashTool.decidePolicy({ operation: "run", command: "pnpm test" }, context)).toMatchObject({ type: "denied" })
+    expect(await bashTool.decidePolicy({ operation: "inspect", name: "dev" }, context)).toEqual({ type: "auto" })
   })
 
   it("rejects empty or comment-only Terminal commands before approval", async () => {
@@ -3353,15 +3033,15 @@ describe("bash tool policy", () => {
       runtimeConfig: { sandboxMode: "workspace_write", approvalMode: "manual" },
     } as Parameters<typeof bashTool.decidePolicy>[1]
 
-    expect(await bashTool.decidePolicy({ command: "   \n\t" }, context)).toMatchObject({
+    expect(await bashTool.decidePolicy({ operation: "run", command: "   \n\t" }, context)).toMatchObject({
       type: "denied",
       code: "terminal_noop_command",
     })
-    expect(await bashTool.decidePolicy({ operation: "start", command: "# note\n# another note" }, context)).toMatchObject({
+    expect(await bashTool.decidePolicy({ operation: "start", name: "notes", command: "# note\n# another note" }, context)).toMatchObject({
       type: "denied",
       code: "terminal_noop_command",
     })
-    expect(await bashTool.decidePolicy({ command: "# list files\nls" }, context)).toMatchObject({ type: "approval_required" })
+    expect(await bashTool.decidePolicy({ operation: "run", command: "# list files\nls" }, context)).toMatchObject({ type: "approval_required" })
   })
 })
 
@@ -3389,35 +3069,17 @@ const snapshotCountRequest = (request: ModelRequestLike): CountedRequest => ({
   toolCount: request.tools?.length ?? 0,
 })
 
-const memoryDocSection = (sectionId: string, content: string) => ({
-  sectionId,
-  kind: "context",
-  tags: ["test"],
-  heading: "Active Context",
+const governedResourceOutput = (resourcePath: string, content: string) => ({
+  path: resourcePath,
+  kind: "resource" as const,
   content,
-  lineStart: 1,
-  lineEnd: 3,
-  contentHash: `hash_${sectionId}`,
-  summary: content,
-  tokenEstimate: 10,
-})
-
-const projectDocsSectionOutput = (area: "memory" | "notes", sectionId: string, content: string) => ({
-  operation: "read_section" as const,
-  area,
-  path: area === "memory" ? ".socrates/MEMORY.md" : ".socrates/PROJECT_NOTES.md",
-  content,
-  section: memoryDocSection(sectionId, content),
   truncation: { truncated: false, charLimit: 20_000, returnedLength: content.length },
 })
 
 const emptyToolExecutors = (): ToolExecutors => ({
-  read: async () => ({
-    path: "README.md",
-    kind: "file",
-    content: "",
-    truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
-  }),
+  read: async (input) => input.path.startsWith("socrates://")
+    ? governedResourceOutput(input.path, "")
+    : { path: input.path, kind: "file", content: "", truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 } },
   search: async () => ({ mode: "files", query: "", matches: [], totalMatches: 0, truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 } }),
   url_fetch: async () => ({
     url: "https://example.com",
@@ -3443,49 +3105,6 @@ const emptyToolExecutors = (): ToolExecutors => ({
     totalMatches: 0,
     truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
     appliedFilters: { operation: "search", scope: "current_conversation", mode: "combined" },
-  }),
-  tool_docs: async () => ({
-    operation: "search",
-    results: [],
-    totalMatches: 0,
-    truncation: { truncated: false, charLimit: 20_000, returnedLength: 2 },
-  }),
-  skills: async () => ({
-    operation: "list",
-    skills: [],
-    totalMatches: 0,
-    truncation: { truncated: false, charLimit: 20_000, returnedLength: 2 },
-  }),
-  project_docs: async () => ({
-    operation: "read",
-    area: "notes",
-    path: ".socrates/PROJECT_NOTES.md",
-    content: "",
-    truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
-  }),
-  repo_docs: async () => ({
-    operation: "read",
-    paths: [".socrates/repo_docs/REPO_RULES.md"],
-    content: "- .socrates/repo_docs/REPO_RULES.md",
-    truncation: { truncated: false, charLimit: 20_000, returnedLength: 36 },
-  }),
-  soul: async () => ({
-    operation: "read",
-    path: "identity.md",
-    content: "",
-    truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
-  }),
-  user_profile: async () => ({
-    operation: "read",
-    path: "user_profile.md",
-    content: "",
-    truncation: { truncated: false, charLimit: 20_000, returnedLength: 0 },
-  }),
-  list_project_resources: async () => ({
-    resources: [],
-    summary: "Listed 0 project resources.",
-    totalResources: 0,
-    truncation: { truncated: false, charLimit: 20_000, returnedLength: 2 },
   }),
 })
 

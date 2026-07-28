@@ -21,6 +21,8 @@ import type {
   MemoryNotesToolOutput,
   ReadMemoryJournalToolInput,
   ReadMemoryJournalToolOutput,
+  ReadToolInput,
+  ReadToolOutput,
   MemoryDocIndex,
   MemoryDocSection,
   ProjectDocsArea,
@@ -30,6 +32,8 @@ import type {
   ProjectsToolOutput,
   RepoDocsToolInput,
   RepoDocsToolOutput,
+  SearchToolInput,
+  SearchToolOutput,
   SkillScope,
   SkillSummary,
   SkillWriteToolInput,
@@ -467,6 +471,132 @@ export class MemoryStore extends StoreBase {
     return this.listSkillsOutput(input, workspacePath)
   }
 
+  runAgentResourceRead(
+    projectId: string,
+    workspacePath: string | undefined,
+    input: ReadToolInput,
+    audience: "main" | "memory_agent" = "main",
+  ): ReadToolOutput {
+    const content = this.resolveAgentResourceContent(projectId, workspacePath, input.path, audience)
+    const charLimit = Math.min(input.charLimit ?? DEFAULT_CHAR_LIMIT, 80_000)
+    const offset = input.offset ?? 0
+    const returned = content.slice(offset, offset + charLimit)
+    const nextOffset = offset + returned.length
+    return {
+      path: input.path,
+      kind: "resource",
+      content: returned,
+      contentHash: hashText(content),
+      sizeBytes: Buffer.byteLength(content, "utf8"),
+      truncation: {
+        truncated: nextOffset < content.length,
+        charLimit,
+        originalLength: content.length,
+        returnedLength: returned.length,
+        ...(nextOffset < content.length ? { nextOffset } : {}),
+      },
+    }
+  }
+
+  runAgentResourceSearch(
+    projectId: string,
+    workspacePath: string | undefined,
+    input: SearchToolInput,
+    audience: "main" | "memory_agent" = "main",
+  ): SearchToolOutput {
+    if (!input.path?.startsWith("socrates://")) {
+      throw new SocratesError("agent_resource_scope_required", "Specialized agents may search only governed socrates:// resources.", { recoverable: true })
+    }
+    const roots = input.path === "socrates://"
+      ? ["socrates://identity", "socrates://user/profile", "socrates://tool-guidance", "socrates://skills"]
+      : [input.path]
+    const needle = input.caseSensitive ? input.query : input.query.toLowerCase()
+    const matcher = input.regex ? safeResourceRegex(input.query, input.caseSensitive) : undefined
+    const matches: SearchToolOutput["matches"] = []
+    for (const resourcePath of roots) {
+      const content = this.resolveAgentResourceContent(projectId, workspacePath, resourcePath, audience)
+      if (input.mode === "files") {
+        const haystack = input.caseSensitive ? resourcePath : resourcePath.toLowerCase()
+        if (matcher ? matcher.test(resourcePath) : haystack.includes(needle)) matches.push({ path: resourcePath })
+      } else {
+        for (const [index, line] of content.split(/\r?\n/).entries()) {
+          const haystack = input.caseSensitive ? line : line.toLowerCase()
+          if (matcher ? matcher.test(line) : haystack.includes(needle)) matches.push({ path: resourcePath, line: index + 1, text: line.slice(0, 1_000) })
+          if (matches.length >= (input.maxResults ?? 50)) break
+        }
+      }
+      if (matches.length >= (input.maxResults ?? 50)) break
+    }
+    const serialized = JSON.stringify(matches)
+    const charLimit = input.charLimit ?? DEFAULT_CHAR_LIMIT
+    let returned = matches
+    while (returned.length > 0 && JSON.stringify(returned).length > charLimit) returned = returned.slice(0, -1)
+    return {
+      mode: input.mode,
+      query: input.query,
+      matches: returned,
+      totalMatches: matches.length,
+      truncation: {
+        truncated: returned.length < matches.length,
+        charLimit,
+        originalLength: serialized.length,
+        returnedLength: JSON.stringify(returned).length,
+      },
+    }
+  }
+
+  private resolveAgentResourceContent(
+    projectId: string,
+    workspacePath: string | undefined,
+    resourcePath: string,
+    audience: "main" | "memory_agent",
+  ): string {
+    if (!resourcePath.startsWith("socrates://")) {
+      throw new SocratesError("resource_not_found", `Socrates resource was not found: ${resourcePath}`, { recoverable: true })
+    }
+    const segments = resourcePath.slice("socrates://".length).split("/").filter(Boolean).map(decodeURIComponent)
+    const [root, second, third, fourth] = segments
+    if (root === "identity") {
+      const output = this.runSoulTool(projectId, workspacePath, second ? { operation: "read_section", sectionId: second, charLimit: 80_000 } : { operation: "read", charLimit: 80_000 })
+      return output.section?.content ?? output.content ?? JSON.stringify(output.index ?? {}, null, 2)
+    }
+    if (root === "user" && second === "profile") {
+      const output = this.runUserProfileTool(projectId, workspacePath, third ? { operation: "read_section", sectionId: third, charLimit: 80_000 } : { operation: "read", charLimit: 80_000 })
+      return output.section?.content ?? output.content ?? JSON.stringify(output.index ?? {}, null, 2)
+    }
+    if (root === "tool-guidance") {
+      const toolPath = segments.slice(1).join("/") || undefined
+      const output = this.runToolDocsTool(projectId, workspacePath, { operation: "read", ...(toolPath ? { path: toolPath } : {}), charLimit: 80_000 }, audience)
+      return JSON.stringify(output.results, null, 2)
+    }
+    if (root === "skills") {
+      if (!second) return JSON.stringify(this.runSkillsTool(projectId, workspacePath, { operation: "list", limit: 50 }).skills, null, 2)
+      const scope = second === "path" ? "project" : second
+      if (scope !== "builtin" && scope !== "global" && scope !== "project") throw new SocratesError("resource_not_found", `Unknown skill scope: ${second}`, { recoverable: true })
+      if (!third) return JSON.stringify(this.runSkillsTool(projectId, workspacePath, { operation: "list", scope, limit: 50 }).skills, null, 2)
+      const output = this.runSkillsTool(projectId, workspacePath, { operation: "read", scope, name: third, ...(fourth ? { path: segments.slice(3).join("/") } : {}), charLimit: 80_000 })
+      return output.content ?? JSON.stringify(output.skills, null, 2)
+    }
+    if (root === "capabilities") {
+      const skills = this.runSkillsTool(projectId, workspacePath, { operation: "list", limit: 50 }).skills
+      return JSON.stringify(skills.map((skill) => ({ id: `skill:${skill.scope}:${skill.name}`, name: skill.name, description: skill.description, enabled: skill.enabled !== false })), null, 2)
+    }
+    if (root === "project" && (second === "memory" || second === "notes")) {
+      if (!workspacePath) throw new SocratesError("project_resource_unavailable", "Project resources require a workspace.", { recoverable: true })
+      const output = this.runProjectDocsTool(projectId, workspacePath, third ? { operation: "read_section", area: second, sectionId: third, charLimit: 80_000 } : { operation: "read", area: second, charLimit: 80_000 })
+      return output.section?.content ?? output.content ?? JSON.stringify(output.index ?? {}, null, 2)
+    }
+    if (root === "project" && second === "repo-docs") {
+      if (!workspacePath) throw new SocratesError("project_resource_unavailable", "Project resources require a workspace.", { recoverable: true })
+      const repoPath = third && REPO_DOC_NAMES.includes(third as typeof REPO_DOC_NAMES[number]) ? third as typeof REPO_DOC_NAMES[number] : undefined
+      const output = repoPath && fourth
+        ? this.runRepoDocsTool(projectId, workspacePath, { operation: "read_section", path: repoPath, sectionId: fourth, charLimit: 80_000 })
+        : this.runRepoDocsTool(projectId, workspacePath, { operation: "read", ...(repoPath ? { path: repoPath } : {}), charLimit: 80_000 })
+      return output.section?.content ?? output.content ?? JSON.stringify(output.indexes ?? output.index ?? output.paths ?? {}, null, 2)
+    }
+    throw new SocratesError("resource_not_found", `Socrates resource was not found: ${resourcePath}`, { recoverable: true })
+  }
+
   async runSkillsImportTool(
     projectId: string,
     workspacePath: string | undefined,
@@ -544,7 +674,7 @@ export class MemoryStore extends StoreBase {
         replaced: committed.replaced,
         totalMatches: 1,
         truncation: { truncated: committed.warnings.length > warnings.length, charLimit: SKILL_CHAR_LIMIT, originalLength: JSON.stringify(committed).length, returnedLength: JSON.stringify(returned).length },
-        usageHint: "The skill is installed and enabled. Verify it with skills list or describe before claiming it is ready.",
+        usageHint: "The skill is installed and enabled. Verify it by reading its returned socrates://skills URI before claiming it is ready.",
         ...(warnings.length > 0 ? { warnings } : {}),
       }
     }
@@ -871,6 +1001,27 @@ export class MemoryStore extends StoreBase {
       workspacePath,
       sourceKind: source ? "socrates_tool" : "dashboard",
       ...(source ?? {}),
+    })
+  }
+
+  async updateProjectSkill(
+    projectId: string,
+    workspacePath: string,
+    request: string,
+    name: string,
+    source: { conversationId: string; sessionId: string; turnId: string },
+  ): Promise<SkillSummary> {
+    this.ensureProjectMemory(projectId, workspacePath)
+    this.readSkill({ operation: "describe", scope: "project", name }, workspacePath)
+    return this.runApprovedSkillWriterTask({
+      scope: "project",
+      operation: "update",
+      name,
+      request,
+      projectId,
+      workspacePath,
+      sourceKind: "socrates_tool",
+      ...source,
     })
   }
 
@@ -1433,6 +1584,25 @@ export class MemoryStore extends StoreBase {
     })
   }
 
+  async updateGlobalSkill(
+    request: string,
+    name: string | undefined,
+    source: { conversationId: string; sessionId: string; turnId: string },
+  ): Promise<SkillSummary> {
+    if (!name) throw new SocratesError("skill_name_required", "Skill update requires an exact skill name.", { recoverable: true })
+    this.ensureGlobalKnowledge()
+    this.readSkill({ operation: "describe", scope: "global", name }, undefined)
+    return this.runApprovedSkillWriterTask({
+      scope: "global",
+      operation: "update",
+      name,
+      request,
+      projectId: GLOBAL_MEMORY_AGENT_PROJECT_ID,
+      sourceKind: "socrates_tool",
+      ...source,
+    })
+  }
+
   previewGlobalSkillImport(filename: string, data: Buffer): Promise<SkillImportPreview> {
     this.ensureGlobalKnowledge()
     return previewSkillArchive({
@@ -1662,12 +1832,10 @@ export class MemoryStore extends StoreBase {
             return this.options.traceRetrieveGlobal(toolInput)
           },
           projects: async (toolInput) => this.runProjectsTool(toolInput),
-          toolDocs: async (toolInput) => this.runToolDocsTool(GLOBAL_MEMORY_AGENT_PROJECT_ID, undefined, toolInput, "memory_agent"),
-          skills: async (toolInput) => this.runSkillsTool(GLOBAL_MEMORY_AGENT_PROJECT_ID, undefined, toolInput),
+          read: async (toolInput) => this.runAgentResourceRead(GLOBAL_MEMORY_AGENT_PROJECT_ID, undefined, toolInput, "memory_agent"),
+          search: async (toolInput) => this.runAgentResourceSearch(GLOBAL_MEMORY_AGENT_PROJECT_ID, undefined, toolInput, "memory_agent"),
           memoryNotes: async (toolInput) => this.runMemoryNotesTool(toolInput),
           readMemoryJournal: async (toolInput) => this.runReadMemoryJournalTool(toolInput),
-          soul: async (toolInput) => this.runSoulTool(GLOBAL_MEMORY_AGENT_PROJECT_ID, undefined, toolInput),
-          userProfile: async (toolInput) => this.runUserProfileTool(GLOBAL_MEMORY_AGENT_PROJECT_ID, undefined, toolInput),
           editFiles: async (toolInput) =>
             this.runEditFilesTool(toolInput, {
               jobId,
@@ -3341,33 +3509,12 @@ export class MemoryStore extends StoreBase {
             }
             throw new SocratesError("skill_writer_trace_unavailable", "trace_retrieve is not available to this Skill Writer run.", { recoverable: true })
           },
-          skills: async (toolInput) => {
-            const output = this.runSkillsTool(input.projectId, input.workspacePath, toolInput)
-            if (
-              input.operation === "update" &&
-              (toolInput.operation === "describe" || toolInput.operation === "read") &&
-              output.skills.some((skill) => skill.scope === input.scope && skill.name === input.name)
-            ) {
-              existingSkillRead = true
-            }
+          read: async (toolInput) => {
+            const output = this.runAgentResourceRead(input.projectId, input.workspacePath, toolInput)
+            if (input.operation === "update" && toolInput.path === `socrates://skills/${input.scope}/${encodeURIComponent(input.name)}`) existingSkillRead = true
             return output
           },
-          soul: async (toolInput) => this.runSoulTool(input.projectId, input.workspacePath, toolInput),
-          userProfile: async (toolInput) => this.runUserProfileTool(input.projectId, input.workspacePath, toolInput),
-          projectDocs: async (toolInput) => {
-            if (!input.workspacePath) {
-              throw new SocratesError("skill_writer_project_docs_unavailable", "project_docs is only available for project skill runs.", { recoverable: true })
-            }
-            this.assertSkillWriterProjectDocsReadOnly(toolInput)
-            return this.runProjectDocsTool(input.projectId, input.workspacePath, toolInput)
-          },
-          repoDocs: async (toolInput) => {
-            if (!input.workspacePath) {
-              throw new SocratesError("skill_writer_repo_docs_unavailable", "repo_docs is only available for project skill runs.", { recoverable: true })
-            }
-            this.assertSkillWriterRepoDocsReadOnly(toolInput)
-            return this.runRepoDocsTool(input.projectId, input.workspacePath, toolInput)
-          },
+          search: async (toolInput) => this.runAgentResourceSearch(input.projectId, input.workspacePath, toolInput),
           skillWrite: async (toolInput) => {
             if (written) {
               throw new SocratesError("skill_write_already_completed", "Skill Writer already wrote the skill for this run.", { recoverable: true })
@@ -3814,7 +3961,7 @@ const projectDocPath = (workspacePath: string, area: ProjectDocsArea): string =>
 const projectDocRelativePath = (area: ProjectDocsArea): string => (area === "memory" ? ".socrates/MEMORY.md" : ".socrates/PROJECT_NOTES.md")
 const projectDocProfile = (projectId: string, area: ProjectDocsArea): MemoryDocProfile => ({
   docType: area === "memory" ? "project_memory" : "project_notes",
-  ownerTool: "project_docs",
+  ownerTool: "edit",
   scope: "workspace",
   path: projectDocRelativePath(area),
   projectId,
@@ -3826,7 +3973,7 @@ const repoDocPath = (docsRoot: string, name: (typeof REPO_DOC_NAMES)[number]): s
 
 const repoDocProfile = (projectId: string, name: string): MemoryDocProfile => ({
   docType: memoryDocTypeForRepoDoc(name),
-  ownerTool: "repo_docs",
+  ownerTool: "edit",
   scope: "workspace",
   path: `.socrates/repo_docs/${name}`,
   projectId,
@@ -3835,7 +3982,7 @@ const repoDocProfile = (projectId: string, name: string): MemoryDocProfile => ({
 
 const globalMemoryDocProfile = (_socratesHome: string, target: "identity" | "user_profile"): MemoryDocProfile => ({
   docType: target,
-  ownerTool: target === "user_profile" ? "user_profile" : "soul",
+  ownerTool: "edit_files",
   scope: "global",
   path: `${target}.md`,
   projectId: GLOBAL_MEMORY_AGENT_PROJECT_ID,
@@ -4021,7 +4168,22 @@ const ensureBundledToolUsageDocs = (targetDir: string): void => {
 }
 
 const removeLegacyToolUsageDocs = (targetDir: string): void => {
-  for (const relativePath of ["memory_docs.md", path.join("memory_agent", "trace_retrieve_global.md")]) {
+  for (const relativePath of [
+    "memory_docs.md",
+    "project_docs.md",
+    "repo_docs.md",
+    "skills.md",
+    "soul.md",
+    "user_profile.md",
+    "tool_docs.md",
+    "mcp_registry.md",
+    "list_project_resources.md",
+    path.join("memory_agent", "trace_retrieve_global.md"),
+    path.join("memory_agent", "skills.md"),
+    path.join("memory_agent", "soul.md"),
+    path.join("memory_agent", "user_profile.md"),
+    path.join("memory_agent", "tool_docs.md"),
+  ]) {
     const filePath = path.join(targetDir, relativePath)
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
       fs.unlinkSync(filePath)
@@ -4074,7 +4236,7 @@ const migrateIdentityUserSectionsToProfile = (socratesHome: string): void => {
   }
   let nextIdentity = removeMarkdownSections(identity, ["User Profile", "Stable Preferences", "Collaboration Style"]).trimEnd()
   if (!nextIdentity.includes("## User Context")) {
-    nextIdentity = `${nextIdentity}\n\n## User Context\n\n- Durable user profile and stable cross-project preferences live in \`user_profile.md\` and are accessed through the \`user_profile\` tool.`
+    nextIdentity = `${nextIdentity}\n\n## User Context\n\n- Durable user profile and stable cross-project preferences are read from \`socrates://user/profile\`; proposed changes go through \`memory_note\`.`
   }
   if (nextIdentity.trim() !== identity.trim()) {
     fs.writeFileSync(identityPath, `${nextIdentity}\n`)
@@ -4152,7 +4314,7 @@ const formatProjectStateLedgerSection = (input: {
     failedTools.length > 0 ? `- Recent failed tool attempts: ${failedTools.join("; ")}` : "- Recent failed tool attempts: none",
     files.length > 0 ? `- Files touched: ${files.join("; ")}` : "- Files touched: none",
     commands.length > 0 ? `- Commands: ${commands.join("; ")}` : "- Commands: none",
-    "- Startup hint: read full project notes with project_docs({operation:\"read\", area:\"notes\"}) when more detail is needed.",
+    "- Startup hint: read socrates://project/notes when more detail is needed.",
     STATE_LEDGER_END,
   ]
     .filter((line): line is string => typeof line === "string")
@@ -4397,7 +4559,7 @@ const removeLegacyProjectRoot = (legacyRoot: string): void => {
 
 const globalToolDocProfile = (relativePath: string): MemoryDocProfile => ({
   docType: "tool_doc",
-  ownerTool: "tool_docs",
+  ownerTool: "read",
   scope: "global",
   path: relativePath,
   projectId: GLOBAL_MEMORY_AGENT_PROJECT_ID,
@@ -4721,6 +4883,14 @@ const lineMatches = (content: string, query: string, limit: number): Array<{ lin
     }
   })
   return matches
+}
+
+const safeResourceRegex = (query: string, caseSensitive = false): RegExp => {
+  try {
+    return new RegExp(query, caseSensitive ? "g" : "gi")
+  } catch {
+    throw new SocratesError("search_regex_invalid", "Search regex is invalid.", { recoverable: true })
+  }
 }
 
 const truncate = (text: string, charLimit: number): { text: string; truncated: boolean } =>

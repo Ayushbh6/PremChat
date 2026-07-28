@@ -1,7 +1,7 @@
 ---
 socrates_doc: tool_doc
 schema_version: 1
-owner_tool: tool_docs
+owner_tool: read
 scope: global
 index_tags: [tool_usage]
 ---
@@ -24,7 +24,68 @@ index_tags: [tool_usage]
 <!-- socrates:section id="inputs" kind="schema" tags="tools" -->
 ## Inputs
 
-- `read_memory_journal` uses the one canonical schema owned by `tool.read_memory_journal`; send only documented fields and do not add aliases or placeholder values.
+### `read_memory_journal`
+
+Canonical capability: `tool.read_memory_journal`. Send only fields accepted by this generated provider schema; do not add aliases or placeholder values.
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "const": "list"
+        },
+        "limit": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 10
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "charLimit": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 20000
+        }
+      },
+      "required": [
+        "operation"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "const": "read"
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "charLimit": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 20000
+        }
+      },
+      "required": [
+        "operation",
+        "runId"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object"
+}
+```
 <!-- /socrates:section -->
 
 <!-- socrates:section id="workflow" kind="workflow" tags="tools" -->

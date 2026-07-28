@@ -10,7 +10,7 @@ const bundledToolUsageDir = path.resolve(process.cwd(), "src/memory/defaults/pri
 
 const projectProfile: MemoryDocProfile = {
   docType: "project_memory",
-  ownerTool: "project_docs",
+  ownerTool: "edit",
   scope: "workspace",
   path: ".socrates/MEMORY.md",
   projectId: "proj_test",
@@ -19,7 +19,7 @@ const projectProfile: MemoryDocProfile = {
 
 const userProfileProfile: MemoryDocProfile = {
   docType: "user_profile",
-  ownerTool: "user_profile",
+  ownerTool: "edit_files",
   scope: "global",
   path: "user_profile.md",
   indexTags: ["profile"],
@@ -216,33 +216,23 @@ describe("memory doc parser", () => {
   it("keeps bundled tool docs in the five-section structured format", () => {
     const files = listMarkdownFiles(bundledToolUsageDir)
     expect(files.map((filePath) => path.relative(bundledToolUsageDir, filePath).replaceAll(path.sep, "/")).sort()).toEqual([
+      "capability_manager.md",
       "context_disposition.md",
       "current_time.md",
       "edit_apply_patch.md",
       "handover_to_frontier.md",
-      "list_project_resources.md",
-      "mcp_registry.md",
       "memory_agent/current_time.md",
       "memory_agent/edit_files.md",
       "memory_agent/memory_notes.md",
       "memory_agent/projects.md",
       "memory_agent/read_memory_journal.md",
-      "memory_agent/skills.md",
-      "memory_agent/soul.md",
-      "memory_agent/tool_docs.md",
+      "memory_agent/read_search.md",
       "memory_agent/trace_retrieve.md",
-      "memory_agent/user_profile.md",
       "memory_note.md",
-      "project_docs.md",
       "read_search.md",
-      "repo_docs.md",
-      "skills.md",
-      "soul.md",
       "terminal.md",
-      "tool_docs.md",
       "trace_retrieve.md",
       "url_fetch.md",
-      "user_profile.md",
     ])
 
     for (const filePath of files) {
@@ -250,7 +240,7 @@ describe("memory doc parser", () => {
       const content = fs.readFileSync(filePath, "utf8")
       const index = parseMemoryDoc(content, {
         docType: "tool_doc",
-        ownerTool: "tool_docs",
+        ownerTool: "read",
         scope: "global",
         path: `tool_usage/${relativePath}`,
         projectId: "global",

@@ -16,11 +16,15 @@ const decideEditPolicy: SocratesTool<typeof editToolInputSchema._type, typeof ed
     return { type: "denied", reason: "File edits are not allowed in read-only mode." }
   }
 
+  if (isSocratesOwnedWorkingPath(input.path)) {
+    return { type: "auto" }
+  }
+
   if (context.runtimeConfig.sandboxMode === "danger_full_access" || context.runtimeConfig.approvalMode === "approve_all") {
     return { type: "auto" }
   }
 
-  const preview = await context.executors.edit({ ...input, dryRun: true }, context)
+  const preview = await context.executors.edit(input, { ...context, previewOnly: true })
 
   return {
     type: "approval_required",
@@ -34,10 +38,18 @@ const decideEditPolicy: SocratesTool<typeof editToolInputSchema._type, typeof ed
   }
 }
 
+const isSocratesOwnedWorkingPath = (path: string): boolean =>
+  path.startsWith(".socrates/") ||
+  path === "socrates://project/memory" ||
+  path.startsWith("socrates://project/memory/") ||
+  path === "socrates://project/notes" ||
+  path.startsWith("socrates://project/notes/") ||
+  path.startsWith("socrates://project/repo-docs/")
+
 export const editTool: SocratesTool<typeof editToolInputSchema._type, typeof editToolOutputSchema._type> = {
   name: "edit",
   description:
-    "Create or modify one file in the active project workspace. Path is workspace-relative. Call this only after reading existing target files in the current turn. When creating a deliverable, scratch file, or generated file derived from files in a subfolder, use an explicit path in that same subfolder or nearest relevant existing folder; do not default to the workspace root unless the user asks or the artifact is truly project-level. For existing files, use oldString and newString for targeted multiline replacement; set replaceAll only when every occurrence should change. Use content for new files. Use content with overwrite: true only for a deliberate full-file rewrite of an existing file.",
+    "Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
   inputSchema: editToolInputSchema,
   resultSchema: editToolOutputSchema,
   permission: "mutate",

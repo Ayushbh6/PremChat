@@ -54,7 +54,7 @@ const memoryHarnessAgentDefinition = defineAgent<{ system: string }, string>({
     capabilityIds: [
       "tool.trace_retrieve.main",
       "tool.read",
-      "tool.project_docs",
+      "tool.edit",
       "context.stable_prompt",
       "context.exact_messages",
       "context.tool_definitions",
@@ -218,47 +218,34 @@ async function runDownstreamHarness(provider: ModelProvider, evalConfig: EvalCon
   }
   const toolExecutors = {
     trace_retrieve: async () => traceOutput,
-    read: async (input: { path: string }) => ({
-      path: input.path,
-      kind: "file" as const,
-      content: input.path === attachmentPath ? `${attachmentEvidence}: selective source read succeeded.` : "",
-      truncation: { truncated: false, charLimit: 20_000, returnedLength: 56 },
-    }),
-    project_docs: async (input: { operation: string; area: "memory" | "notes"; text?: string; oldText?: string; newText?: string }) => {
-      if (input.operation === "edit" && input.area === "memory" && (input.text !== undefined || input.newText !== undefined)) {
-        const writtenText = input.text ?? input.newText ?? ""
-        if (writtenText.includes(completionMarker)) {
-          projectMemory = projectMemory.replace(
-            "The repeated-compaction recovery check is still open.",
-            "The repeated-compaction recovery check completed after exact trace and attachment verification.",
-          )
-        }
-        if (input.newText !== undefined) {
-          projectMemory = input.newText
-        } else if (!projectMemory.includes(writtenText)) {
-          projectMemory += `\n${writtenText}`
-        }
-        if (projectMemory.includes(completionMarker)) {
-          projectMemory = projectMemory.replaceAll(
-            "The repeated-compaction recovery check is still open.",
-            "The repeated-compaction recovery check completed after exact trace and attachment verification.",
-          )
-        }
-        return {
-          operation: "edit" as const,
-          area: "memory" as const,
-          path: ".socrates/MEMORY.md",
-          content: projectMemory,
-          changed: true,
-          truncation: { truncated: false, charLimit: 20_000, returnedLength: projectMemory.length },
-        }
-      }
+    read: async (input: { path: string }) => {
+      const content = input.path === attachmentPath
+        ? `${attachmentEvidence}: selective source read succeeded.`
+        : input.path.startsWith("socrates://project/memory")
+          ? projectMemory
+          : ""
       return {
-        operation: input.operation === "read_section" ? "read_section" as const : "read" as const,
-        area: input.area,
-        path: input.area === "memory" ? ".socrates/MEMORY.md" : ".socrates/PROJECT_NOTES.md",
-        content: input.area === "memory" ? projectMemory : "",
-        truncation: { truncated: false, charLimit: 20_000, returnedLength: input.area === "memory" ? projectMemory.length : 0 },
+        path: input.path,
+        kind: input.path.startsWith("socrates://") ? "resource" as const : "file" as const,
+        content,
+        truncation: { truncated: false, charLimit: 20_000, originalLength: content.length, returnedLength: content.length },
+      }
+    },
+    edit: async (input: { path: string; edits?: Array<{ oldString: string; newString: string; replaceAll?: boolean }> }) => {
+      if (input.path !== "socrates://project/memory" || !input.edits?.length) throw new Error("Evaluation edit must target governed project memory with targeted edits.")
+      const before = projectMemory
+      for (const edit of input.edits) {
+        if (!projectMemory.includes(edit.oldString)) throw new Error("Evaluation edit oldString was not found.")
+        projectMemory = edit.replaceAll
+          ? projectMemory.replaceAll(edit.oldString, edit.newString)
+          : projectMemory.replace(edit.oldString, edit.newString)
+      }
+      const diff = `--- ${input.path}\n+++ ${input.path}\n-${before}\n+${projectMemory}`
+      return {
+        changedFiles: [{ path: input.path, operation: "edited" as const, verification: "verified" as const }],
+        diff,
+        dryRun: false,
+        truncation: { truncated: false, charLimit: Math.max(1, diff.length), originalLength: diff.length, returnedLength: diff.length },
       }
     },
   } as unknown as ToolExecutors
@@ -279,7 +266,7 @@ async function runDownstreamHarness(provider: ModelProvider, evalConfig: EvalCon
       { role: "developer", content: `<socrates_internal_context_compaction>\n${summary}\n</socrates_internal_context_compaction>` },
       {
         role: "user",
-        content: `Continue the work. State the current hard cap and post-compaction target. You must call trace_retrieve successfully even if the summary appears sufficient. Use this valid search shape: {"operation":"search","mode":"lexical","query":"ORCHID-NEBULA-731"}. From the returned original evidence, give the exact Turn 5 user sentence beginning "Remember the exact recovery phrase"; do not substitute the later Turn 36 sentence. Read ${attachmentPath} selectively and report its exact evidence token. After verifying both sources, close the old repeated-compaction open item and append the exact durable marker "${completionMarker}" to project memory with project_docs. Do not treat superseded values as current.`,
+        content: `Continue the work. State the current hard cap and post-compaction target. You must call trace_retrieve successfully even if the summary appears sufficient. Use this valid search shape: {"operation":"search","mode":"lexical","query":"ORCHID-NEBULA-731"}. From the returned original evidence, give the exact Turn 5 user sentence beginning "Remember the exact recovery phrase"; do not substitute the later Turn 36 sentence. Read ${attachmentPath} selectively and report its exact evidence token. After verifying both sources, read socrates://project/memory, then use governed edit to replace the open item with a completed item containing the exact durable marker "${completionMarker}". Do not treat superseded values as current.`,
       },
     ],
     workspacePath: os.tmpdir(),
@@ -297,7 +284,7 @@ async function runDownstreamHarness(provider: ModelProvider, evalConfig: EvalCon
     providerId: evalConfig.model.providerId,
     modelId: evalConfig.model.modelId,
     runtimeConfig,
-    messages: [{ role: "user", content: `This is a fresh conversation. Read project memory and report the exact ${completionMarker} marker if the previous work finished.` }],
+    messages: [{ role: "user", content: `This is a fresh conversation. Read socrates://project/memory and report the exact ${completionMarker} marker if the previous work finished.` }],
     workspacePath: os.tmpdir(),
     toolExecutors,
     requestApproval: async () => ({ decision: "rejected", reason: "Read-only evaluation except dedicated project memory." }),
@@ -321,7 +308,7 @@ async function runDownstreamHarness(provider: ModelProvider, evalConfig: EvalCon
     freshConversation: {
       answer: freshAnswer,
       tools: freshTools,
-      projectMemoryRead: freshTools.includes("project_docs"),
+      projectMemoryRead: freshTools.includes("read"),
       completionRecovered:
         projectMemory.includes(completionMarker) &&
         freshAnswer.includes(completionMarker) &&

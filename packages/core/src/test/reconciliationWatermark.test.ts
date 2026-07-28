@@ -4,6 +4,7 @@ import {
   ReconciliationWatermarkController,
   buildSocratesProgressReconciliationCheckpoint,
 } from "../agent/reconciliationWatermark"
+import { ReconciliationVerificationLedger } from "../agent/socratesTurnLedgers"
 
 const call = (toolCallId: string, toolName: NormalizedToolCall["toolName"], input: Record<string, unknown>): NormalizedToolCall => ({
   toolCallId,
@@ -91,5 +92,21 @@ describe("reconciliation watermark", () => {
     const prompt = buildSocratesProgressReconciliationCheckpoint(controller.beginPendingCheckpoint()!)
     expect(prompt).toContain("genuine semantic instruction not to remember, save, or store")
     expect(prompt).toContain("There is no router, summarizer, or writer")
+  })
+
+  it("tracks governed document edits and exact post-write reads through the shared tools", () => {
+    const ledger = new ReconciliationVerificationLedger()
+    ledger.recordBatch(
+      [call("edit_1", "edit", { path: "socrates://project/notes/active_context", edits: [{ oldString: "old", newString: "new" }] })],
+      [ok("edit_1", "edit", { changedFiles: [{ path: "socrates://project/notes/active_context" }] })],
+    )
+    ledger.beginCheckpoint()
+    expect(ledger.pendingSummary()).toContain("notes/active_context (needs post-write read)")
+
+    ledger.recordBatch(
+      [call("read_1", "read", { path: "socrates://project/notes/active_context" })],
+      [ok("read_1", "read", { content: "new" })],
+    )
+    expect(ledger.hasPending()).toBe(false)
   })
 })

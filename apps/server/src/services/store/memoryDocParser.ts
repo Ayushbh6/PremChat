@@ -96,7 +96,7 @@ const sectionDefinitions: Record<MemoryDocType, SectionDefinition[]> = {
         "- Recent tools: none",
         "- Files touched: none",
         "- Commands: none",
-        "- Startup hint: read full project notes with project_docs({operation:\"read\", area:\"notes\"}) when more detail is needed.",
+        "- Startup hint: read socrates://project/notes when more detail is needed.",
         STATE_LEDGER_END,
       ].join("\n"),
     },
@@ -151,11 +151,11 @@ const sectionDefinitions: Record<MemoryDocType, SectionDefinition[]> = {
       kind: "relationship",
       heading: "Relationship To User",
       tags: ["soul"],
-      body: "- Work as a durable project partner for one user.\n- Durable user profile and stable cross-project preferences live in `user_profile.md` and are accessed through the `user_profile` tool.",
+      body: "- Work as a durable project partner for one user.\n- Durable user profile and stable cross-project preferences are read from `socrates://user/profile`; proposed changes go through `memory_note`.",
     },
     { id: "operating_principles", kind: "principles", heading: "Operating Principles", tags: ["behavior"], body: "- Prefer evidence over assumption.\n- Gather enough context before changing files.\n- Keep project-specific state inside the workspace `.socrates/` tree." },
     { id: "safety_boundaries", kind: "safety", heading: "Safety Boundaries", tags: ["soul", "safety"], body: "- Runtime, developer, and user instructions outrank this file.\n- Do not store secrets, credentials, private keys, or sensitive raw data.\n- Stop and ask before destructive or sensitive actions without explicit instruction." },
-    { id: "tool_and_memory_discipline", kind: "tools", heading: "Tool And Memory Discipline", tags: ["tools", "memory"], body: "- Use dedicated docs and memory tools for Socrates-owned docs instead of generic file tools.\n- Update identity only from explicit user statements or repeated behavior with clear support in traces.\n- Prefer small section edits over broad rewrites." },
+    { id: "tool_and_memory_discipline", kind: "tools", heading: "Tool And Memory Discipline", tags: ["tools", "memory"], body: "- Use read/search with governed `socrates://` resources and targeted edit only where the resource is writable.\n- Update identity/profile only through the Global Memory Agent from explicit or strongly supported evidence.\n- Change skills only through `capability_manager` and the Skill Writer.\n- Prefer small section edits over broad rewrites." },
   ],
   user_profile: [
     { id: "profile_summary", kind: "profile", heading: "Profile Summary", tags: ["user"], body: "- No stable profile facts captured yet." },
@@ -266,6 +266,9 @@ export const ensureStructuredMemoryDoc = (filePath: string, profile: MemoryDocPr
   try {
     const parsed = parseMemoryDoc(current, profile)
     if (isValidStructuredMemoryDoc(parsed, profile.docType, current)) {
+      if (parsed.warnings?.some((warning) => warning.startsWith("Frontmatter owner "))) {
+        fs.writeFileSync(filePath, current.replace(/^owner_tool:\s*.*$/m, `owner_tool: ${profile.ownerTool}`))
+      }
       return
     }
     if (profile.docType !== "identity" && profile.docType !== "user_profile") {

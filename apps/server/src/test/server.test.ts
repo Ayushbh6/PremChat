@@ -97,7 +97,7 @@ const expectStructuredToolDoc = (socratesHome: string, relativePath: string): st
   const content = fs.readFileSync(filePath, "utf8")
   const index = parseMemoryDoc(content, {
     docType: "tool_doc",
-    ownerTool: "tool_docs",
+    ownerTool: "read",
     scope: "global",
     path: `tool_usage/${relativePath.replaceAll(path.sep, "/")}`,
     projectId: "global",
@@ -225,8 +225,8 @@ const repoDocsPreflightCall = (toolCallId = "tcall_repo_docs_preflight") =>
     type: "model.tool_call.completed" as const,
     toolCall: {
       toolCallId,
-      toolName: "repo_docs",
-      input: { operation: "read", path: "REPO_RULES.md" },
+      toolName: "read",
+      input: { path: "socrates://project/repo-docs/REPO_RULES.md" },
     },
   })
 
@@ -252,8 +252,8 @@ const projectNotesPreflightCall = (toolCallId = "tcall_project_notes_preflight")
     type: "model.tool_call.completed" as const,
     toolCall: {
       toolCallId,
-      toolName: "project_docs",
-      input: { operation: "read", area: "notes" },
+      toolName: "read",
+      input: { path: "socrates://project/notes" },
     },
   })
 
@@ -262,8 +262,8 @@ const projectMemoryReviewCall = (toolCallId = "tcall_project_memory_review") =>
     type: "model.tool_call.completed" as const,
     toolCall: {
       toolCallId,
-      toolName: "project_docs",
-      input: { operation: "read", area: "memory" },
+      toolName: "read",
+      input: { path: "socrates://project/memory" },
     },
   })
 
@@ -631,7 +631,7 @@ const createConcurrentWorkspaceMutationAgent = (): SocratesAgent => {
         toolCall: {
           toolCallId: isSlow ? "tcall_slow_workspace_mutation" : "tcall_fast_workspace_mutation",
           toolName: "bash",
-          input: { command: nodeCommand(script) },
+          input: { operation: "run", command: nodeCommand(script) },
         },
       }
         yield { type: "model.completed" }
@@ -660,7 +660,7 @@ const createApprovalWaitingAgent = (): SocratesAgent => {
         toolCall: {
           toolCallId: "tcall_waiting_bash",
           toolName: "bash",
-          input: { command: "pip install example-package" },
+          input: { operation: "run", command: "pip install example-package" },
         },
       }
       yield { type: "model.completed" }
@@ -685,10 +685,10 @@ const createCredentialFlowAgent = (scriptPath: string): SocratesAgent => {
           type: "model.tool_call.completed",
           toolCall: {
             toolCallId: "tcall_secure_mcp_configure",
-            toolName: "mcp_registry",
+            toolName: "capability_manager",
             input: {
-              operation: "configure",
-              scope: "project",
+              operation: "mcp_configure",
+              scope: "path",
               server: {
                 id: "credential-flow",
                 label: "Credential Flow MCP",
@@ -757,7 +757,7 @@ const createPersistentBashAgent = (): SocratesAgent => {
           toolCall: {
             toolCallId: "tcall_cd",
             toolName: "bash",
-            input: { command: setupCommand },
+            input: { operation: "run", command: setupCommand },
           },
         }
         yield { type: "model.completed" }
@@ -773,7 +773,7 @@ const createPersistentBashAgent = (): SocratesAgent => {
           toolCall: {
             toolCallId: "tcall_state",
             toolName: "bash",
-            input: { command: stateCommand },
+            input: { operation: "run", command: stateCommand },
           },
         }
         yield { type: "model.completed" }
@@ -805,7 +805,7 @@ const createRecoveringBashAgent = (): SocratesAgent => {
           toolCall: {
             toolCallId: "tcall_break_shell",
             toolName: "bash",
-            input: { command: "cd /Users/example/Test && python3 -m venv venv" },
+            input: { operation: "run", command: "cd /Users/example/Test && python3 -m venv venv" },
           },
         }
         yield { type: "model.completed" }
@@ -818,7 +818,7 @@ const createRecoveringBashAgent = (): SocratesAgent => {
           toolCall: {
             toolCallId: "tcall_after_reset",
             toolName: "bash",
-            input: { command: recoveryCommand },
+            input: { operation: "run", command: recoveryCommand },
           },
         }
         yield { type: "model.completed" }
@@ -854,7 +854,7 @@ const createApprovalToolAgent = (): SocratesAgent => {
           toolCall: {
             toolCallId: "tcall_approval",
             toolName: "bash",
-            input: { command },
+            input: { operation: "run", command },
           },
         }
         yield { type: "model.completed" }
@@ -898,7 +898,7 @@ const createVerifiedEditAgent = (): SocratesAgent => {
           toolCall: {
             toolCallId: "tcall_verified_edit",
             toolName: "edit",
-            input: { path: "README.md", oldString: "old", newString: "new" },
+            input: { path: "README.md", edits: [{ oldString: "old", newString: "new" }] },
           },
         }
         yield { type: "model.completed" }
@@ -1090,7 +1090,7 @@ const createUntargetedTerminalStopAgent = (): SocratesAgent => {
             toolCall: {
               toolCallId: "tcall_terminal_stop_solo",
               toolName: "bash",
-              input: { operation: "stop" },
+              input: { operation: "stop", name: "solo-server" },
             },
           }
           yield { type: "model.completed" }
@@ -1177,7 +1177,7 @@ const createAmbiguousTerminalStopAgent = (): SocratesAgent => {
           toolCall: {
             toolCallId: "tcall_terminal_stop_ambiguous",
             toolName: "bash",
-            input: { operation: "stop" },
+            input: { operation: "stop", name: "alpha-server" },
           },
         }
         yield { type: "model.completed" }
@@ -1348,7 +1348,7 @@ setInterval(() => {}, 1000)
             toolCall: {
               toolCallId: "tcall_attempt_stop_awaiting",
               toolName: "bash",
-              input: { operation: "stop", target: "premature-stop-test" },
+              input: { operation: "stop", name: "premature-stop-test" },
             },
           }
           yield { type: "model.completed" }
@@ -1402,7 +1402,7 @@ const createTerminalOutputAgent = (): SocratesAgent => {
             toolCall: {
               toolCallId: "tcall_tail_output",
               toolName: "bash",
-              input: { operation: "output", name: "tail-server" },
+              input: { operation: "inspect", name: "tail-server" },
             },
           }
           yield { type: "model.completed" }
@@ -1509,7 +1509,7 @@ const createTerminalStopDedupAgent = (): SocratesAgent => {
             toolCall: {
               toolCallId: "tcall_dedup_output",
               toolName: "bash",
-              input: { operation: "output", name: "dedup-server" },
+              input: { operation: "inspect", name: "dedup-server" },
             },
           }
           yield { type: "model.completed" }
@@ -1699,8 +1699,8 @@ const createGeminiSignatureAgent = (requests: unknown[]): SocratesAgent => {
           type: "model.tool_call.completed",
           toolCall: {
             toolCallId: "tcall_resources",
-            toolName: "list_project_resources",
-            input: { kind: "pdf", limit: 1 },
+            toolName: "read",
+            input: { path: "socrates://project/resources" },
             providerMetadata: { google: { thoughtSignature: "sig_gemini_1" } },
           },
         }
@@ -5216,7 +5216,7 @@ describe("WebSocket API", () => {
       "---",
       "socrates_doc: tool_doc",
       "schema_version: 1",
-      "owner_tool: tool_docs",
+      "owner_tool: read",
       "scope: global",
       "index_tags: [tool_usage]",
       "---",
@@ -5267,42 +5267,42 @@ describe("WebSocket API", () => {
     expect(fs.existsSync(path.join(socratesHome, "operating_principles.md"))).toBe(false)
     expect(fs.existsSync(path.join(socratesHome, "primary", "operating_principles.md"))).toBe(false)
     expect(fs.existsSync(path.join(socratesHome, "user_profile.md"))).toBe(true)
-    expect(fs.readFileSync(path.join(socratesHome, "identity.md"), "utf8")).toContain("user_profile.md")
+    expect(fs.readFileSync(path.join(socratesHome, "identity.md"), "utf8")).toContain("socrates://user/profile")
     expect(fs.existsSync(path.join(socratesHome, "tool_usage", "trace_retrieve.md"))).toBe(true)
     expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_docs.md"))).toBe(false)
-    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "project_docs.md"))).toBe(true)
-    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "repo_docs.md"))).toBe(true)
-	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "skills.md"))).toBe(true)
-	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "mcp_registry.md"))).toBe(true)
-	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "soul.md"))).toBe(true)
-	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "user_profile.md"))).toBe(true)
-	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "tool_docs.md"))).toBe(true)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "project_docs.md"))).toBe(false)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "repo_docs.md"))).toBe(false)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "skills.md"))).toBe(false)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "mcp_registry.md"))).toBe(false)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "soul.md"))).toBe(false)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "user_profile.md"))).toBe(false)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "tool_docs.md"))).toBe(false)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "current_time.md"))).toBe(true)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "context_disposition.md"))).toBe(true)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "focus_ledger.md"))).toBe(false)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "handover_to_frontier.md"))).toBe(true)
-	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "list_project_resources.md"))).toBe(true)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "list_project_resources.md"))).toBe(false)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "capability_manager.md"))).toBe(true)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "trace_retrieve.md"))).toBe(true)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "trace_retrieve_global.md"))).toBe(false)
-	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "tool_docs.md"))).toBe(true)
-	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "skills.md"))).toBe(true)
-	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "soul.md"))).toBe(true)
-	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "user_profile.md"))).toBe(true)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "tool_docs.md"))).toBe(false)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "skills.md"))).toBe(false)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "soul.md"))).toBe(false)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "user_profile.md"))).toBe(false)
+	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "read_search.md"))).toBe(true)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "current_time.md"))).toBe(true)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "read_memory_journal.md"))).toBe(true)
     const readSearchToolDoc = expectStructuredToolDoc(socratesHome, "read_search.md")
-    expect(readSearchToolDoc).toContain("Use read/search tools to find candidate workspace files")
-	    const projectDocsToolDoc = expectStructuredToolDoc(socratesHome, "project_docs.md")
-	    expect(projectDocsToolDoc).toContain("`.socrates/MEMORY.md`")
-	    expectStructuredToolDoc(socratesHome, "user_profile.md")
+    expect(readSearchToolDoc).toContain("governed socrates:// resources")
+	    expect(readSearchToolDoc).toContain("socrates://capabilities")
 	    const traceToolDoc = expectStructuredToolDoc(socratesHome, "trace_retrieve.md")
 	    expect(traceToolDoc).toContain('mode: "lexical"')
 	    expect(traceToolDoc).toContain("cross-project selectors are unavailable")
 	    expectStructuredToolDoc(socratesHome, path.join("memory_agent", "edit_files.md"))
-	    expectStructuredToolDoc(socratesHome, path.join("memory_agent", "user_profile.md"))
+	    expectStructuredToolDoc(socratesHome, path.join("memory_agent", "read_search.md"))
 	    expectStructuredToolDoc(socratesHome, "context_disposition.md")
 	    expectStructuredToolDoc(socratesHome, "handover_to_frontier.md")
-	    expectStructuredToolDoc(socratesHome, "list_project_resources.md")
+	    expectStructuredToolDoc(socratesHome, "capability_manager.md")
 	    expectStructuredToolDoc(socratesHome, path.join("memory_agent", "current_time.md"))
 	    expectStructuredToolDoc(socratesHome, path.join("memory_agent", "read_memory_journal.md"))
 	    const memoryNotesToolDoc = expectStructuredToolDoc(socratesHome, path.join("memory_agent", "memory_notes.md"))
@@ -5344,12 +5344,11 @@ describe("WebSocket API", () => {
     expect(controlText).not.toContain("Last turn: completed")
     expect(systemText).not.toContain("Mandatory first-turn active recall")
     expect(systemText).toContain("Stable recall routing")
-    expect(systemText).toContain("project_docs notes active_context for project-local open loops and active recall")
-    expect(systemText).toContain("For project-local \"remember/keep in mind\" items, update notes `active_context`")
-    expect(systemText).toContain("project_docs memory for durable project state")
-    expect(systemText).toContain("repo_docs for repo doctrine")
-    expect(systemText).toContain("skills for reusable workflows")
-    expect(systemText).toContain("mcp_registry for external tool servers")
+    expect(systemText).toContain("project-local open loops and current todos go to `socrates://project/notes`")
+    expect(systemText).toContain("durable project state to `socrates://project/memory`")
+    expect(systemText).toContain("repo doctrine to `socrates://project/repo-docs`")
+    expect(systemText).toContain("reusable workflows through retrieved/read skills")
+    expect(systemText).toContain("external integrations through retrieved/read MCP capabilities")
 
     const handle = openDatabase(dbPath)
     const store = new SocratesStore(handle, undefined, undefined, { socratesHome })
@@ -5392,21 +5391,20 @@ describe("WebSocket API", () => {
         searchMode: "keyword_all",
       })
       expect(searched.results.some((result) => result.path.includes("trace_retrieve.md"))).toBe(true)
-      const projectDocsGuide = store.runToolDocsTool(project.id, {
+      const governedReadGuide = store.runToolDocsTool(project.id, {
         operation: "read",
-        path: "project_docs.md",
+        path: "read_search.md",
         charLimit: 12_000,
       })
-      expect(projectDocsGuide.results[0]?.snippet).toContain("PROJECT_NOTES.md")
-      expect(projectDocsGuide.results[0]?.snippet).toContain("MEMORY.md")
-      expect(projectDocsGuide.results[0]?.snippet).toContain("runtime_context")
-      const projectDocsPatchGuide = store.runToolDocsTool(project.id, {
+      expect(governedReadGuide.results[0]?.snippet).toContain("socrates://")
+      expect(governedReadGuide.results[0]?.snippet).toContain("socrates://capabilities")
+      const capabilityFallbackGuide = store.runToolDocsTool(project.id, {
         operation: "search",
         area: "tool_usage",
-        query: "project_docs patch_section",
+        query: "socrates://capabilities",
         searchMode: "keyword_all",
       })
-      expect(projectDocsPatchGuide.totalMatches).toBeGreaterThan(0)
+      expect(capabilityFallbackGuide.totalMatches).toBeGreaterThan(0)
       expect(() =>
         store.runToolDocsTool(project.id, {
           operation: "read",
@@ -5425,7 +5423,7 @@ describe("WebSocket API", () => {
       expect(() =>
         memoryAgentToolDocs.run({
           operation: "read",
-          path: "tool_usage/project_docs.md",
+          path: "tool_usage/read_search.md",
           charLimit: 12_000,
         }),
       ).toThrow(/not visible to this agent/)
@@ -5834,7 +5832,7 @@ describe("WebSocket API", () => {
       const profilePath = path.join(socratesHome, "user_profile.md")
       const profile = {
         docType: "user_profile" as const,
-        ownerTool: "user_profile" as const,
+        ownerTool: "edit_files" as const,
         scope: "global" as const,
         path: "user_profile.md",
         projectId: "global",
@@ -5942,7 +5940,7 @@ describe("WebSocket API", () => {
       const profilePath = path.join(socratesHome, "user_profile.md")
       const profile = {
         docType: "user_profile" as const,
-        ownerTool: "user_profile" as const,
+        ownerTool: "edit_files" as const,
         scope: "global" as const,
         path: "user_profile.md",
         projectId: "global",
@@ -6366,7 +6364,8 @@ describe("WebSocket API", () => {
       const toolNames = ((requests[0]?.tools as Array<{ name: string }> | undefined) ?? []).map((tool) => tool.name)
       expect(requests[0]?.system).toContain("You are the Socrates Global Memory Agent")
       expect(requests[0]?.system).toContain("edit_files: the only write tool")
-      expect(toolNames).toEqual(expect.arrayContaining(["trace_retrieve", "projects", "tool_docs", "skills", "memory_notes", "soul", "user_profile", "edit_files"]))
+      expect(toolNames).toEqual(expect.arrayContaining(["trace_retrieve", "projects", "read", "search", "memory_notes", "read_memory_journal", "edit_files"]))
+      expect(toolNames).not.toEqual(expect.arrayContaining(["tool_docs", "skills", "soul", "user_profile"]))
       expect(toolNames).not.toContain("bash")
       expect(toolNames).not.toContain("edit")
       expect(JSON.stringify(requests[1]?.messages)).toContain("memory-agent trace marker")
@@ -6931,7 +6930,7 @@ describe("WebSocket API", () => {
       const profilePath = path.join(socratesHome, "user_profile.md")
       const profile = {
         docType: "user_profile" as const,
-        ownerTool: "user_profile" as const,
+        ownerTool: "edit_files" as const,
         scope: "global" as const,
         path: "user_profile.md",
         projectId: "global",
@@ -7253,8 +7252,8 @@ describe("WebSocket API", () => {
       expect(request.system).not.toContain("Semantic retrieval: not configured.")
       expect(request.system).not.toContain("Current date:")
       expect(request.system).toContain("If the current date or exact time matters, call current_time")
-      expect(request.system).toContain("Project notes include an `active_context` section")
-      expect(request.system).toContain("backend-owned `runtime_context` section with compact generated workspace scan facts")
+      expect(request.system).toContain("Project notes include `active_context`")
+      expect(request.system).toContain("backend-owned `runtime_context` section")
       expect(request.system).toContain("On the first assistant response in a new conversation")
       expect(latestUserContent(request.messages)).toBe("Use the context")
       expect(request.messages.some((message) => message.role === "developer" && message.content?.includes("runtime_socrates_docs_preflight"))).toBe(false)
@@ -7373,7 +7372,7 @@ describe("WebSocket API", () => {
         }),
       )
       const toolCompleted = await waitForEvent(socket, "tool.call.completed")
-      expect(toolCompleted.payload.summary).toBe("Listed 1 of 2 project resources.")
+      expect(toolCompleted.payload.summary).toBe("Read resource socrates://project/resources.")
       await waitForEvent(socket, "message.completed")
       await waitForEvent(socket, "turn.completed")
 
@@ -7997,7 +7996,7 @@ describe("WebSocket API", () => {
     }
   })
 
-  it("asks for a natural terminal target when an untargeted model stop is ambiguous", async () => {
+  it("uses a required human-readable terminal name when multiple terminals exist", async () => {
     const app = await buildTestServer(tempDbPath(), createAmbiguousTerminalStopAgent())
     await onboard(app)
     const { project } = await createProject(app)
@@ -8021,10 +8020,8 @@ describe("WebSocket API", () => {
       await waitForEvent(socket, "turn.completed")
 
       sendCommand(socket, chatMessageCommand(project.id, conversation.id, "Stop without target"))
-      const failed = await waitForToolFailedByProviderId(socket, "tcall_terminal_stop_ambiguous")
-      expect(failed.payload.error.code).toBe("terminal_ambiguous")
-      expect(JSON.stringify(failed.payload.error.details)).toContain("alpha-server")
-      expect(JSON.stringify(failed.payload.error.details)).toContain("beta-server")
+      const stopped = await waitForToolCompletedByProviderId(socket, "tcall_terminal_stop_ambiguous")
+      expect(stopped.payload.summary).toContain("alpha-server")
       await waitForEvent(socket, "turn.completed")
     } finally {
       if (socket.readyState === WebSocket.OPEN) {

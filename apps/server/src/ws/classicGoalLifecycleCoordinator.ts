@@ -4,7 +4,7 @@ import {
   type SocratesAgent,
   type SocratesGoalResolutionResult,
 } from "@socrates/core"
-import type { CandidateRetrievalStatus, MemoryCandidate, RuntimeConfig } from "@socrates/contracts"
+import type { CandidateRetrievalStatus, CapabilityCandidate, MemoryCandidate, RuntimeConfig } from "@socrates/contracts"
 import type { SocratesStore } from "../services/store"
 import type { V2FlowStore } from "../services/v2/flowStore"
 import {
@@ -35,12 +35,14 @@ export type RoutedClassicGoal =
       status: "resolved"
       goal: ActiveGoalCard
       memoryCandidates: readonly MemoryCandidate[]
+      capabilityCandidates: readonly CapabilityCandidate[]
       retrieval: CandidateRetrievalStatus
     }
   | {
       status: "clarification"
       question: string
       memoryCandidates: readonly MemoryCandidate[]
+      capabilityCandidates: readonly CapabilityCandidate[]
       retrieval: CandidateRetrievalStatus
     }
 
@@ -53,12 +55,13 @@ export const resolveClassicGoal = async (input: RouteClassicGoalInput): Promise<
     capsules: initialSnapshot.latestCapsules,
   })
   const retrieved = await retrieveTurnCandidates({
-    retrieveGoals: () => input.sharedStore.retrieveGoalCandidates(input.projectId, input.userMessage, 12),
+    retrieveGoals: () => input.sharedStore.retrieveGoalCandidates(input.projectId, input.userMessage, 3),
     retrieveMemory: () => input.sharedStore.retrieveMemoryCandidates(input.projectId, memoryCandidateQueryForTurn({
       userMessage: input.userMessage,
       ...(initialMemoryGoal ? { goal: initialMemoryGoal } : {}),
       phase: "broad",
     }), true),
+    retrieveCapabilities: () => input.sharedStore.retrieveCapabilityCandidates(input.projectId, input.userMessage, 5),
   })
   const retrievedGoalIds = retrieved.goalCandidates.map((candidate) => candidate.goalId)
   const context = retrievedGoalIds.length > 0
@@ -93,6 +96,7 @@ export const resolveClassicGoal = async (input: RouteClassicGoalInput): Promise<
       status: "clarification",
       question: result.decision.clarificationQuestion ?? "Which goal should I continue?",
       memoryCandidates: retrieved.memoryCandidates,
+      capabilityCandidates: retrieved.capabilityCandidates,
       retrieval: retrieved.status,
     }
   }
@@ -138,6 +142,7 @@ export const resolveClassicGoal = async (input: RouteClassicGoalInput): Promise<
     status: "resolved",
     goal,
     memoryCandidates: refinedMemory.memoryCandidates,
+    capabilityCandidates: retrieved.capabilityCandidates,
     retrieval: refinedMemory.status,
   }
 }

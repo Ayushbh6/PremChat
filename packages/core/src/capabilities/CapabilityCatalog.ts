@@ -32,30 +32,22 @@ import {
 } from "@socrates/contracts"
 import { applyPatchTool } from "../tools/applyPatchTool"
 import { bashTool } from "../tools/bashTool"
+import { capabilityManagerTool } from "../tools/capabilityManagerTool"
 import { contextDispositionTool } from "../tools/contextDispositionTool"
 import { currentTimeTool } from "../tools/currentTimeTool"
 import { editFilesTool } from "../tools/editFilesTool"
 import { editTool } from "../tools/editTool"
 import { frontierHandoverTool } from "../tools/frontierHandoverTool"
-import { listProjectResourcesTool } from "../tools/listProjectResourcesTool"
-import { mcpRegistryTool } from "../tools/mcpRegistryTool"
 import { memoryNoteTool } from "../tools/memoryNoteTool"
 import { memoryNotesTool } from "../tools/memoryNotesTool"
-import { projectDocsTool } from "../tools/projectDocsTool"
 import { projectsTool } from "../tools/projectsTool"
 import { readMemoryJournalTool } from "../tools/readMemoryJournalTool"
 import { readTool } from "../tools/readTool"
-import { repoDocsTool } from "../tools/repoDocsTool"
 import { searchTool } from "../tools/searchTool"
-import { skillManagerTool } from "../tools/skillManagerTool"
 import { skillWriteTool } from "../tools/skillWriteTool"
-import { skillsReadOnlyTool, skillsTool } from "../tools/skillsTool"
-import { soulTool } from "../tools/soulTool"
-import { toolDocsTool } from "../tools/toolDocsTool"
 import { globalTraceRetrieveTool, traceRetrieveTool } from "../tools/traceRetrieveTool"
 import type { SocratesTool } from "../tools/types"
 import { urlFetchTool } from "../tools/urlFetchTool"
-import { userProfileTool } from "../tools/userProfileTool"
 import { waitTool } from "../tools/waitTool"
 import type { RoleManifest } from "../agent/AgentDefinition"
 import {
@@ -104,8 +96,8 @@ const specialistCallers = [
 ] as const
 
 const staticToolSpecs: readonly StaticToolSpec[] = [
-  toolSpec("tool.read", readTool, [MAIN], "packages/workspace", "packages/workspace/src/tools/readTool.ts", mainCallers, ["packages/workspace/src/workspace.test.ts"], ["read_search.md"]),
-  toolSpec("tool.search", searchTool, [MAIN], "packages/workspace", "packages/workspace/src/tools/searchTool.ts", mainCallers, ["packages/workspace/src/workspace.test.ts"], ["read_search.md"]),
+  toolSpec("tool.read", readTool, [MAIN, MEMORY, SKILL_WRITER], "apps/server", "apps/server/src/services/resources/socratesResourceService.ts", [...mainCallers, ...specialistCallers], ["packages/workspace/src/workspace.test.ts", "apps/server/src/services/resources/socratesResourceService.test.ts"], ["read_search.md", "memory_agent/read_search.md"]),
+  toolSpec("tool.search", searchTool, [MAIN, MEMORY, SKILL_WRITER], "apps/server", "apps/server/src/services/resources/socratesResourceService.ts", [...mainCallers, ...specialistCallers], ["packages/workspace/src/workspace.test.ts", "apps/server/src/services/resources/socratesResourceService.test.ts"], ["read_search.md", "memory_agent/read_search.md"]),
   toolSpec("tool.url_fetch", urlFetchTool, [MAIN], "apps/server", "apps/server/src/ws/urlFetch.ts", mainCallers, ["apps/server/src/ws/urlFetch.test.ts"], ["url_fetch.md"]),
   toolSpec("tool.edit", editTool, [MAIN], "packages/workspace", "packages/workspace/src/tools/editTool.ts", mainCallers, ["packages/workspace/src/workspace.test.ts"], ["edit_apply_patch.md"]),
   toolSpec("tool.apply_patch", applyPatchTool, [MAIN], "packages/workspace", "packages/workspace/src/tools/patchHelpers.ts", mainCallers, ["packages/workspace/src/workspace.test.ts"], ["edit_apply_patch.md"]),
@@ -115,18 +107,9 @@ const staticToolSpecs: readonly StaticToolSpec[] = [
   toolSpec("tool.current_time", currentTimeTool, [MAIN, MEMORY, SKILL_WRITER], "apps/server", "apps/server/src/services/store/runtimeContext.ts", [...mainCallers, ...specialistCallers], ["packages/core/src/test/AgentRuntime.test.ts"], ["current_time.md", "memory_agent/current_time.md"]),
   toolSpec("tool.trace_retrieve.main", traceRetrieveTool, [MAIN], "apps/server", "apps/server/src/services/retrieval/unifiedMainTraceService.ts", mainCallers, ["apps/server/src/test/server.test.ts"], ["trace_retrieve.md"]),
   toolSpec("tool.trace_retrieve.global", globalTraceRetrieveTool, [MEMORY, SKILL_WRITER], "apps/server", "apps/server/src/services/store/memoryAgentToolExecutors.ts", specialistCallers, ["packages/core/src/test/memoryPrompt.test.ts"], ["memory_agent/trace_retrieve.md"]),
-  toolSpec("tool.tool_docs", toolDocsTool, [MAIN, MEMORY], "apps/server", "apps/server/src/services/store/toolDocsStore.ts", [...mainCallers, "apps/server/src/services/store/memoryAgentRunner.ts"], ["apps/server/src/services/store/memoryDocParser.test.ts"], ["tool_docs.md", "memory_agent/tool_docs.md"]),
-  toolSpec("tool.skills.manage", skillsTool, [MAIN], "apps/server", "apps/server/src/services/store/memorySkills.ts", mainCallers, ["apps/server/src/services/store/memorySkills.test.ts"], ["skills.md"]),
-  toolSpec("tool.skills.read", skillsReadOnlyTool, [MEMORY, SKILL_WRITER], "apps/server", "apps/server/src/services/store/memorySkills.ts", specialistCallers, ["packages/core/src/test/memoryPrompt.test.ts"], ["memory_agent/skills.md"]),
-  toolSpec("tool.skill_manager", skillManagerTool, [MAIN], "apps/server", "apps/server/src/services/store/memorySkills.ts", mainCallers, ["apps/server/src/services/store/memorySkills.test.ts"]),
   toolSpec("tool.projects", projectsTool, [MEMORY], "apps/server", "apps/server/src/services/store/memoryAgentToolExecutors.ts", ["apps/server/src/services/store/memoryAgentRunner.ts"], ["packages/core/src/test/memoryPrompt.test.ts"], ["memory_agent/projects.md"]),
   toolSpec("tool.edit_files", editFilesTool, [MEMORY], "apps/server", "apps/server/src/services/store/memoryAgentToolExecutors.ts", ["apps/server/src/services/store/memoryAgentRunner.ts"], ["apps/server/src/services/store/memoryAgentJournal.test.ts"], ["memory_agent/edit_files.md"]),
-  toolSpec("tool.project_docs", projectDocsTool, [MAIN, SKILL_WRITER], "apps/server", "apps/server/src/services/store/memoryStore.ts", [...mainCallers, "apps/server/src/services/store/skillWriterAgentRunner.ts"], ["apps/server/src/services/store/memoryDocParser.test.ts"], ["project_docs.md"]),
-  toolSpec("tool.repo_docs", repoDocsTool, [MAIN, SKILL_WRITER], "apps/server", "apps/server/src/services/store/memoryStore.ts", [...mainCallers, "apps/server/src/services/store/skillWriterAgentRunner.ts"], ["apps/server/src/services/store/memoryDocParser.test.ts"], ["repo_docs.md"]),
-  toolSpec("tool.soul", soulTool, [MAIN, MEMORY, SKILL_WRITER], "apps/server", "apps/server/src/services/store/memoryStore.ts", [...mainCallers, ...specialistCallers], ["apps/server/src/services/store/memoryDocParser.test.ts"], ["soul.md", "memory_agent/soul.md"]),
-  toolSpec("tool.user_profile", userProfileTool, [MAIN, MEMORY, SKILL_WRITER], "apps/server", "apps/server/src/services/store/memoryStore.ts", [...mainCallers, ...specialistCallers], ["apps/server/src/services/store/memoryDocParser.test.ts"], ["user_profile.md", "memory_agent/user_profile.md"]),
-  toolSpec("tool.list_project_resources", listProjectResourcesTool, [MAIN], "apps/server", "apps/server/src/services/mainToolExecutors.ts", mainCallers, ["apps/server/src/test/server.test.ts"], ["list_project_resources.md"]),
-  toolSpec("tool.mcp_registry", mcpRegistryTool, [MAIN], "packages/mcp", "packages/mcp/src/index.ts", mainCallers, ["packages/mcp/src/index.test.ts"], ["mcp_registry.md"]),
+  toolSpec("tool.capability_manager", capabilityManagerTool, [MAIN], "apps/server", "apps/server/src/services/mainToolExecutors.ts", mainCallers, ["apps/server/src/services/resources/socratesResourceService.test.ts"], ["capability_manager.md"]),
   toolSpec("tool.memory_note", memoryNoteTool, [MAIN], "apps/server", "apps/server/src/services/store/memoryAgentSignals.ts", mainCallers, ["apps/server/src/services/store/memoryAgentJournal.test.ts"], ["memory_note.md"]),
   toolSpec("tool.memory_notes", memoryNotesTool, [MEMORY], "apps/server", "apps/server/src/services/store/memoryAgentToolExecutors.ts", ["apps/server/src/services/store/memoryAgentRunner.ts"], ["apps/server/src/services/store/memoryAgentJournal.test.ts"], ["memory_agent/memory_notes.md"]),
   toolSpec("tool.read_memory_journal", readMemoryJournalTool, [MEMORY], "apps/server", "apps/server/src/services/store/memoryAgentJournal.ts", ["apps/server/src/services/store/memoryAgentRunner.ts"], ["apps/server/src/services/store/memoryAgentJournal.test.ts"], ["memory_agent/read_memory_journal.md"]),
@@ -136,10 +119,20 @@ const staticToolSpecs: readonly StaticToolSpec[] = [
 
 const toolDocumentationGuidance: Readonly<Record<string, readonly string[]>> = Object.freeze({
   "tool.read": [
-    "Use read/search tools to find candidate workspace files, inspect exact evidence, and avoid editing or explaining code from guesses.",
+    "Use read/search for workspace files and governed socrates:// resources. Search socrates://capabilities before claiming a skill or MCP capability is unavailable.",
   ],
-  "tool.project_docs": [
-    "Use `area: \"memory\"` for `.socrates/MEMORY.md` and `area: \"notes\"` for `.socrates/PROJECT_NOTES.md`; generic workspace editors cannot mutate either authority file.",
+  "tool.edit": [
+    "Read an existing target first. Targeted edits use one edits array; every match is resolved against the same original content, overlaps fail, and the write is atomic.",
+    "The model never supplies dryRun. Approval previews are an internal runtime concern. Re-read a changed target when later work depends on its exact new contents.",
+  ],
+  "tool.apply_patch": [
+    "Use the structured Begin Patch format for multi-file or multi-hunk work. The model never supplies dryRun; approval preview and verified application are internal runtime phases.",
+  ],
+  "tool.bash": [
+    "The model-facing operations are exactly run, start, inspect, stop, and list. Use human-readable Terminal names; runtime ids and output cursors are internal.",
+  ],
+  "tool.capability_manager": [
+    "Automatic retrieval and socrates://capabilities search handle discovery. Use this manager only to check or mutate skills and MCP configuration; mutations require approval.",
   ],
   "tool.trace_retrieve.main": [
     "Use this capability for prior conversation and evidence investigation when earlier visible work can affect the current answer.",
@@ -165,13 +158,11 @@ const specialToolDefinitionFiles: Readonly<Record<string, string>> = Object.free
   handover_to_frontier: "frontierHandoverTool.ts",
   current_time: "currentTimeTool.ts",
   trace_retrieve: "traceRetrieveTool.ts",
-  list_project_resources: "listProjectResourcesTool.ts",
-  mcp_registry: "mcpRegistryTool.ts",
+  capability_manager: "capabilityManagerTool.ts",
   memory_note: "memoryNoteTool.ts",
   memory_notes: "memoryNotesTool.ts",
   read_memory_journal: "readMemoryJournalTool.ts",
   skill_write: "skillWriteTool.ts",
-  skill_manager: "skillManagerTool.ts",
   context_disposition: "contextDispositionTool.ts",
 })
 
@@ -180,6 +171,7 @@ const staticToolCapabilities = staticToolSpecs.map((spec) => defineStaticToolCap
 const serviceCapabilities: CapabilityDefinition[] = [
   serviceCapability("retrieval.goal_candidates", "automatic_retrieval", "Retrieve ranked goal candidates while always retaining the current goal.", "retrieval.goal_candidates", [MAIN], ["goal", "runtime"], "apps/server/src/services/turn/turnCandidateRetrieval.ts", "canonical"),
   serviceCapability("retrieval.memory_candidates", "automatic_retrieval", "Retrieve authorized exact-memory candidates in parallel with goal candidates and perform one conditional bound-goal refinement through the same service.", "retrieval.memory_candidates", [MAIN], ["goal", "runtime"], "apps/server/src/services/turn/turnCandidateRetrieval.ts", "canonical"),
+  serviceCapability("retrieval.capability_candidates", "automatic_retrieval", "Retrieve ranked installed skill and MCP capability candidates in parallel with goal and memory candidates.", "retrieval.capability_candidates", [MAIN], ["project", "global", "runtime"], "apps/server/src/services/turn/turnCandidateRetrieval.ts", "canonical"),
   serviceCapability("authority.memory_selection", "deterministic_authority", "Select exact authorized memory after goal binding without a model router.", "memory.select_exact", [MAIN], ["goal", "runtime"], "packages/core/src/retrieval/deterministicMemorySelection.ts", "canonical"),
   serviceCapability("authority.goal_ledger", "deterministic_authority", "Own canonical goal pointers, lifecycle state, task counts, and capsule references.", "goal_ledger.transaction", [MAIN], ["goal", "project"], "apps/server/src/services/v2/flowStore.ts", "migration_compatibility"),
   serviceCapability("authority.finalization", "deterministic_authority", "Validate and atomically persist the answer, task, bound goal, capsule, usage, and audit state before publication.", "finalization.atomic_commit", [MAIN], ["turn", "goal"], "apps/server/src/services/turn/validatedTurnFinalization.ts", "canonical"),

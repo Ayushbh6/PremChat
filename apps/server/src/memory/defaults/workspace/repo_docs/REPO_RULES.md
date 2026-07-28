@@ -1,7 +1,7 @@
 ---
 socrates_doc: repo_rules
 schema_version: 1
-owner_tool: repo_docs
+owner_tool: edit
 scope: workspace
 index_tags: [repo_docs]
 ---
@@ -25,8 +25,8 @@ This file records durable engineering rules for this workspace. Keep it short, c
 
 - Read current files before editing them.
 - Use targeted edits or structured patches for existing files.
-- Use `project_docs` for `.socrates/MEMORY.md` and `.socrates/PROJECT_NOTES.md`.
-- Use `repo_docs` for `.socrates/repo_docs/*.md`.
+- Use governed `read`, `search`, and `edit` with `socrates://project/memory` or `socrates://project/notes` for project working state.
+- Use governed `read`, `search`, and `edit` with `socrates://project/repo-docs` for durable repo doctrine.
 - Do not claim success until the relevant command/tool confirms it.
 <!-- /socrates:section -->
 
