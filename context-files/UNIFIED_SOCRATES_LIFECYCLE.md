@@ -49,7 +49,7 @@ No view, sidebar, path, or compatibility adapter creates replacement copies to p
 Every user-authored message follows this order:
 
     1. persist exact user message immediately
-    2. retrieve goal candidates and memory candidates in parallel
+    2. retrieve goal, memory, and capability candidates in parallel
     3. same-Socrates semantic goal resolution
     4. bind the canonical goal and create the task
     5. deterministically select exact memory for that goal
@@ -64,11 +64,11 @@ Immediate message persistence and later goal binding operate on the same canonic
 
 ## Parallel Candidate Retrieval
 
-Before semantic resolution, the backend starts two mechanical retrievals concurrently.
+Before semantic resolution, the backend starts three mechanical retrievals concurrently.
 
 ### Goal candidates
 
-The goal candidate path searches capsule/index metadata using the exact latest query plus lexical, semantic, entity, alias, recency, lifecycle, and prior-use signals. The current goal is included independently of its retrieval score. Older results are deduplicated and returned as a small numbered list of human-readable capsules.
+The goal candidate path searches capsule/index metadata using the exact latest query plus lexical, semantic, entity, alias, recency, lifecycle, and prior-use signals. The current goal is included independently of its retrieval score. Older results are deduplicated and limited to the top three numbered human-readable capsules.
 
 ### Memory candidates
 
@@ -77,6 +77,12 @@ The memory candidate path searches authorized exact sources and lossless derived
 Retrieval ranks possibilities. It does not choose a goal, create a goal, interpret user intent, rewrite memory, or decide that a low score means new work.
 
 Memory candidates are gathered broadly while the goal decision is pending, using a disposable search projection derived from the canonical task plus the current capsule when available. Canonical source text remains unchanged and independently attached where required. After binding, a changed goal or an empty eligible first pass permits one targeted query through the same retrieval service. Deterministic policy then merges, filters, and reranks exact candidates using the resolved goal, active resource scope, source permissions, current task, and duplication rules. This is not a model call, retry loop, or second retrieval authority.
+
+### Capability candidates
+
+The capability path uses the same parsing, embeddings, lexical/vector indexes, hybrid ranking, and typed corpus-adapter pattern to retrieve a compact set of relevant installed skills and MCP tools. It does not grep the user prompt, decide intent, mutate capability state, or inject the full registry. Exact explicit capability ids/names may resolve deterministically. When retrieval misses, Socrates uses `read` or `search` over `socrates://capabilities`; it must perform that fallback before claiming no suitable installed capability exists.
+
+`capability_manager` remains visible on every normal Socrates tool-capable turn. It is the one approval-gated model mutation surface for both skills and MCPs. Skill creation/update/import/removal delegates to the Skill Writer or the verified package-import path as applicable; MCP configuration/removal delegates to the shared MCP lifecycle. Capability discovery never depends on manager visibility.
 
 ## Same-Socrates Goal Resolution
 
@@ -87,7 +93,7 @@ The resolver receives only:
 1. the exact latest user message;
 2. the current goal capsule when one exists;
 3. the latest exact exchange in the current goal;
-4. a small numbered list of retrieved older goal capsules; and
+4. at most three numbered retrieved older goal capsules; and
 5. any explicit user correction or selected-goal instruction.
 
 The decision has only four semantic outcomes:
@@ -192,11 +198,14 @@ Normal main-agent preparation includes:
     resolved current goal capsule
     latest exact exchange in that goal
     selected exact memory and evidence
+    compact matched skill and MCP capability candidates
     active Terminal, approval, wait, and continuation state
 
 Older exact goal exchanges are attached when selected as relevant or inspected through shared retrieval. Page sizes limit one response, not the canonical source. No message selected for context may be character- or token-sliced.
 
 The model receives no view-specific persona, project-first prompt, mutable focus-ledger tool, Memory Router output grammar, or duplicate Classic/Flow history policy.
+
+Main Socrates reads identity, user profile, generated tool guidance, installed skills, project resources, and `.socrates` documents through the shared `read`/`search` resource protocol. Identity and user profile are read-only and may be changed only by asynchronous Memory Agent curation originating from `memory_note` evidence. Generic `edit` may update authorized `.socrates` working/project-doc resources through the governed resource adapter, but never identity, user profile, generated tool guidance, runtime-owned sections, or skill files. Skill mutations use `capability_manager` and the Skill Writer.
 
 ## Main Socrates Loop
 

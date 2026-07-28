@@ -96,7 +96,7 @@ The capsule is not a transcript and is not a replacement for exact history. Caps
 
 The goal ledger is compact backend-owned structured state containing the goal list, current-goal pointer, titles, lifecycle state, and latest capsules. It does not store or duplicate transcripts, tool output, Terminal streams, files, patches, or other evidence.
 
-The model never receives the whole ledger. It receives the current goal capsule automatically plus a small set of older goal capsules selected by hybrid retrieval for the latest query.
+The model never receives the whole ledger. It receives the current goal capsule automatically plus at most three older goal capsules selected by hybrid retrieval for the latest query.
 
 ### Resource Scope
 
@@ -154,7 +154,7 @@ Every user-authored turn follows one global sequence:
 
 ```text
 persist the exact user message immediately
-  -> retrieve goal candidates and memory candidates in parallel
+  -> retrieve goal, memory, and capability candidates in parallel
   -> same-Socrates semantic goal resolution
   -> deterministic exact memory selection for the resolved goal
   -> one shared Socrates agent loop
@@ -165,6 +165,8 @@ persist the exact user message immediately
 ```
 
 Hybrid retrieval is mechanical candidate discovery, not semantic authority. It combines lexical, semantic, entity, recency, source, and goal signals through one shared retrieval foundation. The active goal is always supplied independently of its search score.
+
+Capability retrieval supplies a compact set of semantically matched installed skills and MCP tools without dumping all capability metadata or schemas into the prompt. It never uses keyword-only prompt matching. Socrates may deepen a missed lookup through `read` and `search`; before claiming that no suitable installed capability exists, it must search `socrates://capabilities`. The always-visible `capability_manager` is not selected by retrieval: it is the single approval-gated mutation entrypoint for adding or changing skills and MCPs.
 
 The semantic goal decision belongs to Socrates itself through the shared runtime and shared prompt core. It is one minimal no-tool turn-resolution step, not a separate Goal Router personality, provider loop, tool-using agent, or independently evolving prompt harness.
 
@@ -243,6 +245,8 @@ The product reaches this North Star only when all of the following are true:
 - `Inspect the Memory Agent`, `improve it`, and `test it` remain one coherent goal.
 - The current goal and latest exact exchange are supplied on every turn regardless of retrieval score.
 - Older goals are retrieved automatically and represented by a small set of human-readable capsules.
+- No more than three older goal capsules are projected into normal turn resolution.
+- Relevant skills and MCP tools are retrieved automatically, while `socrates://capabilities` remains the mandatory exact fallback before an unavailable-capability claim.
 - The goal decision exposes only current, retrieved older goal, new, or clarify.
 - There is no model-driven Memory Router or tool-using Goal Router in the critical path.
 - Exact messages and answers remain canonical, visible, attributable, searchable, and deletable.

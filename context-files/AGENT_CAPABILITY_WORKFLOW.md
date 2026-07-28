@@ -22,6 +22,8 @@ canonical contracts and shared utilities
 
 No route, store, UI handler, Classic adapter, Flow adapter, worker, MCP integration, or provider may skip this chain.
 
+For the unified foreground resource surface, `read` and `search` own both workspace paths and authorized `socrates://` resources. `edit` owns ordinary workspace files plus explicitly writable `.socrates` resources through the same authority registry. Identity, user profile, generated tool guidance, and installed skill files are read-only to main Socrates. Identity/profile proposals go through `memory_note`; skill and MCP mutations go through the always-visible approval-gated `capability_manager`.
+
 One shared implementation does not require a process-global mutable singleton. Services may be instantiated or injected for isolation, testing, and concurrency, but every instance must use the same canonical implementation and contracts. Turn state, tool-call state, context handles, approvals, Terminal sessions, and model events remain request-scoped.
 
 ## 2. Canonical Ownership Map
@@ -162,9 +164,9 @@ canonical source rows
   -> exact human-readable result pages with provenance
 ```
 
-The current logical corpora are conversation/task traces, curated memory sections, and goal cards. They share infrastructure but retain typed authority and visibility filters. Do not expose vectors, chunks, scores, fingerprints, index jobs, or database ids as separate model tools.
+The current logical corpora are conversation/task traces, curated memory sections, goal cards, and capability cards for installed skills/MCP tools. They share infrastructure but retain typed authority and visibility filters. Do not expose vectors, chunks, scores, fingerprints, index jobs, or database ids as separate model tools.
 
-Parallel goal-candidate retrieval, current-capsule-aware parallel memory-candidate retrieval, single conditional bound-goal refinement, deterministic post-binding memory selection, main-agent retrieval, exact inspection, and background enrichment must all be catalogued even when they share lower-level utilities. The current goal must be supplied independently of retrieval score. Bound-goal refinement may occur only through the same memory retrieval service after a goal change or empty eligible first pass. Do not recreate `goal_search`, a retry loop, a second retrieval engine, or a Memory Router tool loop as a shadow path.
+Parallel goal-candidate retrieval, current-capsule-aware parallel memory-candidate retrieval, capability retrieval, single conditional bound-goal refinement, deterministic post-binding memory selection, main-agent retrieval, exact inspection, and background enrichment must all be catalogued even when they share lower-level utilities. The current goal must be supplied independently of retrieval score; normal resolution receives at most three older goals. Bound-goal refinement may occur only through the same memory retrieval service after a goal change or empty eligible first pass. Capability retrieval may deterministically resolve an exact canonical name/id but must not use keyword-only prompt matching; `socrates://capabilities` is the mandatory fallback before an unavailable-capability claim. Do not recreate `goal_search`, a retry loop, a second retrieval engine, or a Memory Router tool loop as a shadow path.
 
 ## 8. Prompt Changes
 

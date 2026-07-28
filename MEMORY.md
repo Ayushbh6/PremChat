@@ -15,7 +15,7 @@ The current architecture now uses:
 - A flexible transient working space under `.socrates/` for free-form plans, task tracking, scripts, probes, diagnostics, and temporary artifacts. The required behavior is plan, track, reconcile at meaningful milestones, and verify; filenames are not prescribed. These are not durable memory authorities, and production code plus permanent tests remain in the repo.
 - Global Socrates tool guidance and skills under `~/.Socrates/`.
 - Exact old conversation/tool evidence through `trace_retrieve`.
-- A read-only `user_profile` tool for durable cross-project user preferences and global active context.
+- A governed `read`/`search` resource protocol for workspace files, identity, user profile, generated tool guidance, installed skills, project resources, and `.socrates` documents. Identity and user profile remain read-only to main Socrates; proposed changes go through `memory_note` to the Memory Agent.
 - A shared no-tool `CompressorAgent` that automatically compacts only the oldest model-visible history at the fixed 170k trigger. It preserves approximately 70k of the newest complete turns, retains provenance, and never changes canonical exact sources.
 - No production diary read/write/search path and no per-turn main-chat wake-context injection.
 - Phase 3 unified pre-turn lifecycle convergence is implemented on `codex/agent-core-rebuild`: Classic and Flow retrieve typed goal/memory candidates concurrently, with the first memory query projected from the canonical task plus the current capsule when available; the selected main Socrates performs the no-tool four-way goal decision; one conditional targeted memory query runs after binding only when the goal changed or no eligible first-pass memory exists; deterministic code reranks and selects exact memory; and both views use one exact prepared-context policy. The former Goal Router, Memory Router, `goal_search`, `memory_search`, router settings/prompts, sequential benchmark, and sliced/view-specific context authorities are removed.
@@ -125,7 +125,7 @@ Runtime-owned memory docs use Socrates YAML frontmatter plus `<!-- socrates:sect
 
 ## Model-Visible Tool Surface
 
-Current base tools:
+Accepted converged main tools:
 
 ```text
 read
@@ -134,56 +134,60 @@ url_fetch
 edit
 apply_patch
 bash
+wait
+handover_to_frontier
 current_time
 trace_retrieve
+memory_note
+context_disposition
+capability_manager
+```
+
+Removed from the model-visible surface by the convergence cutover:
+
+```text
+socrates_memory
+project_notes
 tool_docs
 skills
+skill_manager
 project_docs
 repo_docs
 soul
 user_profile
 list_project_resources
 mcp_registry
-memory_note
 ```
 
-Removed from the model-visible surface:
+Main Socrates reads identity, user profile, generated tool guidance, installed skills, project resources, and `.socrates` documents through `read`/`search`. It never writes identity or user profile directly; proposed updates use `memory_note`. Skill files are never generic-edit targets; the always-visible `capability_manager` owns approval-gated skill creation/update/import/removal through the Skill Writer or verified importer and MCP configuration/check/removal through the shared MCP lifecycle.
 
-```text
-socrates_memory
-project_notes
-```
+Every turn retrieves goal, memory, and capability candidates concurrently. The current capsule/latest exact exchange are guaranteed, no more than three older goal capsules are projected, and relevant installed skills/MCP tools are selected through shared lexical/semantic/hybrid retrieval rather than keyword-only prompt matching. `read`/`search` over `socrates://capabilities` is mandatory before Socrates claims no suitable installed capability exists.
 
 Tool routing:
 
 - `url_fetch` reads one exact HTTP(S) URL as bounded text or metadata. It is for specific docs/pages/JSON/CSV/redirect checks, not broad web search, crawling, saving files, or binary downloads.
 - `trace_retrieve` is for prior conversation text and audit evidence: tool calls, shell output, file operations, patches, errors, decisions.
 - `current_time` is a read-only no-input tool that returns backend-owned current date, ISO timestamp, and time zone. Use it when the answer or a document entry truly needs today's date/time; do not put changing time in the system prompt.
-- `tool_docs` is read/search only for global tool usage guidance.
-- `skills` lists/describes enabled builtin, global, and project skills, reads exact supporting files, and can preview then approval-install one Agent Skill ZIP from an exact user-supplied public HTTPS URL or current-turn ZIP attachment into project or global scope. Preview is automatic and bounded; `commit_import` is approval-required and atomic. This is installation, not web search, and Terminal must not bypass it.
-- `mcp_registry` lists, describes, checks, configures, and deletes MCP servers. Read operations remain automatic; project/global configure and delete require explicit user approval. `describe` or a successful `check` exposes one server's dynamic `mcp__...` tools for the same turn.
-- `project_docs` reads/searches/indexes/edits workspace `.socrates/MEMORY.md` and `.socrates/PROJECT_NOTES.md`; prefer `read_index`, `read_section`, and `patch_section` for structured recall and edits.
-- `repo_docs` reads/searches/indexes/edits only the four runtime repo doctrine docs; prefer `read_index`, `read_section`, and `patch_section` for focused repo doctrine changes.
-- `soul` reads root `~/.Socrates/identity.md` with `read`, `read_index`, and `read_section`; the main agent cannot write it.
-- `user_profile` reads root `~/.Socrates/user_profile.md` with `read`, `read_index`, and `read_section`; the main agent cannot write it.
-- `soul` and `user_profile` should use `read_index` before full `read`, then `read_section` for focused context. Runtime caps full reads at 8,000 chars and index/section reads at 10,000 chars even if a larger `charLimit` is requested.
+- `read` and `search` use workspace-relative paths or canonical `socrates://` resources. These resources cover identity, user profile, generated tool guidance, installed skills, project resources, project memory/notes, repo doctrine, and the capability index. They retain exact authorization, pagination, and structured-section behavior without separate model tools.
+- `edit` updates ordinary workspace files and authorized `.socrates` project resources through the governed resource adapter. Identity, user profile, generated tool guidance, runtime-owned sections, and skill files are denied.
+- `capability_manager` is always visible and owns both skill and MCP mutation. Every mutation requires approval. Skill creation/update delegates to the Skill Writer, portable skill imports use the verified staged importer, and MCP changes use the shared credential-safe MCP service.
 - `user_profile.active_context` is for global user-life context that is currently useful across projects. It may keep a compact source project/conversation label, but the remembered item itself must be globally useful, not project-local task state.
 - `user_profile.evidence_index` is a source-anchor section, not a summary bucket. It should store compact traceable anchors for important profile claims: date, project/conversation title or id, turn/message/event id when available, the claim supported, and the profile section using that claim.
 - `memory_note` is the Socrates-to-Memory-Agent notepad tool. Its model-facing input stays human-sized: `note` plus optional `importance` (`normal` or `high`). The backend automatically attaches the current user message, conversation id, turn id, message id, source project, workspace path when available, and a default project-local skill scope; Socrates should not author ids, skill names, target files, or global/project scope in prose. The tool description tells Socrates to prefer one note, create at most two distinct notes per user-turn, and merge related points into one clean note whenever possible.
 
 ## Runtime Notes
 
-- Main chat no longer injects `<socrates_wake_context>` on the first turn or later turns. Stable recall routing now lives in `packages/core/src/prompts/socratesPrompt.ts`, pointing Socrates to `project_docs`, `repo_docs`, `user_profile`, `soul`, `skills`, and `mcp_registry` when the current task needs them.
+- Main chat no longer injects `<socrates_wake_context>` on the first turn or later turns. Stable recall/resource routing lives in `packages/core/src/prompts/socratesPrompt.ts`, pointing Socrates to governed `read`, `search`, `trace_retrieve`, `memory_note`, and `capability_manager` behavior when the current task needs them.
 - Phase 3 unified lifecycle convergence is implemented: Classic and Flow start goal-card and current-capsule-aware memory retrieval together, the same selected Socrates makes only the four-way no-tool goal decision, and deterministic code binds the goal, conditionally performs at most one bound-goal memory refinement, and selects authorized exact memory. One view-neutral prepared context feeds the shared foreground loop. The main Socrates owns conditional milestone and mandatory final reconciliation, then returns the strict validated answer plus bound-goal state/note for atomic persistence. Detached router agents, prompts, tools, settings, and view-specific context authority are removed.
 - Always-apply recall stays simple and curated through one centralized always-apply rules list with two lanes. `user_profile.md` has a capped, human-readable `Global Always-Apply Rules` section and workspace project memory has a capped `Project Always-Apply Rules` section; each holds at most 10 rules. The backend loads these plus the three standing identity sections into one per-project stable-prelude snapshot instead of emitting five model-visible tool calls every turn. A stat fast path reuses the snapshot; changed files are content-hashed, same-content rewrites and unrelated-section edits retain the cache, and only a changed standing-section hash rebuilds it. Deterministic memory selection excludes duplicate standing sections and repeated exact file/section targets. The snapshot renders once in `<socrates_stable_cache_prelude>` before conversation/user text; only selected dynamic sources appear later. Fuller repo doctrine still belongs in `.socrates/repo_docs/*`; a short always-apply project rule may point Socrates to the relevant repo-doc contract when needed.
 - Socrates now has explicit CodeAct-style capability-composition guidance in `packages/core/src/prompts/socratesPrompt.ts`: use structured tools first, discover MCPs when appropriate, then use Terminal/code for bounded one-off scripts when no exact tool exists. Terminal remains approval/policy gated for installs, broad network work, large downloads, and risky mutations.
-- First-turn project recall is mandatory for light greetings, "continue", "where were we", and broad project-status openers: Socrates must read `project_docs` notes `active_context` before answering so active project loops can surface naturally.
+- First-turn project recall is mandatory for light greetings, "continue", "where were we", and broad project-status openers: Socrates reads `socrates://project/notes/active_context` before answering so active project loops can surface naturally.
 - The Socrates prompt envelope stays cache-friendly: stable system instructions first, then the stable always-apply prelude, then conversation/user text, and only then dynamic routed context, tool results, docs checkpoints, and ledgers. No changing current date/time, workspace scan block, skill/MCP counts, or hidden matched skill/MCP ids belong in the system prompt.
-- Extension discovery is tool-driven, not prompt-matched. Socrates should call `skills({ operation: "list" })` or `mcp_registry({ operation: "list" })`, then use `describe` with an exact listed canonical id/name. The runtime must not grep the user's prompt for skill or MCP names and inject hidden matches.
-- Current date/time comes from the `current_time` tool. `project_docs` and `repo_docs` outputs also include `runtime.currentDate`, `runtime.currentDateTime`, `runtime.timeZone`, and `runtime.source: "system"` so docs workflows have an authoritative date source after reads.
+- Extension discovery is automatic hybrid retrieval plus exact governed resource inspection, not prompt matching. Before claiming no installed match exists, Socrates searches `socrates://capabilities` and reads the selected exact capability resource.
+- Current date/time comes from the `current_time` tool. Governed project/repo-doc resource outputs carry backend runtime date metadata where structured document workflows need it.
 - `.socrates/PROJECT_NOTES.md` contains project-scoped active state. The `active_context` section is for open loops, current project-local recall, and things Socrates should remember when this workspace is reopened. Backend-owned `runtime_context` and `state_ledger` sections are protected from `project_docs` edits. Runtime context refreshes lazily with compact workspace scan facts and intentionally excludes terminal output, live terminal state, dependency dumps, package lists, and root-script inventories. The state ledger is rewritten from structured turn data on completion/failure/cancellation, removes duplicate legacy ledger blocks, and remains one bounded current snapshot rather than agent-authored history.
 - Project docs, repo docs, global tool docs, identity, and user profile updates get backend-owned frontmatter stamps (`updated_at`, `updated_by`, `last_edited_section`) after successful dedicated-tool edits. Model-written prose should not invent "today" when these system stamps are enough.
-- Generic `edit` and `apply_patch` writes to `.socrates/MEMORY.md`, `.socrates/PROJECT_NOTES.md`, `.socrates/repo_docs/*.md`, and `.socrates/skills/**` are rejected; use dedicated docs tools or the approved Skill Writer Agent path.
+- Governed `edit` may update project memory/notes and repo doctrine while protecting backend-owned sections. Generic `edit`/`apply_patch` writes to `.socrates/skills/**`, global identity/profile/tool guidance, and runtime-owned state remain rejected; approved skill mutation uses `capability_manager` and the Skill Writer/importer path.
 - Socrates loads applicable repo doctrine and project state when they are relevant, then reconciles `.socrates` state at meaningful milestones and before finalization. A durable-state change means a material goal/scope change, a decision future work depends on, a verified build/test milestone, a blocker or incomplete handoff, or final reconciliation. Ordinary repeated reads, searches, Terminal calls, and file edits do not each trigger a document preflight or memory review.
 - Terminal commands are preflight-rejected when they mention Socrates-owned protected paths: workspace `.socrates/MEMORY.md`, `.socrates/PROJECT_NOTES.md`, `.socrates/repo_docs/**`, `.socrates/skills/**`, and global `~/.Socrates/skills/**`, `~/.Socrates/tool_usage/**`, `identity.md`, or `user_profile.md`. This is an obvious-path guard, not a process sandbox.
 - Terminal long-run foundation is now event-driven and task-aware: `bash` adds bounded `list` (maximum 12 rows), every raw foreground `run` detaches after the configured 15-second foreground window without restart, and healthy Terminals referenced by a task no longer use the fixed two-hour kill timer. The separate `wait` tool accepts named Terminals plus `completed`/`failed`/`input_required`, persists `agent_tasks` plus `agent_task_waits`, ends the current model execution without a false final response, and resumes the same task through a fresh normal agent invocation only on a requested event. Continuation context includes bounded authoritative evidence for the entire task so a fresh model invocation does not recreate work that already stopped, exited, completed, or failed before the wake. `wait.reason` is required and limited to seven words and 64 characters; it has no model polling interval. Model-facing Terminal output is capped at 16,000 characters, list text at 12,000, current Terminal context at 10,000, and wake output at 8,000.

@@ -2,7 +2,7 @@
 
 Status: normative architecture authority for the agent-core refactor.
 
-Implementation checkpoint: the shared `AgentDefinition`/`AgentInstance`/`AgentRuntime`/`ContextPipeline` foundation, shared `CapabilityCatalog`, and Classic/Flow goal-memory lifecycle convergence are implemented. The catalog owns all current static model tools, role attachment, provider projections, runtime MCP child registration, declared retrieval/workers/context/authorities, typed Classic/Flow commands, generated inventories, generated tool guides, and CI drift enforcement. Parallel first-pass memory retrieval is current-capsule-aware, and the same service permits one deterministic bound-goal refinement only after a goal switch or empty eligible first pass. The global seamless UI remains a later phase; catalogued migration entries are not permission to create parallel paths.
+Implementation checkpoint: the shared `AgentDefinition`/`AgentInstance`/`AgentRuntime`/`ContextPipeline` foundation, shared `CapabilityCatalog`, and Classic/Flow goal-memory lifecycle convergence are implemented. The next cutover converges the model-facing resource and capability surface: parallel goal/memory/capability retrieval, at most three older goal candidates, shared `read`/`search` resource access, one always-visible skill/MCP `capability_manager`, and simplified edit/Terminal grammars. The catalog remains the sole owner of static tools, role attachment, provider projections, runtime MCP child registration, declared retrieval/workers/context/authorities, typed commands, generated inventories/guides, and CI drift enforcement. The global seamless UI remains a later phase; catalogued migration entries are not permission to create parallel paths.
 
 This manifesto governs every change to Socrates agent orchestration, model-facing capabilities, tools, routing, retrieval, context management, provider execution, and worker-agent construction. Read it and `AGENT_CAPABILITY_WORKFLOW.md` completely before planning, reviewing, or implementing work in those areas. The workflow is the mandatory operational checklist for this manifesto. If an implementation or historical document conflicts with either authority, stop and resolve the conflict in the authority documents before continuing.
 
@@ -56,7 +56,7 @@ Every turn follows one shared sequence:
 
 ```text
 persist exact user message immediately
-  -> retrieve goal and memory candidates in parallel
+  -> retrieve goal, memory, and capability candidates in parallel
   -> same-Socrates semantic goal resolution
   -> deterministic exact memory selection
   -> one shared Socrates agent loop
@@ -65,6 +65,10 @@ persist exact user message immediately
 ```
 
 Goal resolution is not a separate agent role. The same Socrates runtime and prompt core receives the exact latest message, current goal capsule, latest exact exchange, and a small numbered set of retrieved older capsules. It chooses only current, retrieved older goal, new, or clarify. There is no model-facing continue/resume distinction, no goal-search tool loop, and no independently configurable Goal Router.
+
+Normal goal resolution projects no more than three older goal capsules. Capability retrieval concurrently selects a compact set of relevant installed skills and MCP tools through the shared hybrid foundation; it never uses keyword-only prompt matching or dumps the registry. `read`/`search` over `socrates://capabilities` is the exact fallback, and Socrates must use it before declaring that an installed capability is unavailable.
+
+The main tool surface exposes one always-visible `capability_manager` for approval-gated skill and MCP mutation. Main Socrates reads identity, user profile, generated tool guidance, installed skills, project resources, and `.socrates` documents through one governed resource protocol. Identity and user profile remain Memory-Agent-owned and can receive proposed changes only through `memory_note`; generic edit never writes them or skill files.
 
 There is no model-driven Memory Router in the critical path. Hybrid retrieval discovers candidates mechanically; its parallel memory query includes the current capsule when available. After goal binding, a changed goal or empty eligible first pass may trigger one targeted query through the same service before deterministic selection filters exact memory. Main Socrates may inspect deeper exact sources through the shared retrieval capability. Model-driven durable memory curation runs asynchronously through the same shared architecture when genuine judgment is required.
 
