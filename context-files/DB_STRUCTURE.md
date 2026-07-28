@@ -51,7 +51,7 @@ Migrations through `0029_slimy_fallen_one.sql` create the namespaced Flow tables
 | --- | --- |
 | Flow and goals | `v2_flows`, `v2_goals`, `v2_goal_transitions`, `v2_goal_routing_runs`, `v2_goal_capsules`, `v2_goal_message_links` |
 | Timeline and durable execution | `v2_turns`, `v2_turn_runtime_configs`, `v2_messages`, `v2_message_attachments`, `v2_agent_tasks` |
-| Evidence and active context | `v2_evidence_items`, `v2_context_items`, `v2_context_item_sources`, `v2_context_dispositions` |
+| Exact evidence and legacy context compatibility | `v2_evidence_items`; historical `v2_context_items`, `v2_context_item_sources`, and `v2_context_dispositions` remain migration-readable/deletable but have no active producer or context-policy authority |
 | Runtime audit and interaction | `v2_runtime_events`, `v2_model_calls`, `v2_usage_events`, `v2_tool_calls`, `v2_approvals`, `v2_terminal_sessions`, `v2_terminal_output_chunks`, `v2_errors`, `v2_artifacts`, `v2_feedback`, `v2_credential_input_requests` |
 | Speech | `v2_speech_jobs` |
 | Explicit Classic bridge | `v2_classic_conversation_bridges`, `v2_classic_message_links`, `v2_goal_classic_homes`, `v2_classic_turn_goal_links` |
@@ -1649,7 +1649,7 @@ When context pressure grows, the context builder should keep:
 - Turn-id or audit-query references for source material that must remain recoverable.
 - Retrieved trace evidence only when explicitly relevant.
 
-The V1 compression trigger is 170,000 estimated model-visible input tokens. Before each provider call, Socrates recounts the assembled request; if it is at or above that trigger, it compacts older model-facing context while preserving raw history in the database. The rebuilt request aims for at most 80k total (`excellent` at or below 60k), may be accepted through 120k, and is never padded or recompressed solely to improve that soft size class.
+The shared compression trigger and model-dispatch ceiling are 170,000 estimated model-visible input tokens. Before each provider call, Socrates recounts the assembled request; if it is at or above that trigger, it compacts only the oldest completed-turn head while preserving raw history in the database. The rebuilt request targets about 100k total (`excellent` at or below 80k), may be accepted through 120k, and is never padded or recompressed solely to improve that soft size class. Recent completed history remains exact by whole-turn boundary toward an approximately 70k suffix, and the active turn is not automatically rewritten.
 
 Compaction summaries are hidden runtime context, not fake user messages. The `messages` table must remain a record of real visible conversation messages. Context summaries should point back to a turn id for Q&A inspection or a focused audit query for raw runtime evidence when precision matters.
 

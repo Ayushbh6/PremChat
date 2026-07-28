@@ -22,10 +22,10 @@ describe("Socrates surface registry", () => {
 
   it("defines .socrates as a bounded planning and disposable-work surface", () => {
     const prompt = buildSocratesSystemPrompt()
-    expect(prompt).toContain(".socrates/PLAN.md")
-    expect(prompt).toContain(".socrates/TASKS.md")
+    expect(prompt).toContain("using whatever clear filenames and layout best fit the task")
+    expect(prompt).toContain("not a particular document name")
     expect(prompt).toContain(".socrates/work/")
     expect(prompt).toContain("Keep production code, user deliverables, migrations, and permanent repository tests in their proper repo locations")
-    expect(prompt).toContain("Do not create these files for trivial answers or tiny edits")
+    expect(prompt).toContain("Do not create planning ceremony for trivial answers or tiny edits")
   })
 })

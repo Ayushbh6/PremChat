@@ -936,7 +936,7 @@ The context builder should keep recent visible user/assistant messages exact whi
 
 Context compression must preserve active terminal anchors: human Terminal names, commands, status, awaiting-input state, latest actionable output/prompt, and enough turn/audit hints for recovery. It must not stuff full terminal logs or opaque process handles into hidden context.
 
-Compression applies to both common long-chat growth and long single-turn work. A conversation such as `Q1/A1 ... Q70/A70` should keep recent Q/A pairs as normal `user` and `assistant` messages while older Q/A pairs move into hidden compacted context. A single large task should use the same mechanism before the next model call: keep the current user request and latest critical evidence exact when possible, but compact older current-turn tool outputs into hidden evidence capsules with turn ids or targeted audit hints.
+Compression applies to completed-turn history, while a separate release-only mechanism handles long single-turn work. A conversation such as `Q1/A1 ... Q70/A70` keeps an approximately 70k suffix of recent complete Q/A pairs as normal `user` and `assistant` messages while the oldest completed-turn head moves into hidden compacted context. During one active turn, successful individual tool outputs above 3,000 estimated tokens receive turn-local `R<n>` handles. Socrates may release irrelevant handles with its next otherwise-needed tool call; released bytes leave only the live model context and remain exact in SQLite for retrieval. Automatic compaction never rewrites the active turn.
 
 Compression should run only at safe provider-call boundaries:
 
@@ -953,17 +953,16 @@ Current implementation thresholds:
 
 ```text
 trigger at 170k estimated input tokens
-excellent post-compaction result at or below 60k
-preferred soft target at or below 80k
+excellent post-compaction result at or below 80k
+preferred soft target at or below 100k
 maximum accepted post-compaction result at or below 120k
-hard provider-input stop at 180k
+fixed provider-input stop at 170k
 minimum normal reduction 20k tokens
-recent completed-turn raw tail target around 50k tokens
-current-turn tool-result raw tail target around 50k tokens
-keep at least the latest 5 current-turn tool results when possible
+recent completed-turn exact whole-turn suffix target around 70k tokens
+active turn remains exact unless Socrates explicitly releases an eligible `R<n>` handle
 ```
 
-There is one Socrates chat trigger shared by Classic and Flow: before each provider call, Socrates counts the assembled model-visible input. If it is below 170k, the request proceeds. If it is at or above 170k, compaction runs before sending the next provider call. Tail selection budgets recent whole turns against an 80k preferred rebuilt total after reserving the fixed system/tool prefix, current active turn, and maximum structured-summary allowance. Results at or below 60k are classified `excellent`, results through 80k are `preferred`, and results from 80k through the 120k acceptance ceiling are `acceptable`; no second compressor call is made merely to improve the class. A result is accepted only when it is at or below 120k and achieves the minimum reduction. Requests above 180k fail before provider dispatch when compression cannot safely reduce them. Older head context is summarized into hidden markdown. Bounded deterministic carryover protects exact attachment paths, shell commands, and explicit unresolved/do-not-complete instructions across repeated rounds. For long active turns, older bulky tool results are converted into lightweight progress statements while preserving the newest whole tool results. Global Memory Agent calls use the same trigger with memory-mode compression, so the memory compressor prompt and structured memory schema are used instead of the chat compressor prompt/schema. Completed snapshots are applied before later token counts, and represented raw turns are removed from the model request while remaining authoritative in SQLite.
+There is one Socrates chat trigger and dispatch ceiling shared by Classic and Flow: before each provider call, Socrates counts the assembled model-visible input. If it is below 170k, the request proceeds. If it is at or above 170k, compaction runs before sending the next provider call. Tail selection preserves recent completed turns by whole-turn boundary toward an approximately 70k exact suffix after reserving the fixed system/tool prefix, active turn, and maximum structured-summary allowance. Results at or below 80k are classified `excellent`, results through 100k are `preferred`, and results from 100k through the 120k acceptance ceiling are `acceptable`; no second compressor call is made merely to improve the class. A result is accepted only when it is at or below 120k and achieves the minimum reduction. If safe compaction fails, the main model is not dispatched at or above 170k. Older completed-turn head context is summarized into hidden markdown. Bounded deterministic carryover protects exact attachment paths, shell commands, and explicit unresolved/do-not-complete instructions across repeated rounds. The active turn is not automatically summarized or rewritten; Socrates can prune only eligible large results through release-only `R<n>` handles. Global Memory Agent calls use the same trigger with memory-mode compression, so the memory compressor prompt and structured memory schema are used instead of the chat compressor prompt/schema. Completed snapshots are applied before later token counts, and represented raw turns are removed from the model request while remaining authoritative in SQLite.
 
 The estimate is provider-aware. Before each model call, Socrates counts the assembled next provider request through `packages/providers`, including the system prompt, visible messages, hidden compaction summaries, active tool calls/results, and tool definitions/schemas. Completed earlier turns still contribute only visible user query plus final assistant answer.
 

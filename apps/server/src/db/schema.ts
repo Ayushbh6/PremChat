@@ -1819,7 +1819,7 @@ export const v2MessageAttachments = sqliteTable(
 
 // Evidence rows are append-only for agent/runtime operations. Explicit user
 // deletion is authorized by a short-lived row in v2_deletion_authorizations;
-// pruning still changes only v2_context_items and v2_context_dispositions.
+// turn-local release changes only the live model projection, never this row.
 export const v2EvidenceItems = sqliteTable(
   "v2_evidence_items",
   {
@@ -1867,6 +1867,8 @@ export const v2DeletionAuthorizations = sqliteTable(
   }),
 )
 
+// Legacy compatibility tables retained non-destructively for existing V2 data.
+// They have no active producer, public contract, or context-policy authority.
 export const v2ContextItems = sqliteTable(
   "v2_context_items",
   {

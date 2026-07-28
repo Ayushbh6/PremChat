@@ -47,7 +47,7 @@ describe("V2FlowStore final-answer commit", () => {
       throw new Error("forced finalization failure")
     })
 
-    expect(() => store.completeTurn({
+    expect(() => store.commitValidatedTurn({
       projectId: "proj_atomic",
       flowId: flow.id,
       turnId: created.turn.id,

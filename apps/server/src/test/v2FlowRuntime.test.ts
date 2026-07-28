@@ -142,7 +142,7 @@ const frontierProofProvider = () => {
   const provider: ModelProvider = {
     countTokens: fakeCountTokens,
     async generateStructured<TOutput>() {
-      return { output: { decision: "current" } as TOutput }
+      return { output: { decision: "current", candidate: null, title: null, question: null } as TOutput }
     },
     async *stream(request) {
       requests.push(request)
@@ -178,7 +178,9 @@ const goalResolutionProvider = (): ModelProvider => ({
     return {
       output: {
         decision: "new",
+        candidate: null,
         title: "Continue the requested work",
+        question: null,
       } as TOutput,
       usage: { inputTokens: 17, outputTokens: 3, totalTokens: 20 },
     }
@@ -416,8 +418,11 @@ describe("V2ExecutionRuntime", () => {
     expect(toolRows).toHaveLength(1)
     expect(toolRows[0]).toMatchObject({ toolName: "read", status: "completed" })
     expect(toolRows[0]?.resultJson).toContain("immutable V2 tool evidence")
-    const context = testRuntime.flowStore.getCoreContextState(flow.id)
-    expect(context.evidence.some((record) => record.exactContent.includes("immutable V2 tool evidence"))).toBe(true)
+    const exactEvidence = testRuntime.flowStore.retrieveExactEvidence(
+      flow.id,
+      testRuntime.flowStore.getExactEvidenceProjections(flow.id).map((item) => item.evidenceRef.evidenceId),
+    )
+    expect(exactEvidence.some((record) => record.exactContent.includes("immutable V2 tool evidence"))).toBe(true)
     expect(liveSocket.sent.some((event) => event.type === "v2.goal.capsule.updated" && event.payload.capsule.version === 2)).toBe(true)
     const activityLabels = liveSocket.sent
       .filter((event): event is Extract<V2ServerEvent, { type: "v2.activity.updated" }> => event.type === "v2.activity.updated")
@@ -454,8 +459,11 @@ describe("V2ExecutionRuntime", () => {
     const firstSnapshot = testRuntime.flowStore.getSnapshot("proj_one", flow.id)
     const goalId = firstSnapshot.foregroundGoal?.id
     expect(goalId).toBeTruthy()
-    expect(testRuntime.flowStore.getCoreContextState(flow.id).evidence.some((item) => item.exactContent.includes("IMMUTABLE-V2-EXACT-EVIDENCE-42"))).toBe(true)
-    expect(testRuntime.flowStore.getActiveContextItems(flow.id, goalId)).toEqual([])
+    const exactEvidence = testRuntime.flowStore.retrieveExactEvidence(
+      flow.id,
+      testRuntime.flowStore.getExactEvidenceProjections(flow.id, goalId).map((item) => item.evidenceRef.evidenceId),
+    )
+    expect(exactEvidence.some((item) => item.exactContent.includes("IMMUTABLE-V2-EXACT-EVIDENCE-42"))).toBe(true)
 
     await testRuntime.runtime.startTurn(asWebSocket(new FakeSocket()), messageCommand("proj_one", flow.id, "What was the main point?"))
     await waitUntil(() => testRuntime.flowStore.getSnapshot("proj_one", flow.id).activeTurn === undefined, "the follow-up turn to complete")
@@ -548,7 +556,7 @@ describe("V2ExecutionRuntime", () => {
       messageContent: created.userMessage.content,
       result: routing,
     })
-    testRuntime.flowStore.completeTurn({
+    testRuntime.flowStore.commitValidatedTurn({
       goalFinalization: { state: "active", note: "The task remains active." },
       projectId: "proj_one",
       flowId: flow.id,

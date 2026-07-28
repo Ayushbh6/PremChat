@@ -285,16 +285,13 @@ const enforceDeterministicCarryover = <TOutput>(
 }
 
 const extractExactIdentifiers = (source: string): Array<{ identifier: string; sourceText: string }> => {
-  // Current-turn tool digests are intentionally disposable; exact carryover applies only to the durable
-  // previous summary and completed old-head turns being replaced by this snapshot.
-  const durableSource = source.split("# Current Turn Tool Digest", 1)[0] ?? source
-  const uppercaseSnakeOrKebab = durableSource.match(/\b[A-Z][A-Z0-9]*(?:[_-][A-Z0-9]+){2,}\b/g) ?? []
-  const shortVerificationCodes = durableSource.match(/\b[A-Z]{2,}[A-Z0-9]*-\d{2,}\b/g) ?? []
-  const prefixedOpaqueIds = durableSource.match(/\b[a-z][a-z0-9]{1,20}_[0-9a-f]{12,}\b/g) ?? []
+  const uppercaseSnakeOrKebab = source.match(/\b[A-Z][A-Z0-9]*(?:[_-][A-Z0-9]+){2,}\b/g) ?? []
+  const shortVerificationCodes = source.match(/\b[A-Z]{2,}[A-Z0-9]*-\d{2,}\b/g) ?? []
+  const prefixedOpaqueIds = source.match(/\b[a-z][a-z0-9]{1,20}_[0-9a-f]{12,}\b/g) ?? []
   return [...uppercaseSnakeOrKebab, ...shortVerificationCodes, ...prefixedOpaqueIds]
     .filter((value, index, all) => all.indexOf(value) === index)
     .slice(0, 24)
-    .map((identifier) => ({ identifier, sourceText: exactSourceSentence(durableSource, identifier) }))
+    .map((identifier) => ({ identifier, sourceText: exactSourceSentence(source, identifier) }))
 }
 
 const exactSourceSentence = (source: string, identifier: string): string => {

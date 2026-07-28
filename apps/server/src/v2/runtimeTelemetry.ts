@@ -9,8 +9,8 @@ export const actorForRuntimeSource = (
     return { type: "main_agent", ...(source === "frontier_agent" ? { label: "Frontier" } : source === "goal_resolution" ? { label: "Goal resolution" } : {}) }
   }
   if (source === "tool" || source === "terminal") return { type: "tool", label: source }
-  if (source === "context_compactor" || source === "context_distiller") {
-    return { type: "worker", label: source === "context_compactor" ? "Context Compactor" : "Context Distiller" }
+  if (source === "context_compactor") {
+    return { type: "worker", label: "Context Compactor" }
   }
   return { type: "system" }
 }

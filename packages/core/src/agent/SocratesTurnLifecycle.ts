@@ -20,10 +20,6 @@ import {
   type StablePreludeToolRecord,
 } from "./socratesMemorySupport"
 import {
-  TurnDocsLedger,
-  docsPreflightError,
-  requiresActionDocsPreflight,
-  requiresDocsPreflightAfterPolicy,
   toolErrorResult,
 } from "./socratesTurnLedgers"
 import {
@@ -44,7 +40,6 @@ export class SocratesTurnLifecycle {
     remainingBudget: number
     maxParallelToolCalls: number
     duplicateTraceRetrieveResults: Map<string, unknown>
-    docsLedger: TurnDocsLedger
   }): { events: AsyncIterable<ToolLifecycleEvent>; done: Promise<{ results: ToolExecutionResult[]; countedToolCalls: number; budgetExhausted: boolean }> } {
     const queue = new AsyncEventQueue<ToolLifecycleEvent>()
     const done = (async () => {
@@ -78,7 +73,7 @@ export class SocratesTurnLifecycle {
       for (let index = 0; index < parallel.length; index += input.maxParallelToolCalls) {
         const chunk = parallel.slice(index, index + input.maxParallelToolCalls)
         const chunkResults = await Promise.all(
-          chunk.map((toolCall) => this.executeOneToolCall(toolCall, input.capabilitySet, input.context, queue, input.duplicateTraceRetrieveResults, input.docsLedger)),
+          chunk.map((toolCall) => this.executeOneToolCall(toolCall, input.capabilitySet, input.context, queue, input.duplicateTraceRetrieveResults)),
         )
         for (const result of chunkResults) {
           results.set(result.toolCallId, result)
@@ -86,7 +81,7 @@ export class SocratesTurnLifecycle {
       }
 
       for (const toolCall of mutation) {
-        const result = await this.executeOneToolCall(toolCall, input.capabilitySet, input.context, queue, input.duplicateTraceRetrieveResults, input.docsLedger)
+        const result = await this.executeOneToolCall(toolCall, input.capabilitySet, input.context, queue, input.duplicateTraceRetrieveResults)
         results.set(result.toolCallId, result)
       }
 
@@ -107,7 +102,6 @@ export class SocratesTurnLifecycle {
   async loadStablePrelude(
     input: SocratesAgentTurnInput,
     messages: ModelMessage[],
-    docsLedger: TurnDocsLedger,
   ): Promise<StablePreludeRunResult> {
     if (!input.stableCachePreludeSnapshot && !canLoadStableCachePrelude(input, this.baseCapabilities)) {
       return emptyStablePreludeRunResult()
@@ -117,7 +111,7 @@ export class SocratesTurnLifecycle {
     const records: StablePreludeToolRecord[] = []
     if (!input.stableCachePreludeSnapshot) {
       for (const request of stablePreludeRecallRequests()) {
-        const record = await this.executeStablePreludeTool(input, docsLedger, request)
+        const record = await this.executeStablePreludeTool(input, request)
         events.push(...record.events)
         records.push(record)
       }
@@ -137,7 +131,6 @@ export class SocratesTurnLifecycle {
 
   private async executeStablePreludeTool(
     input: SocratesAgentTurnInput,
-    docsLedger: TurnDocsLedger,
     request: { toolName: ToolName; input: unknown },
   ): Promise<StablePreludeToolRecord> {
     if (!input.toolExecutors || !input.workspacePath || !input.requestApproval) {
@@ -176,7 +169,6 @@ export class SocratesTurnLifecycle {
       },
       queue,
       new Map(),
-      docsLedger,
     ).finally(() => queue.close())
     const events: ToolLifecycleEvent[] = []
     for await (const event of queue) {
@@ -192,7 +184,6 @@ export class SocratesTurnLifecycle {
     context: ToolRuntimeContext,
     queue: AsyncEventQueue<ToolLifecycleEvent>,
     duplicateTraceRetrieveResults: Map<string, unknown>,
-    docsLedger: TurnDocsLedger,
   ): Promise<ToolExecutionResult> {
     const startedAt = Date.now()
     const tool = capabilitySet.get(toolCall.toolName)
@@ -220,20 +211,6 @@ export class SocratesTurnLifecycle {
         toolCallId: toolCall.toolCallId,
         providerToolCallId: toolCall.providerToolCallId,
         toolName: toolCall.toolName,
-        error,
-        modelCallId: context.modelCallId,
-        stepIndex: context.stepIndex,
-      })
-      return toolErrorResult(toolCall, error)
-    }
-
-    if (requiresActionDocsPreflight(tool.name) && !docsLedger.hasActionPreflight()) {
-      const error = docsPreflightError(tool.name, docsLedger.missingActionPreflight())
-      queue.push({
-        type: "tool.call.failed",
-        toolCallId: toolCall.toolCallId,
-        providerToolCallId: toolCall.providerToolCallId,
-        toolName: tool.name,
         error,
         modelCallId: context.modelCallId,
         stepIndex: context.stepIndex,
@@ -306,10 +283,6 @@ export class SocratesTurnLifecycle {
         })
       }
 
-      if (requiresDocsPreflightAfterPolicy(tool, policy) && !docsLedger.hasActionPreflight()) {
-        throw docsPreflightError(tool.name, docsLedger.missingActionPreflight())
-      }
-
       if (policy.type === "approval_required") {
         const approvalId = createId("appr")
         const request: ApprovalRequest = {
@@ -355,13 +328,6 @@ export class SocratesTurnLifecycle {
       if (duplicateTraceRetrieveKey) {
         duplicateTraceRetrieveResults.set(duplicateTraceRetrieveKey, parsedOutput.data)
       }
-      docsLedger.recordImmediatePreflight({
-        toolCallId: toolCall.toolCallId,
-        providerToolCallId: toolCall.providerToolCallId,
-        toolName: tool.name,
-        ok: true,
-        output: parsedOutput.data,
-      }, toolCall)
       queue.push({
         type: "tool.call.completed",
         toolCallId: toolCall.toolCallId,

@@ -191,11 +191,11 @@ export const registerV2FlowRoutes = async (app: FastifyInstance, store: V2FlowSt
     try {
       const scope = parse(flowParamsSchema, request.params, "invalid_route_params")
       const flow = store.getFlow(scope.projectId, scope.flowId)
-      const items = store.getActiveContextItems(scope.flowId, flow.foregroundGoalId)
+      const items = store.getExactEvidenceProjections(scope.flowId, flow.foregroundGoalId)
       const counts = store.getContextCounts(scope.flowId)
       return ok({
         state: { evidence: [], items },
-        counts: { ...counts, activeItemCount: items.length },
+        counts,
       })
     } catch (error) {
       return sendRouteError(reply, error)

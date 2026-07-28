@@ -154,6 +154,7 @@ import type {
 import { UserStore } from "./store/userStore"
 import { RetrievalStore } from "./retrieval/retrievalStore"
 import { CanonicalWorkStore, toClassicProjectedMessage } from "./workState/canonicalWorkStore"
+import { commitValidatedTurnFinalization } from "./turn/validatedTurnFinalization"
 
 export type {
   AgentContext,
@@ -980,20 +981,22 @@ export class SocratesStore {
     return this.turns.completeAgentTurn(input)
   }
 
-  completeAgentTurnAtomically(input: {
+  commitValidatedTurn(input: {
     conversationId: string
     sessionId: string
     turnId: string
     content: string
     reasoning?: string
-    afterPersist?: (message: Message) => void
+    persistBoundGoalAndCapsule?: (message: Message) => void
+    persistUsageAndAudit?: (message: Message) => void
   }): Message {
-    const operation = this.handle.sqlite.transaction(() => {
-      const message = this.turns.completeAgentTurn(input)
-      input.afterPersist?.(message)
-      return message
+    return commitValidatedTurnFinalization(this.handle, {
+      persistAnswerAndTask: () => this.turns.completeAgentTurn(input),
+      ...(input.persistBoundGoalAndCapsule
+        ? { persistBoundGoalAndCapsule: input.persistBoundGoalAndCapsule }
+        : {}),
+      ...(input.persistUsageAndAudit ? { persistUsageAndAudit: input.persistUsageAndAudit } : {}),
     })
-    return operation()
   }
 
   failTurn(input: {

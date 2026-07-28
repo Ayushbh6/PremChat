@@ -4,7 +4,7 @@ Status: detailed technical target for the global goal-centric Socrates lifecycle
 
 FLOW_NORTH_STAR.md defines the product experience. AGENT_REFACTOR_MANIFESTO.md defines the replacement agent architecture. AGENT_CAPABILITY_WORKFLOW.md defines the mandatory change procedure. Current Classic, project, V2, router, and compaction implementations are migration evidence when they conflict with this target.
 
-Implementation checkpoint (2026-07-28): Phase 3 converges the released Classic and Flow pre-turn path through concurrent typed goal/memory retrieval, current-capsule-aware first-pass memory queries, same-main-Socrates no-tool four-way resolution, one conditional bound-goal memory refinement, deterministic exact-memory selection, and one view-neutral exact prepared context. The former Goal Router, Memory Router, their model tools/settings/prompts, sliced goal-history helper, and view-specific context policy are deleted. The next locked convergence implements process-over-ceremony Socratic state, release-only turn-local large-result control, automatic 170k oldest-head compaction with an approximately 70k exact whole-turn suffix, exact-current-context Frontier transfer, and one shared atomic finalization path. The global no-project UI remains later migration work.
+Implementation checkpoint (2026-07-28): the released Classic and Flow paths now converge through concurrent typed goal/memory retrieval, current-capsule-aware memory selection, same-main-Socrates no-tool four-way resolution, one view-neutral exact prepared context, process-over-ceremony durable-state steering, release-only turn-local large-result control, automatic 170k oldest-head compaction with an approximately 70k exact whole-turn suffix, exact-current-context Frontier transfer, and one shared atomic validated finalization authority. The former Goal Router, Memory Router, active context-disposition policy, sliced goal-history helper, view-specific context policy, and duplicate finalization authority are deleted. Legacy context tables remain read-compatible only so existing user data is not destructively migrated. The global no-project UI remains later migration work.
 
 ## One Product Model
 
@@ -96,6 +96,8 @@ The decision has only four semantic outcomes:
     retrieved older goal N
     new
     clarify
+
+The provider-facing structured form is one flat object with the decision and nullable candidate/title/question detail fields. Backend validation normalizes that form into the strict four-way union above. Do not project the union as provider `anyOf` branches: models may bias toward the first branch instead of making the semantic choice.
 
 There is no semantic resume-versus-continue distinction. When an older goal is selected, deterministic backend code changes the current pointer and records the lifecycle transition.
 

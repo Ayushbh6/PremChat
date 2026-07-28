@@ -733,15 +733,26 @@ export class V2ExecutionRuntime {
         throw new SocratesError("agent_final_result_missing", "Socrates completed without a validated final result.", { recoverable: true })
       }
       publishActivity(createV2LiveActivity(created.turn.id, "preparing_answer", "Preparing the answer…"))
-      const assistantMessage = this.deps.store.completeTurn({
+      const assistantMessage = this.deps.store.commitValidatedTurn({
         projectId: command.projectId,
         flowId: command.flowId,
         turnId: created.turn.id,
         content: finalResult.finalAnswer,
         goalFinalization: finalResult.goalFinalization,
         ...(reasoningText ? { reasoning: reasoningText } : {}),
+        persistUsageAndAudit: (message) => {
+          for (const modelCallId of modelCallIds) {
+            if (completedModelCalls.has(modelCallId)) continue
+            this.deps.store.completeModelCall({
+              modelCallId,
+              response: { messageId: message.id, finish: "completed" },
+              ...(responseMetadata.has(modelCallId) ? { providerResponse: responseMetadata.get(modelCallId) } : {}),
+            })
+          }
+        },
       })
       durableTurnCommitted = true
+      for (const modelCallId of modelCallIds) completedModelCalls.add(modelCallId)
       const refreshedCapsule = this.deps.store.getSnapshot(command.projectId, command.flowId).latestCapsules
         .find((capsule) => capsule.goalId === activeGoalId)
       if (refreshedCapsule) {
@@ -751,14 +762,6 @@ export class V2ExecutionRuntime {
           goalId: activeGoalId,
           turnId: created.turn.id,
         }, "main_agent")
-      }
-      for (const modelCallId of modelCallIds) {
-        if (completedModelCalls.has(modelCallId)) continue
-        this.deps.store.completeModelCall({
-          modelCallId,
-          response: { messageId: assistantMessage.id, finish: "completed" },
-          ...(responseMetadata.has(modelCallId) ? { providerResponse: responseMetadata.get(modelCallId) } : {}),
-        })
       }
       this.emit("v2.message.completed", { message: assistantMessage }, { projectId: command.projectId, flowId: command.flowId, goalId: activeGoalId, turnId: created.turn.id }, "main_agent")
       this.emit("v2.flow.snapshot", { snapshot: this.deps.store.getSnapshot(command.projectId, command.flowId) }, { projectId: command.projectId, flowId: command.flowId, goalId: activeGoalId, turnId: created.turn.id }, "system")
@@ -862,8 +865,6 @@ export class V2ExecutionRuntime {
           sourceId: event.toolCallId,
           title: `${event.toolName}: ${event.summary}`.slice(0, 1_000),
           content: safeRuntimeStringify(event.output),
-          rank: 30,
-          includeInContext: false,
         })
       }
       this.emit("v2.tool.call.updated", { toolCall }, scope, "tool")

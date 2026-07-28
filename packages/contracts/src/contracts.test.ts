@@ -2280,51 +2280,6 @@ describe("V2 Flow standalone contracts", () => {
     }).success).toBe(true)
   })
 
-  it("bounds unresolved context and requires a focused distillation instruction", () => {
-    const baseDisposition = {
-      id: "v2disp_1",
-      flowId: flow.id,
-      goalId: goal.id,
-      turnId: "v2turn_3",
-      contextItemId: "v2ctx_1",
-      version: 1,
-      reason: "The next tool result decides whether this evidence is needed.",
-      decidedBy: "main_agent",
-      createdAt: timestamp,
-    }
-
-    expect(
-      v2Flow.v2ContextDispositionSchema.safeParse({
-        ...baseDisposition,
-        disposition: "unresolved",
-        unresolvedAgeTurns: 2,
-        unresolvedMaxAgeTurns: 3,
-      }).success,
-    ).toBe(true)
-    expect(
-      v2Flow.v2ContextDispositionSchema.safeParse({
-        ...baseDisposition,
-        disposition: "unresolved",
-        unresolvedAgeTurns: 4,
-        unresolvedMaxAgeTurns: 3,
-      }).success,
-    ).toBe(false)
-    expect(
-      v2Flow.v2ContextDispositionSchema.safeParse({
-        ...baseDisposition,
-        disposition: "keep_exact",
-        unresolvedAgeTurns: 1,
-        unresolvedMaxAgeTurns: 3,
-      }).success,
-    ).toBe(false)
-    expect(
-      v2Flow.v2ContextDispositionSchema.safeParse({
-        ...baseDisposition,
-        disposition: "distill",
-      }).success,
-    ).toBe(false)
-  })
-
   it("locks speech to the accepted offline engines and OpenRouter STT allowlist", () => {
     for (const modelId of v2Flow.V2_OPENROUTER_STT_MODEL_IDS) {
       expect(

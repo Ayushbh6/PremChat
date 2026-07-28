@@ -114,11 +114,12 @@ const summary: ChatCompaction = {
 }
 
 describe("V2 within-turn context compression runtime", () => {
-  it("uses the exact shared Socrates 170k/180k compression policy", () => {
+  it("uses the exact shared Socrates 170k compression ceiling", () => {
     const thresholds = v2WithinTurnCompressionThresholds()
     expect(thresholds).toEqual(DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS)
     expect(thresholds.triggerTokens).toBe(170_000)
-    expect(thresholds.hardLimitTokens).toBe(180_000)
+    expect(thresholds.preferredTargetTokens).toBe(100_000)
+    expect(thresholds.recentTailTargetTokens).toBe(70_000)
   })
 
   it("stores immutable V2-only snapshot evidence and restores the latest goal snapshot", async () => {

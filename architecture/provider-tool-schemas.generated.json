@@ -3049,42 +3049,18 @@
       "schema": {
         "type": "object",
         "properties": {
-          "decisions": {
+          "release": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "result": {
-                  "type": "string",
-                  "pattern": "^result_[1-9]\\d*$"
-                },
-                "action": {
-                  "type": "string",
-                  "enum": [
-                    "keep_exact",
-                    "distill",
-                    "release",
-                    "unresolved"
-                  ]
-                },
-                "summary": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 1200
-                }
-              },
-              "required": [
-                "result",
-                "action"
-              ],
-              "additionalProperties": false
+              "type": "string",
+              "pattern": "^R[1-9]\\d*$"
             },
             "minItems": 1,
             "maxItems": 8
           }
         },
         "required": [
-          "decisions"
+          "release"
         ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"

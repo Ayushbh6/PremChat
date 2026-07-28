@@ -37,7 +37,7 @@ export const socratesGoalResolutionPhaseManifest = defineRoleManifest({
 
 const structuredWorkerContext = {
   id: "structured-worker-context-v1",
-  stages: ["stable_prompt", "exact_messages", "tool_definitions", "consent_gated_compaction"],
+  stages: ["stable_prompt", "exact_messages", "tool_definitions", "automatic_compaction"],
 } as const
 
 const interactiveAgentContext = {
@@ -47,7 +47,7 @@ const interactiveAgentContext = {
     "exact_messages",
     "runtime_context",
     "tool_definitions",
-    "consent_gated_compaction",
+    "automatic_compaction",
   ],
 } as const
 
@@ -55,7 +55,7 @@ const structuredContextCapabilities = [
   "context.stable_prompt",
   "context.exact_messages",
   "context.tool_definitions",
-  "context.user_approved_compaction",
+  "context.automatic_compaction",
 ] as const
 
 const interactiveContextCapabilities = [
@@ -63,7 +63,7 @@ const interactiveContextCapabilities = [
   "context.exact_messages",
   "context.runtime_state",
   "context.tool_definitions",
-  "context.user_approved_compaction",
+  "context.automatic_compaction",
 ] as const
 
 export const titleGeneratorAgentDefinition = defineAgent<undefined, ConversationTitleAgentOutput>({

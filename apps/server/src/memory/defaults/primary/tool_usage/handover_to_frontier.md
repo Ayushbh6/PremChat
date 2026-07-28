@@ -12,13 +12,13 @@ index_tags: [tool_usage]
 <!-- socrates:section id="purpose" kind="purpose" tags="tools" -->
 ## Purpose
 
-- `handover_to_frontier`: Request a one-way handover of the current task to the configured Frontier model for the remainder of this turn. The user must approve the transfer. Frontier automatically receives the full conversation, every tool call and result, and all work already completed. You are the primary worker: make a real, substantive effort first, and request handover only after reaching a concrete unresolved capability or reliability blocker that you cannot overcome with the available evidence and tools. Do not request it merely because a task is long, difficult, high consequence, involves code or several ordinary tools, or encountered one recoverable error. Call this tool alone and without accompanying prose. focus is optional and must be a compact direction of at most 20 words; never restate the full request.
+- `handover_to_frontier`: Request a one-way handover of the current task to the configured Frontier model for the remainder of this turn. The user must approve the transfer. Frontier receives the exact current model-visible working context, including any active compaction snapshot, retained tool results, release receipts, and work completed so far; canonical exact evidence remains retrievable. You are the primary worker: make a real, substantive effort first, and request handover only after reaching a concrete unresolved capability or reliability blocker that you cannot overcome with the available evidence and tools. Do not request it merely because a task is long, difficult, high consequence, involves code or several ordinary tools, or encountered one recoverable error. Call this tool alone and without accompanying prose. focus is optional and must be a compact direction of at most 20 words; never restate the full request.
 <!-- /socrates:section -->
 
 <!-- socrates:section id="when_to_use" kind="routing" tags="tools" -->
 ## When To Use
 
-- Use `handover_to_frontier` when the active task requires its cataloged mutation/execution capability.
+- Use `handover_to_frontier` only after substantive effort reaches a concrete capability or reliability blocker and the user approves the one-way transfer.
 <!-- /socrates:section -->
 
 <!-- socrates:section id="inputs" kind="schema" tags="tools" -->

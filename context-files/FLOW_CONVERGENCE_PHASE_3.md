@@ -104,4 +104,4 @@ The 2026-07-28 goal-aware memory follow-up passed the generated architecture che
 
 ## Remaining Product Migration
 
-This phase converges the released Classic and Flow pre-turn lifecycle. It does not claim that the later global no-project UI, consent-gated replacement for released automatic lossy compaction, or final removal of every project/conversation compatibility coordinate is complete. Those remain governed by `FLOW_NORTH_STAR.md` and `UNIFIED_SOCRATES_LIFECYCLE.md` and must build on this shared lifecycle rather than reintroducing routers or view-specific policies.
+This phase converges the released Classic and Flow pre-turn lifecycle. The subsequent convergence checkpoint replaces released lossy context-classifier authority with release-only turn-local large-result control and automatic oldest-head compaction. The later global no-project UI and final removal of every project/conversation compatibility coordinate remain governed by `FLOW_NORTH_STAR.md` and `UNIFIED_SOCRATES_LIFECYCLE.md`; they must build on the shared lifecycle rather than reintroducing routers or view-specific policies.

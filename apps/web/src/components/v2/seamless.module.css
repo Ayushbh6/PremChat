@@ -2462,12 +2462,6 @@
   background: rgba(21, 159, 159, 0.035);
 }
 
-.contextItemList li[data-disposition="unresolved"] .contextItemIcon {
-  color: var(--v2-warm);
-  border-color: rgba(168, 121, 47, 0.18);
-  background: rgba(168, 121, 47, 0.045);
-}
-
 .contextItemIcon svg {
   width: 0.9rem;
   height: 0.9rem;

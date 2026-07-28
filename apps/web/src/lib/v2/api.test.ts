@@ -44,21 +44,15 @@ describe("V2 Flow API", () => {
               contentHash: "abc123",
               capturedAt: "2026-07-17T12:00:00.000Z",
             },
-            disposition: "unresolved",
+            disposition: "keep_exact",
             representation: "exact",
             tokenEstimate: 198,
             active: true,
             priority: 70,
-            createdAtCompletedTurn: 1,
-            decidedAtCompletedTurn: 1,
-            unresolvedSinceCompletedTurn: 1,
-            reviewDueAtCompletedTurn: 4,
           }],
         },
         counts: {
           immutableEvidenceCount: 1,
-          activeItemCount: 1,
-          releasedItemCount: 0,
         },
       },
     }));
@@ -67,7 +61,7 @@ describe("V2 Flow API", () => {
     await expect(v2Api.getContext("proj_1", "v2flow_1")).resolves.toMatchObject({
       evidence: [],
       items: [{ tokenEstimate: 198 }],
-      counts: { immutableEvidenceCount: 1, activeItemCount: 1, releasedItemCount: 0 },
+      counts: { immutableEvidenceCount: 1 },
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

@@ -15,8 +15,6 @@ import { v2LiveActivitySchema, v2LiveActivityUpdatedPayloadSchema } from "./v2Fl
  */
 
 export const V2_FLOW_SCHEMA_VERSION = 2 as const
-export const V2_CONTEXT_UNRESOLVED_MAX_AGE_TURNS = 3 as const
-export const V2_CONTEXT_UNRESOLVED_MAX_ITEMS = 5 as const
 
 export const V2_OPENROUTER_STT_MODEL_IDS = [
   "nvidia/parakeet-tdt-0.6b-v3",
@@ -340,135 +338,6 @@ export const v2EvidenceItemSchema = z
     createdAt: timestampSchema,
   })
   .strict()
-
-export const v2ContextItemKindSchema = z.enum([
-  "system_instruction",
-  "project_instruction",
-  "message",
-  "message_pair",
-  "goal_capsule",
-  "evidence_exact",
-  "evidence_distill",
-  "retrieval_result",
-])
-export const v2ContextItemStateSchema = z.enum(["active", "released"])
-
-export const v2ContextItemSchema = z
-  .object({
-    id: idSchema,
-    flowId: idSchema,
-    goalId: idSchema.optional(),
-    turnId: idSchema.optional(),
-    kind: v2ContextItemKindSchema,
-    state: v2ContextItemStateSchema,
-    content: z.string(),
-    tokenEstimate: z.number().int().nonnegative(),
-    rank: z.number().int().nonnegative(),
-    activeFromTurnOrdinal: z.number().int().positive(),
-    releasedAtTurnOrdinal: z.number().int().positive().optional(),
-    createdAt: timestampSchema,
-    updatedAt: timestampSchema,
-  })
-  .strict()
-
-export const v2ContextItemSourceSchema = z
-  .object({
-    id: idSchema,
-    contextItemId: idSchema,
-    evidenceItemId: idSchema.optional(),
-    messageId: idSchema.optional(),
-    capsuleId: idSchema.optional(),
-    sourceOrder: z.number().int().nonnegative(),
-    createdAt: timestampSchema,
-  })
-  .strict()
-  .superRefine((value, context) => {
-    const populated = [value.evidenceItemId, value.messageId, value.capsuleId].filter(Boolean).length
-    if (populated !== 1) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Exactly one context item source must be set.",
-      })
-    }
-  })
-
-export const v2ContextDispositionKindSchema = z.enum(["keep_exact", "distill", "release", "unresolved"])
-export const v2ContextDispositionActorSchema = z.enum(["main_agent", "distiller", "policy", "recovery"])
-
-export const v2ContextDispositionSchema = z
-  .object({
-    id: idSchema,
-    flowId: idSchema,
-    goalId: idSchema.optional(),
-    turnId: idSchema,
-    contextItemId: idSchema,
-    version: z.number().int().positive(),
-    disposition: v2ContextDispositionKindSchema,
-    reason: z.string().min(1).max(4_000),
-    decidedBy: v2ContextDispositionActorSchema,
-    unresolvedAgeTurns: z.number().int().min(0).max(V2_CONTEXT_UNRESOLVED_MAX_AGE_TURNS).optional(),
-    unresolvedMaxAgeTurns: z.number().int().min(1).max(V2_CONTEXT_UNRESOLVED_MAX_AGE_TURNS).optional(),
-    distillationInstruction: z.string().min(1).max(4_000).optional(),
-    replacementContextItemId: idSchema.optional(),
-    createdAt: timestampSchema,
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.disposition === "unresolved") {
-      if (value.unresolvedAgeTurns === undefined || value.unresolvedMaxAgeTurns === undefined) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["unresolvedAgeTurns"],
-          message: "Unresolved dispositions require age and maximum-age fields.",
-        })
-      } else if (value.unresolvedAgeTurns > value.unresolvedMaxAgeTurns) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["unresolvedAgeTurns"],
-          message: "An unresolved item cannot be older than its maximum age.",
-        })
-      }
-    } else if (value.unresolvedAgeTurns !== undefined || value.unresolvedMaxAgeTurns !== undefined) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["unresolvedAgeTurns"],
-        message: "Only unresolved dispositions may carry unresolved age fields.",
-      })
-    }
-    if (value.disposition === "distill" && !value.distillationInstruction) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["distillationInstruction"],
-        message: "Distillation requires a focused instruction.",
-      })
-    }
-  })
-
-export const v2ContextPolicySchema = z
-  .object({
-    unresolvedMaxItems: z.number().int().min(1).max(V2_CONTEXT_UNRESOLVED_MAX_ITEMS),
-    unresolvedMaxAgeTurns: z.number().int().min(1).max(V2_CONTEXT_UNRESOLVED_MAX_AGE_TURNS),
-    softPressurePercent: z.number().min(1).max(100),
-    hardPressurePercent: z.number().min(1).max(100),
-    targetAfterCompactionPercent: z.number().min(1).max(100),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.softPressurePercent >= value.hardPressurePercent) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["softPressurePercent"],
-        message: "Soft pressure must be lower than hard pressure.",
-      })
-    }
-    if (value.targetAfterCompactionPercent >= value.softPressurePercent) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["targetAfterCompactionPercent"],
-        message: "The compaction target must be lower than soft pressure.",
-      })
-    }
-  })
 
 export const v2RuntimeEventSchema = z
   .object({
@@ -939,58 +808,6 @@ export const v2CreateSpeechJobRequestSchema = z.discriminatedUnion("engine", [
 
 export const v2CreateSpeechJobResponseSchema = z.object({ job: v2SpeechJobSchema }).strict()
 
-export const v2ContextDispositionDecisionInputSchema = z
-  .object({
-    contextItemId: idSchema,
-    disposition: v2ContextDispositionKindSchema,
-    reason: z.string().min(1).max(4_000),
-    unresolvedAgeTurns: z.number().int().min(0).max(V2_CONTEXT_UNRESOLVED_MAX_AGE_TURNS).optional(),
-    unresolvedMaxAgeTurns: z.number().int().min(1).max(V2_CONTEXT_UNRESOLVED_MAX_AGE_TURNS).optional(),
-    distillationInstruction: z.string().min(1).max(4_000).optional(),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.disposition === "unresolved") {
-      if (value.unresolvedAgeTurns === undefined || value.unresolvedMaxAgeTurns === undefined) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["unresolvedAgeTurns"],
-          message: "Unresolved dispositions require age and maximum-age fields.",
-        })
-      } else if (value.unresolvedAgeTurns > value.unresolvedMaxAgeTurns) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["unresolvedAgeTurns"],
-          message: "An unresolved item cannot be older than its maximum age.",
-        })
-      }
-    } else if (value.unresolvedAgeTurns !== undefined || value.unresolvedMaxAgeTurns !== undefined) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["unresolvedAgeTurns"],
-        message: "Only unresolved dispositions may carry unresolved age fields.",
-      })
-    }
-    if (value.disposition === "distill" && !value.distillationInstruction) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["distillationInstruction"],
-        message: "Distillation requires a focused instruction.",
-      })
-    }
-  })
-
-export const v2ContextDispositionBatchRequestSchema = z
-  .object({
-    turnId: idSchema,
-    decisions: z.array(v2ContextDispositionDecisionInputSchema).min(1).max(64),
-  })
-  .strict()
-
-export const v2ContextDispositionBatchResponseSchema = z
-  .object({ dispositions: z.array(v2ContextDispositionSchema) })
-  .strict()
-
 export const v2ActorTypeSchema = z.enum(["user", "main_agent", "worker", "tool", "system"])
 export const v2ActorSchema = z
   .object({
@@ -1206,9 +1023,6 @@ export const v2GoalTransitionedPayloadSchema = z
   .object({ goal: v2GoalSchema, transition: v2GoalTransitionSchema })
   .strict()
 export const v2GoalCapsuleUpdatedPayloadSchema = z.object({ capsule: v2GoalCapsuleSchema }).strict()
-export const v2ContextDispositionUpdatedPayloadSchema = z
-  .object({ contextItem: v2ContextItemSchema, disposition: v2ContextDispositionSchema })
-  .strict()
 export const v2ToolCallUpdatedPayloadSchema = z.object({ toolCall: v2ToolCallSchema }).strict()
 export const v2ApprovalUpdatedPayloadSchema = z.object({ approval: v2ApprovalSchema }).strict()
 export const v2FeedbackUpdatedPayloadSchema = z.object({ feedback: v2FeedbackSchema }).strict()
@@ -1281,10 +1095,6 @@ export const v2RoutingClarificationResolvedEventSchema = v2SocketEnvelopeSchema(
 )
 export const v2GoalTransitionedEventSchema = v2SocketEnvelopeSchema("v2.goal.transitioned", v2GoalTransitionedPayloadSchema)
 export const v2GoalCapsuleUpdatedEventSchema = v2SocketEnvelopeSchema("v2.goal.capsule.updated", v2GoalCapsuleUpdatedPayloadSchema)
-export const v2ContextDispositionUpdatedEventSchema = v2SocketEnvelopeSchema(
-  "v2.context.disposition.updated",
-  v2ContextDispositionUpdatedPayloadSchema,
-)
 export const v2ToolCallUpdatedEventSchema = v2SocketEnvelopeSchema("v2.tool.call.updated", v2ToolCallUpdatedPayloadSchema)
 export const v2ApprovalUpdatedEventSchema = v2SocketEnvelopeSchema("v2.approval.updated", v2ApprovalUpdatedPayloadSchema)
 export const v2FeedbackUpdatedEventSchema = v2SocketEnvelopeSchema("v2.feedback.updated", v2FeedbackUpdatedPayloadSchema)
@@ -1328,7 +1138,6 @@ export const v2ServerEventSchema = z.discriminatedUnion("type", [
   v2RoutingClarificationResolvedEventSchema,
   v2GoalTransitionedEventSchema,
   v2GoalCapsuleUpdatedEventSchema,
-  v2ContextDispositionUpdatedEventSchema,
   v2ToolCallUpdatedEventSchema,
   v2ApprovalUpdatedEventSchema,
   v2FeedbackUpdatedEventSchema,
@@ -1358,10 +1167,6 @@ export type V2RuntimeConfig = z.infer<typeof v2RuntimeConfigSchema>
 export type V2Message = z.infer<typeof v2MessageSchema>
 export type V2MessageAttachment = z.infer<typeof v2MessageAttachmentSchema>
 export type V2EvidenceItem = z.infer<typeof v2EvidenceItemSchema>
-export type V2ContextItem = z.infer<typeof v2ContextItemSchema>
-export type V2ContextItemSource = z.infer<typeof v2ContextItemSourceSchema>
-export type V2ContextDisposition = z.infer<typeof v2ContextDispositionSchema>
-export type V2ContextPolicy = z.infer<typeof v2ContextPolicySchema>
 export type V2RuntimeEvent = z.infer<typeof v2RuntimeEventSchema>
 export type V2ModelCall = z.infer<typeof v2ModelCallSchema>
 export type V2UsageEvent = z.infer<typeof v2UsageEventSchema>

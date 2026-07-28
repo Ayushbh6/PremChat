@@ -8,6 +8,7 @@ import type {
   TurnUsageReport,
   UsageBreakdownItem,
 } from "@socrates/contracts"
+import { CONTEXT_MODEL_DISPATCH_CEILING_TOKENS } from "@socrates/core"
 import { estimateTextTokens } from "@socrates/providers"
 import { createId, nowIso } from "@socrates/shared"
 import { and, eq } from "drizzle-orm"
@@ -15,7 +16,7 @@ import { aiUsageEvents, contextUsageSnapshots, modelCalls, modelStreamChunks, mo
 import { StoreBase } from "./shared"
 import type { ConversationUsageReportBundle, StoredModelUsage } from "./types"
 
-const DEFAULT_CONTEXT_BUDGET_TOKENS = 180_000
+const DEFAULT_CONTEXT_BUDGET_TOKENS = CONTEXT_MODEL_DISPATCH_CEILING_TOKENS
 
 export class ModelTelemetryStore extends StoreBase {
   createModelCall(input: {

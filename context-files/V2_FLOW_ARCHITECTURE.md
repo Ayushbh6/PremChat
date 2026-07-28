@@ -1,6 +1,6 @@
 # Socrates V2 Flow Architecture
 
-This document records the current implemented architecture, migration constraints, and technical mechanics of the experimental Socrates V2 Seamless Flow experience. `FLOW_NORTH_STAR.md` is the product-intent authority and `UNIFIED_SOCRATES_LIFECYCLE.md` is the detailed lifecycle/cleanup authority. Phase 1 removed the post-turn Memory Router, mutable main-agent goal ledger, and pending finalization fallback. The current Phase 3 converges Classic and Flow on one pre-turn lifecycle: typed parallel candidate retrieval, a no-tool semantic decision by the selected main Socrates, deterministic exact-memory selection, and one exact view-neutral context contract. The earlier canonical projection and presentation work remains intact beneath that lifecycle. Namespaced physical runtime tables remain migration adapters rather than separate semantic state.
+This document records the current implemented architecture, migration constraints, and technical mechanics of the experimental Socrates V2 Seamless Flow experience. `FLOW_NORTH_STAR.md` is the product-intent authority and `UNIFIED_SOCRATES_LIFECYCLE.md` is the detailed lifecycle/cleanup authority. Phase 1 removed the post-turn Memory Router, mutable main-agent goal ledger, and pending finalization fallback. Phase 3 converged Classic and Flow on typed parallel candidate retrieval, a no-tool semantic decision by the selected main Socrates, deterministic exact-memory selection, and one exact view-neutral context contract. The locked follow-up adds process-over-ceremony durable-state steering, release-only turn-local large-result control, automatic oldest-head compaction, exact-context Frontier transfer, and shared atomic finalization while removing the superseded context-policy authority. Namespaced physical runtime tables remain migration adapters rather than separate semantic state.
 
 Status: the isolated first product cut is implemented behind the V2 boundary. Whole-workspace regression, production builds, normal runtime packaging, and a real browser E2E have passed. Formal accessibility automation, cross-platform release archives, full local speech-pack runs, and extended reliability validation remain; implementation does not mean that a 24-hour unattended soak has already passed.
 
@@ -29,7 +29,7 @@ V2 is a separate experimental product surface and execution path:
 - One persistent visible Flow per project.
 - Backend-managed goals inside that Flow.
 - One foreground goal at execution time and compact parked goal capsules.
-- A goal-aware, self-pruning model context backed by immutable evidence.
+- A goal-aware exact model context with release-only large-result pruning and immutable evidence.
 - Text and voice as equivalent ways to enter the same Flow.
 - V2-namespaced contracts, persistence, events, services, and tests.
 - A source-server feature flag that is off unless `SOCRATES_V2_FLOW_ENABLED=true`, plus an ordinary packaged NPM/runtime launcher that defaults the flag to `true` for the normal product.
@@ -93,7 +93,7 @@ V2 passes Flow/turn ids into shared runner primitives only as scoped runtime han
 
 The Global Memory Agent is one application-level learner across both experiences. Its manifest includes unprocessed completed V2 turns with project/Flow/goal labels, it resolves their Q&A and raw evidence through the shared retrieval facade, and a completed shared Memory Agent job records the processed V2 turn ids in its evidence receipt. V2 does not fork profile, identity, memory-agent journal, or skill-learning state merely to preserve conversation isolation.
 
-Classic and Flow retrieve typed goal-card and memory candidates concurrently. The selected main Socrates model then makes one strict no-tool decision: current goal, one numbered older candidate, a new goal, or clarify. Code binds the canonical goal and deterministically selects exact memory from the already retrieved candidates. Both views render the same typed context from the current goal capsule, current task, latest exact completed exchange, selected exact memory, and honest retrieval status. No presentation/view label changes model-visible policy. Each view persists telemetry through its existing adapter, but neither owns a second semantic policy. Both views also use the same Context Compactor worker and the exact shared 170k trigger, 120k acceptance ceiling, and 180k hard pre-provider limit. Selected-model context-window metadata must not create a Flow-only compaction policy.
+Classic and Flow retrieve typed goal-card and memory candidates concurrently. The selected main Socrates model then makes one strict no-tool decision: current goal, one numbered older candidate, a new goal, or clarify. Code binds the canonical goal and deterministically selects exact memory from the already retrieved candidates. Both views render the same typed context from the current goal capsule, current task, latest exact completed exchange, selected exact memory, and honest retrieval status. No presentation/view label changes model-visible policy. Each view persists telemetry through its existing adapter, but neither owns a second semantic policy. Both views also use the same Context Compactor worker, exact shared 170k trigger/dispatch ceiling, approximately 70k newest whole-turn suffix, about-100k rebuilt target, and 120k acceptance ceiling. Selected-model context-window metadata must not create a Flow-only compaction policy.
 
 V2 does not invoke the Classic conversation-title rewriter and does not make a separate capsule-writing model call. New goal titles and rich capsule snapshots are derived deterministically from authoritative V2 state, and capsule versions provide the resumable semantic label/state. Goal resolution uses the already selected main Socrates provider/model/thinking configuration through `SocratesAgent`; no router worker setting or separate agent instance exists.
 
@@ -236,11 +236,9 @@ The exact durable source behind Socrates' reasoning:
 
 Pruning never deletes this evidence. Raw evidence remains recoverable from durable storage and retains provenance, integrity hashes or equivalent identity, project scope, source kind, and creation time.
 
-### Context Item
+### Exact Evidence Projection
 
-A model-context representation linked to one or more immutable evidence sources. It is the unit that V2 can keep exact, distill, release, or hold unresolved.
-
-A context item is not necessarily one whole tool result. It may represent one page, one result chunk, an exact excerpt, a distilled brief, a goal capsule, or a recent visible exchange.
+The Flow inspector exposes a bounded reference-only projection of immutable evidence for the foreground goal. This projection is not a second context-policy state and does not decide what enters the next provider request. It carries the evidence handle, provenance, content hash, capture time, and optional token estimate; exact content remains in canonical evidence storage and is retrieved only when needed.
 
 ### Goal Resolution Run
 
@@ -300,104 +298,29 @@ all other goals absent from the current model request
 
 If one message contains many unrelated requests, the first version chooses one foreground objective and either answers the bounded set sequentially or asks one natural clarification when execution order materially matters. It does not ask the router to manufacture secondary links or spawn dozens of full active contexts.
 
-## Self-Pruning Working Context
+## Efficient Shared Working Context
 
-Self-pruning means removing an expensive representation from the next LLM request. It never means deleting the underlying source.
+Classic and Flow use the same two mechanisms. Neither view owns a context classifier, distiller, unresolved queue, keep/release ledger, or percentage-based policy.
 
-After Socrates has inspected a substantial tool or retrieval result, the result receives one disposition:
+### Turn-Local Large-Result Release
 
-| Disposition | Meaning in the next model request | Evidence behavior |
-| --- | --- | --- |
-| `keep_exact` | Keep the selected exact content active. | Raw source remains immutable. |
-| `distill` | Replace the expensive active copy with a focused, attributed brief. | Raw source and the distillation both remain. |
-| `release` | Remove it from active context. | Raw source remains retrievable. |
-| `unresolved` | Keep it provisionally because its value cannot yet be judged. | Raw source remains and the item receives a mandatory review deadline. |
-
-The implemented path is owned by the shared `SocratesAgent` loop used by Classic and Flow. Substantial successful tool outputs receive compact handles only after the main model has inspected their exact content. When Socrates needs another functional tool, it calls `context_disposition` in the same parallel response and chooses `keep_exact`, `distill`, `release`, or `unresolved`. There is no separate Context Distiller request and no post-turn disposition worker. Tiny outputs need no ceremony, and a final answer needs no disposition because intermediate tool results are not carried into the next visible conversation turn.
-
-Conversation compaction before provider calls and post-turn precomputation both run through the same core `SocratesAgent.precomputeContext`/`CompressorAgent` path used by Classic, with the configured `socrates_context_compactor` model selection and shared fixed thresholds. The selected foreground model's advertised context window is telemetry and compatibility metadata only. Flow persists exact tool evidence for audit/retrieval with `includeInContext = false`; it does not automatically project old exact or distilled evidence into later turns.
-
-### Distillation Contract
-
-Main Socrates does the following in its ordinary tool loop:
-
-- Receive exact evidence references, not a contextless copy with lost provenance.
-- Receive a narrow question such as "retain the clauses relevant to termination liability."
-- Produce a bounded structured brief with source anchors.
-- Separate direct source facts from inference.
-- Preserve exact quotations only when required and within source limits.
-- Record exact provider/tool evidence and the typed control result for audit.
-- Never delete or overwrite source evidence.
-
-The control input is deliberately small: result handle, action, and an optional summary required only for `distill`. The stable tool schema is shared across providers and avoids changing the provider cache prefix between calls.
-
-### Unresolved Guardrails
-
-`unresolved` keeps the exact result visible only within the current turn so the next functional result can clarify its value. It is never a cross-turn parking state. The shared 170k compactor and hard pre-provider ceiling remain the bounded fallback if Socrates retains too much exact evidence in one turn.
-
-### Mandatory Safety Rules
-
-- The current user request and explicit constraints cannot be silently released.
-- Active approvals, blockers, incomplete writes, and Terminal input requirements must survive context rebuilding.
-- Exact code, errors, commands, paths, legal clauses, rubrics, or source-of-truth text remain exact when precision is material.
-- A distillation is not evidence and must link back to evidence.
-- Released evidence must remain retrievable without reconstructing it from the summary.
-- Pruning decisions and their reasons are auditable, but private chain-of-thought is not persisted.
-- Cross-project evidence must never enter a Flow unless an existing explicitly global memory surface allows it.
-
-## Multi-Level Context Management
-
-V2 should not wait for one enormous transcript compaction. It should manage context at several levels.
-
-### Level 1: Tool-Output Disposition
-
-After a substantial read, search, retrieval, or Terminal result has been consumed, retain only the exact portions still needed, distill the useful remainder, release noise, and deadline unresolved items.
-
-Example:
+Each successful individual tool output above 3,000 estimated tokens receives the next qualifying-only turn-local handle (`R1`, `R2`, and so on). After the tool batch, the runtime appends one compact hidden reminder listing the new handles. When Socrates has extracted what it needs and is already requesting another normal tool, it may piggyback:
 
 ```text
-read 20 PDF pages
-  -> keep 2 exact pages containing controlling clauses
-  -> distill 3 pages relevant to the current question
-  -> release 15 irrelevant pages from active context
-  -> retain all 20 pages in immutable evidence storage
+context_disposition({ release: ["R1"] })
 ```
 
-For ranked retrieval:
+Release is the only action. Omitting it never blocks normal tools, it requires no approval, does not consume the functional-tool budget, and adds no separate model round trip. The live model-visible copy becomes a tiny receipt plus retrieval hint; exact tool output stays immutable and retrievable. A final answer needs no release because intermediate tool output is not automatically projected into the next user turn.
 
-```text
-receive 6 chunks
-  -> keep the 2 decisive chunks
-  -> distill one supporting chunk if useful
-  -> release the remaining active copies
-  -> preserve all retrieval provenance
-```
+### Automatic Completed-History Compaction
 
-### Level 2: Goal Working-Set Review
+Before every provider call, the shared runtime counts the exact assembled request. At or above 170k estimated tokens, it automatically compacts only the oldest completed-turn head. It preserves recent completed Q/A by whole-turn boundary toward an approximately 70k exact suffix plus the active turn, targets a rebuilt request around 100k, and rejects a result above 120k. If safe compaction fails, the main model is not dispatched at or above 170k. Canonical history and exact evidence are never rewritten.
 
-When the foreground goal changes or its working set grows, rebuild context from its recent linked turns, capsule, active items, and relevant evidence. Do not carry unrelated Q&A pairs merely because they are adjacent in the visible Flow.
+The active turn is not automatically summarized. The release-only `R<n>` mechanism is the sole way to remove bulky current-turn results from live context. Non-blocking efficiency steering may remind Socrates to release irrelevant eligible handles, but it must not abandon unfinished implementation or verification.
 
-### Level 3: Goal Capsule Compaction
+### Goal-Aware Assembly
 
-When a goal is parked or a large phase finishes, create a new capsule version. Future routing can use the capsule before deciding whether exact goal evidence must be retrieved.
-
-### Level 4: Flow-Level Working-Set Review
-
-Flow may select goal-relevant evidence and omit unrelated goals, but it must not invent a separate percentage-based conversation-pressure policy. The lifecycle selects complete recent messages and complete retrieved older exchanges from the active goal without character/token slicing any selected item, then hands those exact items to the shared Socrates runner. The same fixed policy used by Classic then compacts at 170k estimated model-visible input, accepts a compacted request only at or below 120k, and enforces the 180k hard pre-provider ceiling; replacing that released automatic lossy policy with consent gating remains separate migration work.
-
-The review should ask:
-
-- Which visible Q&A pairs are unrelated to the foreground goal?
-- Which exact items are still operationally necessary?
-- Which items can be represented by capsules or distillations?
-- Which old goal material should be fully absent from the next request?
-- Which evidence needs a retrieval anchor rather than active bytes?
-
-The correct result is a newly assembled goal-aware request, not a vague summary of the entire Flow.
-
-### Level 5: Shared Socrates Provider-Boundary Compression
-
-The shared Socrates compactor protects the provider boundary in both views. Flow uses a V2 persistence adapter so its snapshots, model calls, errors, usage, and immutable summary evidence remain namespaced, but the agent, compressor prompt/schema, worker setting, 170k trigger, rebuilt-request targets, and 180k hard ceiling are exactly the Classic Socrates policy.
+The lifecycle selects exact messages and exact memory for the bound goal without slicing selected items. A parked goal is represented by its versioned capsule until exact exchanges are explicitly selected or retrieved. Flow may omit unrelated goals, but it cannot invent a view-specific context budget. Active approvals, blockers, unfinished mutations, Terminal input requirements, and exact constraints must survive rebuilding.
 
 ## Context Assembly For A V2 Turn
 
@@ -409,16 +332,15 @@ Conceptual order:
 stable Socrates operating kernel and allowed shared rules
 project identity and explicitly relevant project memory
 foreground goal header and latest capsule
-recent exact messages linked to the foreground goal
-selected exact context items
-selected attributed distillations
-retrieved evidence requested for this turn
+latest exact completed exchange and selected exact goal history
+deterministically selected exact memory
+retrieved exact evidence requested for this turn
 live Terminal, task, approval, and blocker state
 new user message
-current-turn tool calls/results as they occur
+current-turn tool calls/results as they occur, minus explicitly released R handles
 ```
 
-Parked goal histories, unrelated visible messages, released context items, and complete old tool dumps are absent unless retrieved.
+Parked goal histories, unrelated visible messages, released live result copies, and complete old tool dumps are absent unless explicitly selected or retrieved. Their canonical rows remain unchanged.
 
 The visible UI can still render the entire Flow because UI history and model context are different products.
 
@@ -573,12 +495,12 @@ Migrations through `0031_shocking_alex_power.sql`, together with `apps/server/sr
 | --- | --- |
 | Flow and goals | `v2_flows` enforces one Flow per project; `v2_goals` enforces one foreground goal; `v2_goal_transitions`, `v2_goal_routing_runs`, `v2_goal_capsules`, and `v2_goal_message_links` retain routing and capsule history. |
 | Timeline and execution | `v2_turns`, `v2_turn_runtime_configs`, `v2_messages`, `v2_message_attachments`, and `v2_agent_tasks` own the visible timeline, exact per-turn configuration, and restartable task chain. |
-| Evidence and context | `v2_evidence_items`, `v2_context_items`, `v2_context_item_sources`, and `v2_context_dispositions` separate immutable sources from mutable active-context projections and append-only decisions. |
+| Evidence and legacy context compatibility | `v2_evidence_items` is the live immutable evidence authority. Historical `v2_context_items`, `v2_context_item_sources`, and `v2_context_dispositions` remain migration-readable/deletable only; no active producer, API contract, socket event, prompt, or context-policy path uses them. |
 | Runtime audit | `v2_runtime_events`, `v2_model_calls`, `v2_usage_events`, `v2_tool_calls`, `v2_approvals`, `v2_terminal_sessions`, `v2_terminal_output_chunks`, `v2_errors`, `v2_artifacts`, `v2_feedback`, and `v2_credential_input_requests` reconstruct live execution without Classic rows. |
 | Speech | `v2_speech_jobs` owns transcription and one-off read-aloud jobs and enforces the accepted engine/model allowlist in SQLite. |
 | Canonical work projection | `work_tasks` and `work_messages` identify one physical source; `conversation_task_projections` presents tasks in Classic; `v2_goal_classic_homes` gives a goal at most one preferred Classic home; `v2_classic_turn_goal_links` records exact Classic per-turn membership. Released `v2_classic_message_links` are read only for non-destructive legacy reconciliation. |
 
-Migration triggers reject `UPDATE` and `DELETE` on `v2_evidence_items`. A release or distillation changes only `v2_context_items` and appends `v2_context_dispositions` plus any newly derived immutable evidence. Exact evidence remains addressable by id/handle.
+Migration triggers reject `UPDATE` and `DELETE` on `v2_evidence_items` without explicit deletion authorization. Turn-local release changes only the in-memory model projection and its tool receipt. Exact evidence remains addressable by id/handle; compatibility context tables are preserved solely to avoid destructive migration of existing installs.
 
 ### Runtime And Evidence Rule
 
@@ -600,13 +522,13 @@ For any V2 turn, the database must be able to reconstruct:
 
 ```text
 user text or voice transcript
-router candidates and decision
+goal candidates and same-Socrates decision
 foreground goal
 goal transition history
 assembled context manifest
 exact evidence sources
-each context disposition and deadline
-model and distiller calls with usage
+turn-local release receipts and exact result handles when used
+main, Frontier, and compactor model calls with usage
 tool, Terminal, approval, and error lifecycle
 visible assistant response
 capsule version changes
@@ -670,7 +592,7 @@ The first cut was built in isolated vertical slices:
 2. One persistent Flow per project with V2 messages/turns and restart-safe timeline hydration.
 3. Historical bounded goal routing, one foreground goal, goal-message links, state transitions, and parked capsules; current Phase 3 replaces the separate router with same-Socrates resolution.
 4. Immutable V2 evidence records for audit/retrieval without automatic later-turn projection.
-5. Shared main-Socrates within-turn dispositions plus the fixed shared 170k compactor.
+5. Shared release-only turn-local `R<n>` control plus automatic 170k oldest-completed-head compaction.
 6. Explicit retrieval/re-entry for older exact evidence and long-flow reliability evaluation.
 7. V2 Voice V1: local Whisper or the three-model OpenRouter STT allowlist, plus one-off local Kokoro read-aloud.
 8. Experimental UI polish and optional goal/context inspection. Ephemeral mood-aware tone remains later work.
@@ -686,13 +608,13 @@ The implemented user-testable first cut deliberately stops at:
 - One foreground goal and bounded parked goal capsules.
 - Text input plus finalized push-to-talk transcription through local Whisper or one of the three accepted OpenRouter models, all through the same unified pre-turn lifecycle.
 - One-off local Kokoro read aloud for completed assistant text.
-- `keep_exact`, `distill`, `release`, and bounded `unresolved` context dispositions.
+- Release-only turn-local large-result control with exact evidence preservation.
 - Immutable evidence and exact re-retrieval.
 - Separate concurrent turns across projects as separate LLM calls.
 - Restart-safe visible timeline, goal state, and durable task recovery.
 - Explicit focus lifecycle controls, Socrates-staged completion, seven-day safe parked-focus archival, and the Classic bridge.
 
-It does not need full-duplex realtime voice, automatic destructive goal merging, a permanent mood field, V1 migration, or hosted/local model parity. Those omissions keep the first experiment focused on proving the seamless-Flow and self-pruning ideas.
+It does not need full-duplex realtime voice, automatic destructive goal merging, a permanent mood field, V1 migration, or hosted/local model parity. Those omissions keep the first experiment focused on proving seamless Flow, exact goal context, and efficient release-only pruning.
 
 ## V2 Acceptance Criteria
 
@@ -703,10 +625,10 @@ The first useful V2 is accepted when:
 - The lifecycle keeps exactly one foreground execution goal and parks others as capsules.
 - A user may accumulate many goals without all goal histories entering each request.
 - Messages can link to multiple goals without creating multiple simultaneous full prompts.
-- Large evidence can be kept exact, distilled, released, or held unresolved with bounded review.
-- Releasing or distilling never deletes the exact source.
-- No unresolved item silently survives beyond the configured bound.
-- Goal-aware context rebuilding materially controls prompt growth before emergency compaction.
+- Qualifying large results receive predictable turn-local `R<n>` handles and can be released without a separate model round trip.
+- Releasing never deletes or rewrites the exact source.
+- No keep/distill/unresolved classifier or queue remains in the active runtime.
+- Goal-aware exact context rebuilding and automatic oldest-head compaction materially control prompt growth.
 - Exact released evidence can be retrieved and attributed later.
 - Two projects can run independently as separate model calls with no workspace/context leakage.
 - Voice transcripts enter the same pre-turn lifecycle and read-aloud remains a one-off output job.
@@ -742,8 +664,7 @@ The following remain intentionally open or incomplete:
 
 - Conservative destructive merge semantics; merge is not implemented.
 - Continued same-Socrates goal-resolution evaluation across human request patterns and model/thinking selections beyond the current strict contract and bounded repair.
-- Distiller/compactor local-model structured-output requirements beyond the shared worker setting.
-- Model-aware proactive and hard context thresholds after measurement.
+- Compactor local-model structured-output requirements beyond the shared worker setting.
 - Capsule refresh quality/cadence beyond the deterministic first cut.
 - Release-level retrieval rebuild/upsert/delete, continuation-inspect, and restart validation across all supported packages.
 - Release-package benchmarking for `small.en`, Kokoro default voice, cold-start UX, and supported-platform speech behavior.
@@ -751,4 +672,4 @@ The following remain intentionally open or incomplete:
 - Whether any mood signal is worth implementing after the Flow foundation works.
 - Any future migration or replacement of V1. There is currently no approved migration.
 
-These open decisions do not weaken the already accepted boundary, product north star, one-foreground-goal model, immutable-evidence rule, or self-pruning dispositions.
+These open decisions do not weaken the accepted boundary, product north star, one-foreground-goal model, immutable-evidence rule, release-only turn-local pruning, or shared automatic compaction policy.

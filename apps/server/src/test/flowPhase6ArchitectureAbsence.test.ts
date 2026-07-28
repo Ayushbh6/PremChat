@@ -32,18 +32,58 @@ describe("Flow convergence Phase 6 architecture absence", () => {
     expect(read("apps/server/src/services/store.ts")).toContain("retrieveUnifiedMainToolTracesFromAuthority")
   })
 
+  it("physically removes the superseded Flow context classifier authority", () => {
+    for (const file of [
+      "packages/core/src/v2/contextPolicy.ts",
+      "packages/core/src/v2/contextBudget.ts",
+      "packages/core/src/v2/contextAssembly.ts",
+    ]) {
+      expect(fs.existsSync(path.join(root, file))).toBe(false)
+    }
+    const flowStore = read("apps/server/src/services/v2/flowStore.ts")
+    const v2Contracts = read("packages/contracts/src/v2Flow.ts")
+    expect(flowStore).toContain("getExactEvidenceProjections")
+    expect(flowStore).not.toContain("persistContextDispositions")
+    expect(flowStore).not.toContain("getActiveCoreContextState")
+    expect(flowStore).not.toContain("loadCoreContextState")
+    expect(flowStore).not.toContain("Review unresolved evidence")
+    expect(flowStore).not.toContain("Classify ${item.handle}")
+    expect(v2Contracts).not.toContain("v2ContextDispositionSchema")
+    expect(v2Contracts).not.toContain("v2.context.disposition.updated")
+    expect(v2Contracts).not.toContain("V2_CONTEXT_UNRESOLVED_MAX_ITEMS")
+  })
+
+  it("keeps one release-only active-turn mechanism and automatic oldest-head compaction", () => {
+    const toolContract = read("packages/contracts/src/tools.ts")
+    const disposition = read("packages/core/src/context/toolOutputDisposition.ts")
+    const compressorPrompt = read("packages/core/src/prompts/socratesCompressorPrompt.ts")
+    const compression = read("packages/core/src/context/contextCompression.ts")
+    expect(toolContract).toContain('release: z.array(contextResultHandleSchema)')
+    expect(disposition).toContain("Large temporary result")
+    expect(disposition).not.toContain('disposition === "distill"')
+    expect(disposition).not.toContain('disposition === "unresolved"')
+    expect(compressorPrompt).not.toContain("Current Turn Tool Digest")
+    expect(compression).toContain("CONTEXT_MODEL_DISPATCH_CEILING_TOKENS = 170_000")
+    expect(compression).toContain("recentTailTargetTokens: 70_000")
+  })
+
   it("requires validated normal finalization and commits answer plus goal atomically", () => {
     const classic = read("apps/server/src/ws/commandHandlers/chatMessageSend.ts")
     const flow = read("apps/server/src/v2/runtime.ts")
     const flowStore = read("apps/server/src/services/v2/flowStore.ts")
+    const finalization = read("apps/server/src/services/turn/validatedTurnFinalization.ts")
     expect(classic).toContain("if (!finalResult)")
-    expect(classic).toContain("completeAgentTurnAtomically")
-    expect(classic).toContain("afterPersist")
+    expect(classic).toContain("commitValidatedTurn")
+    expect(classic).toContain("persistBoundGoalAndCapsule")
     expect(flow).toContain("if (!finalResult)")
-    expect(flow).toContain("this.deps.store.completeTurn")
-    const completion = flowStore.slice(flowStore.indexOf("  completeTurn(input:"), flowStore.indexOf("  failTurn(input:"))
-    expect(completion).toContain("this.handle.sqlite.transaction")
+    expect(flow).toContain("this.deps.store.commitValidatedTurn")
+    const completion = flowStore.slice(flowStore.indexOf("  commitValidatedTurn(input:"), flowStore.indexOf("  failTurn(input:"))
+    expect(completion).toContain("commitValidatedTurnFinalization")
     expect(completion).toContain("this.finalizeGoal")
+    expect(finalization).toContain("handle.sqlite.transaction")
+    expect(finalization).toContain("persistAnswerAndTask")
+    expect(finalization).toContain("persistBoundGoalAndCapsule")
+    expect(finalization).toContain("persistUsageAndAudit")
   })
 
   it("does not copy cross-view Q&A while projecting canonical work", () => {

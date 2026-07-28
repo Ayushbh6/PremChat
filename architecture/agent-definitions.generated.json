@@ -41,7 +41,7 @@
         "context.exact_messages",
         "context.runtime_state",
         "context.tool_definitions",
-        "context.user_approved_compaction",
+        "context.automatic_compaction",
         "runtime.structured_repair",
         "runtime.frontier_handover"
       ],
@@ -54,7 +54,7 @@
         "exact_messages",
         "runtime_context",
         "tool_definitions",
-        "consent_gated_compaction"
+        "automatic_compaction"
       ],
       "maxToolCalls": 80,
       "maxOutputRepairAttempts": 1,
@@ -81,7 +81,7 @@
         "context.exact_messages",
         "context.runtime_state",
         "context.tool_definitions",
-        "context.user_approved_compaction"
+        "context.automatic_compaction"
       ],
       "dynamicCapabilityPrefixes": [],
       "contextProfileId": "interactive-agent-context-v1",
@@ -90,7 +90,7 @@
         "exact_messages",
         "runtime_context",
         "tool_definitions",
-        "consent_gated_compaction"
+        "automatic_compaction"
       ],
       "maxToolCalls": 20,
       "persistenceScope": "project"
@@ -107,7 +107,7 @@
         "context.stable_prompt",
         "context.exact_messages",
         "context.tool_definitions",
-        "context.user_approved_compaction",
+        "context.automatic_compaction",
         "runtime.structured_repair"
       ],
       "dynamicCapabilityPrefixes": [],
@@ -116,7 +116,7 @@
         "stable_prompt",
         "exact_messages",
         "tool_definitions",
-        "consent_gated_compaction"
+        "automatic_compaction"
       ],
       "maxToolCalls": 0,
       "maxOutputRepairAttempts": 1,
@@ -134,7 +134,7 @@
         "context.stable_prompt",
         "context.exact_messages",
         "context.tool_definitions",
-        "context.user_approved_compaction",
+        "context.automatic_compaction",
         "runtime.structured_repair"
       ],
       "dynamicCapabilityPrefixes": [],
@@ -143,7 +143,7 @@
         "stable_prompt",
         "exact_messages",
         "tool_definitions",
-        "consent_gated_compaction"
+        "automatic_compaction"
       ],
       "maxToolCalls": 0,
       "maxOutputRepairAttempts": 1,
@@ -171,7 +171,7 @@
         "context.stable_prompt",
         "context.exact_messages",
         "context.tool_definitions",
-        "context.user_approved_compaction",
+        "context.automatic_compaction",
         "runtime.structured_repair"
       ],
       "dynamicCapabilityPrefixes": [],
@@ -180,7 +180,7 @@
         "stable_prompt",
         "exact_messages",
         "tool_definitions",
-        "consent_gated_compaction"
+        "automatic_compaction"
       ],
       "maxToolCalls": 60,
       "maxOutputRepairAttempts": 1,
@@ -198,7 +198,7 @@
         "context.stable_prompt",
         "context.exact_messages",
         "context.tool_definitions",
-        "context.user_approved_compaction",
+        "context.automatic_compaction",
         "runtime.structured_repair"
       ],
       "dynamicCapabilityPrefixes": [],
@@ -207,7 +207,7 @@
         "stable_prompt",
         "exact_messages",
         "tool_definitions",
-        "consent_gated_compaction"
+        "automatic_compaction"
       ],
       "maxToolCalls": 0,
       "maxOutputRepairAttempts": 1,
@@ -225,7 +225,7 @@
         "context.stable_prompt",
         "context.exact_messages",
         "context.tool_definitions",
-        "context.user_approved_compaction",
+        "context.automatic_compaction",
         "runtime.structured_repair"
       ],
       "dynamicCapabilityPrefixes": [],
@@ -234,7 +234,7 @@
         "stable_prompt",
         "exact_messages",
         "tool_definitions",
-        "consent_gated_compaction"
+        "automatic_compaction"
       ],
       "maxToolCalls": 0,
       "maxOutputRepairAttempts": 1,
@@ -252,7 +252,7 @@
         "context.stable_prompt",
         "context.exact_messages",
         "context.tool_definitions",
-        "context.user_approved_compaction",
+        "context.automatic_compaction",
         "runtime.structured_repair"
       ],
       "dynamicCapabilityPrefixes": [],
@@ -261,7 +261,7 @@
         "stable_prompt",
         "exact_messages",
         "tool_definitions",
-        "consent_gated_compaction"
+        "automatic_compaction"
       ],
       "maxToolCalls": 0,
       "maxOutputRepairAttempts": 1,

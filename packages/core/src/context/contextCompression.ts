@@ -17,16 +17,15 @@ import {
 
 export type ContextCompressionMode = "chat" | "memory"
 
+export const CONTEXT_MODEL_DISPATCH_CEILING_TOKENS = 170_000
+
 export const DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS = {
-  triggerTokens: 170_000,
-  excellentTargetTokens: 60_000,
-  preferredTargetTokens: 80_000,
+  triggerTokens: CONTEXT_MODEL_DISPATCH_CEILING_TOKENS,
+  excellentTargetTokens: 80_000,
+  preferredTargetTokens: 100_000,
   postCompactionTargetTokens: 120_000,
-  hardLimitTokens: 180_000,
   minimumReductionTokens: 20_000,
-  recentTailTargetTokens: 50_000,
-  currentTurnToolTailTargetTokens: 50_000,
-  currentTurnToolResultFloor: 5,
+  recentTailTargetTokens: 70_000,
 } as const
 
 export type ContextCompressionThresholds = {
@@ -34,11 +33,8 @@ export type ContextCompressionThresholds = {
   excellentTargetTokens: number
   preferredTargetTokens: number
   postCompactionTargetTokens: number
-  hardLimitTokens: number
   minimumReductionTokens: number
   recentTailTargetTokens: number
-  currentTurnToolTailTargetTokens: number
-  currentTurnToolResultFloor: number
 }
 
 export const DEFAULT_COMPRESSOR_MODEL = {
@@ -194,12 +190,13 @@ const withLatestSnapshotApplied = async (input: PrepareContextInput): Promise<Pr
 
 export const prepareContextForModelCall = async (input: PrepareContextInput): Promise<PreparedContext> => {
   const thresholds = { ...DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS, ...input.compression?.thresholds }
+  const triggerTokens = effectiveCompactionTrigger(thresholds)
   const effectiveInput = await withLatestSnapshotApplied(input)
   const initialTokenCount = await countPreparedContext(effectiveInput, thresholds)
   const initialTokens = initialTokenCount.inputTokens
 
   if (!input.compression?.enabled) {
-    if (initialTokens > thresholds.hardLimitTokens) {
+    if (initialTokens >= triggerTokens) {
       throw contextHardLimitError(initialTokens, thresholds)
     }
     return {
@@ -211,7 +208,7 @@ export const prepareContextForModelCall = async (input: PrepareContextInput): Pr
     }
   }
 
-  if (initialTokens < thresholds.triggerTokens) {
+  if (initialTokens < triggerTokens) {
     return {
       system: effectiveInput.system,
       messages: effectiveInput.messages,
@@ -230,23 +227,14 @@ export const prepareContextForModelCall = async (input: PrepareContextInput): Pr
     await input.onCompactionStarted(event)
   })
   if (!result.ok) {
-    if (initialTokens > thresholds.hardLimitTokens) {
-      throw contextHardLimitError(initialTokens, thresholds, result.failed.error)
-    }
-    return {
-      system: effectiveInput.system,
-      messages: effectiveInput.messages,
-      estimatedTokens: initialTokens,
-      tokenCount: initialTokenCount,
-      compactionEvents: [result.failed],
-    }
+    throw contextHardLimitError(initialTokens, thresholds, result.failed.error)
   }
 
   const finalTokenCount = await countPreparedContext({ ...effectiveInput, messages: result.messages }, thresholds)
   const finalTokens = finalTokenCount.inputTokens
   const reduction = initialTokens - finalTokens
   const minimumReduction = Math.min(thresholds.minimumReductionTokens, Math.max(1, Math.floor(initialTokens * 0.1)))
-  const targetTokens = Math.min(thresholds.postCompactionTargetTokens, thresholds.triggerTokens)
+  const targetTokens = Math.min(thresholds.postCompactionTargetTokens, triggerTokens)
   if (finalTokens > targetTokens || reduction < minimumReduction) {
     const error = new SocratesError("context_compaction_target_not_met", "Compacted context did not reach the required size target.", {
       details: { initialTokens, finalTokens, targetTokens, reduction, minimumReduction },
@@ -295,9 +283,10 @@ export const prepareContextForModelCall = async (input: PrepareContextInput): Pr
 
 export const precomputeContextSnapshot = async (input: PrepareContextInput): Promise<ContextCompactionLifecycleEvent[]> => {
   const thresholds = { ...DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS, ...input.compression?.thresholds }
+  const triggerTokens = effectiveCompactionTrigger(thresholds)
   const effectiveInput = await withLatestSnapshotApplied(input)
   const initialTokens = (await countPreparedContext(effectiveInput, thresholds)).inputTokens
-  if (!input.compression?.enabled || initialTokens < thresholds.triggerTokens) {
+  if (!input.compression?.enabled || initialTokens < triggerTokens) {
     return []
   }
 
@@ -310,7 +299,7 @@ export const precomputeContextSnapshot = async (input: PrepareContextInput): Pro
   const projectedTokens = projectedTokenCount.inputTokens
   const projectedReduction = initialTokens - projectedTokens
   const minimumReduction = Math.min(thresholds.minimumReductionTokens, Math.max(1, Math.floor(initialTokens * 0.1)))
-  const targetTokens = Math.min(thresholds.postCompactionTargetTokens, thresholds.triggerTokens)
+  const targetTokens = Math.min(thresholds.postCompactionTargetTokens, triggerTokens)
   if (projectedTokens > targetTokens || projectedReduction < minimumReduction) {
     const error = new SocratesError("context_compaction_target_not_met", "Precomputed compaction did not reach the required size target.", {
       details: { initialTokens, projectedTokens, targetTokens, projectedReduction, minimumReduction },
@@ -418,7 +407,6 @@ const runContextCompaction = async (
     estimateCompactionFixedTokens(input),
   )
   const keptRawMessages = [...selection.tailTurns, ...selection.activeTurns].flatMap((turn) => turn.messages)
-  const toolPlan = buildToolCompactionPlan(keptRawMessages, thresholds)
   const sourceMessageIds = unique(selection.headTurns.flatMap((turn) => turn.messages.map((message) => message.id).filter(isString)))
   const sourceTurnIds = unique(selection.headTurns.map((turn) => turn.turnId).filter(isString))
   const started: ContextCompactionStartedEvent = {
@@ -443,17 +431,17 @@ const runContextCompaction = async (
   await onStarted?.(started)
 
   try {
-    if (selection.headTurns.length === 0 && toolPlan.digests.length === 0 && !latestSnapshot?.renderedSummary) {
-      throw new SocratesError("context_compaction_no_safe_head", "Context is over the trigger but has no completed head turns or old tool results to compact safely.", {
+    if (selection.headTurns.length === 0 && !latestSnapshot?.renderedSummary) {
+      throw new SocratesError("context_compaction_no_safe_head", "Context is over the trigger but has no completed head turns to compact safely.", {
         recoverable: true,
       })
     }
 
-    const userContent = compressorUserContent(mode, selection, latestSnapshot, toolPlan)
+    const userContent = compressorUserContent(mode, selection, latestSnapshot)
     const compressorInputTokens = estimateTextTokens(userContent, { providerId: compressorProviderId, modelId: compressorModelId }).inputTokens
-    if (compressorInputTokens > thresholds.hardLimitTokens) {
+    if (compressorInputTokens > CONTEXT_MODEL_DISPATCH_CEILING_TOKENS) {
       throw new SocratesError("compressor_input_hard_limit_exceeded", "Compressor input exceeds the Socrates hard input limit.", {
-        details: { compressorInputTokens, hardLimitTokens: thresholds.hardLimitTokens },
+        details: { compressorInputTokens, hardLimitTokens: CONTEXT_MODEL_DISPATCH_CEILING_TOKENS },
         recoverable: true,
       })
     }
@@ -499,7 +487,7 @@ const runContextCompaction = async (
         providerId: compressorResult.providerId,
         modelId: compressorResult.modelId,
       }).inputTokens,
-      messages: packMessagesWithCompaction(selection, renderedSummary, toolPlan, mode),
+      messages: packMessagesWithCompaction(selection, renderedSummary, mode),
       started,
       compressorProviderId: compressorResult.providerId,
       compressorModelId: compressorResult.modelId,
@@ -566,18 +554,16 @@ const compressorUserContent = (
   mode: ContextCompressionMode,
   selection: CompactionSelection,
   latestSnapshot: ContextCompactionSummary | undefined,
-  toolPlan: ToolCompactionPlan,
 ): string => {
   if (mode === "memory") {
     return buildMemoryAgentCompressorUserContent({
       ...(latestSnapshot?.renderedSummary ? { previousSummary: latestSnapshot.renderedSummary } : {}),
-      manifestHead: buildMemoryAgentManifestHead(selection.headTurns, toolPlan.digests),
+      manifestHead: buildMemoryAgentManifestHead(selection.headTurns),
     })
   }
   return buildSocratesCompressorUserContent({
     headTurns: selection.headTurns,
     ...(latestSnapshot?.renderedSummary ? { previousSummary: latestSnapshot.renderedSummary } : {}),
-    ...(toolPlan.digests.length > 0 ? { currentTurnDigest: toolPlan.digests } : {}),
   })
 }
 
@@ -598,8 +584,8 @@ const selectCompactionWindow = (
   const tailTurns: CompressorTurnInput[] = []
   let tailTokens = 0
   const activeTokens = activeTurns.reduce((total, turn) => total + estimateTurnTokens(turn), 0)
-  const preferredTailBudget = Math.max(0, preferredCompactionTarget(thresholds) - fixedTokens - activeTokens)
-  const recentTailBudget = Math.min(thresholds.recentTailTargetTokens, preferredTailBudget)
+  const safeTailBudget = Math.max(0, thresholds.postCompactionTargetTokens - fixedTokens - activeTokens)
+  const recentTailBudget = Math.min(thresholds.recentTailTargetTokens, safeTailBudget)
 
   for (let index = completedTurns.length - 1; index >= 0; index -= 1) {
     const turn = completedTurns[index]!
@@ -649,6 +635,9 @@ const estimateTurnTokens = (turn: CompressorTurnInput): number => estimateTextTo
 const preferredCompactionTarget = (thresholds: ContextCompressionThresholds): number =>
   Math.min(thresholds.preferredTargetTokens, thresholds.postCompactionTargetTokens)
 
+const effectiveCompactionTrigger = (thresholds: ContextCompressionThresholds): number =>
+  Math.min(thresholds.triggerTokens, CONTEXT_MODEL_DISPATCH_CEILING_TOKENS)
+
 const compactionSizeClass = (
   tokens: number,
   thresholds: ContextCompressionThresholds,
@@ -680,83 +669,13 @@ const messageForTokenEstimate = (message: ModelMessage): ModelMessage => {
   }
 }
 
-type ToolCompactionPlan = {
-  keepToolCallIds: Set<string>
-  digests: string[]
-}
-
-const buildToolCompactionPlan = (messages: ModelMessage[], thresholds: ContextCompressionThresholds): ToolCompactionPlan => {
-  const toolResults = collectToolResults(messages)
-  const keepToolCallIds = new Set<string>()
-  let keptTokens = 0
-  let keptCount = 0
-  const sortedNewestFirst = [...toolResults].reverse()
-
-  for (const result of sortedNewestFirst) {
-    if (keptCount < thresholds.currentTurnToolResultFloor || keptTokens + result.tokens <= thresholds.currentTurnToolTailTargetTokens) {
-      keepToolCallIds.add(result.toolCallId)
-      keptTokens += result.tokens
-      keptCount += 1
-    }
-  }
-
-  return {
-    keepToolCallIds,
-    digests: toolResults
-      .filter((result) => !keepToolCallIds.has(result.toolCallId))
-      .map((result) => lightweightToolDigest(result)),
-  }
-}
-
-const collectToolResults = (messages: ModelMessage[]) => {
-  const inputs = new Map<string, unknown>()
-  for (const message of messages) {
-    if (typeof message.content === "string") {
-      continue
-    }
-    for (const part of message.content) {
-      if (part.type === "tool-call") {
-        inputs.set(part.toolCallId, part.input)
-      }
-    }
-  }
-
-  const results: Array<{
-    toolCallId: string
-    toolName: string
-    output: unknown
-    input?: unknown
-    tokens: number
-  }> = []
-  for (const message of messages) {
-    if (typeof message.content === "string") {
-      continue
-    }
-    for (const part of message.content) {
-      if (part.type !== "tool-result") {
-        continue
-      }
-      const serialized = safeStringify(part.output)
-      results.push({
-        toolCallId: part.toolCallId,
-        toolName: part.toolName,
-        output: part.output,
-        ...(inputs.has(part.toolCallId) ? { input: inputs.get(part.toolCallId) } : {}),
-        tokens: estimateTextTokens(serialized).inputTokens,
-      })
-    }
-  }
-  return results
-}
-
 const packMessagesWithCompaction = (
   selection: CompactionSelection,
   renderedSummary: string,
-  toolPlan: ToolCompactionPlan,
   mode: ContextCompressionMode,
 ): ModelMessage[] => [
   compactionContextMessage(renderedSummary, mode),
-  ...compactToolResults([...selection.tailTurns, ...selection.activeTurns].flatMap((turn) => turn.messages), toolPlan),
+  ...[...selection.tailTurns, ...selection.activeTurns].flatMap((turn) => turn.messages),
   ...(mode === "memory" && selection.tailTurns.length === 0 && selection.activeTurns.length === 0
     ? [
         {
@@ -786,65 +705,8 @@ const isInternalCompactionMessage = (message: ModelMessage): boolean =>
   (message.content.includes("<socrates_internal_context_compaction>") ||
     message.content.includes("<socrates_internal_memory_context_compaction>"))
 
-const compactToolResults = (messages: ModelMessage[], plan: ToolCompactionPlan): ModelMessage[] => {
-  if (plan.digests.length === 0) {
-    return messages
-  }
-  return messages.map((message) => {
-    if (typeof message.content === "string") {
-      return message
-    }
-    return {
-      ...message,
-      content: message.content.map((part) => {
-        if (part.type !== "tool-result" || plan.keepToolCallIds.has(part.toolCallId)) {
-          return part
-        }
-        return {
-          ...part,
-          output: compactedToolOutput(part),
-        }
-      }),
-    }
-  })
-}
-
-const compactedToolOutput = (part: Extract<ModelMessagePart, { type: "tool-result" }>) => {
-  const serialized = safeStringify(part.output)
-  return {
-    contextCompacted: true,
-    toolName: part.toolName,
-    progress: truncateWithNotice(serialized, 600, `older ${part.toolName} tool result`),
-    paths: pathLikeStrings(serialized).slice(0, 12),
-    error: errorLikeText(part.output),
-    retrievalHint: `Use trace_retrieve audit search with tool name "${part.toolName}" plus any path, command, or error text from this progress note.`,
-  }
-}
-
-const lightweightToolDigest = (result: { toolName: string; toolCallId: string; output: unknown; input?: unknown }): string => {
-  const output = safeStringify(result.output)
-  const input = result.input === undefined ? "" : ` input=${truncateWithNotice(safeStringify(result.input), 600, "tool input")}`
-  const paths = pathLikeStrings(output).slice(0, 5)
-  const error = errorLikeText(result.output)
-  return [
-    `older tool result ${result.toolName};${input}`,
-    paths.length > 0 ? ` paths=${paths.join(", ")}` : undefined,
-    error ? ` error=${truncateWithNotice(error, 400, "tool error")}` : undefined,
-    ` progress=${truncateWithNotice(output, 1_000, "tool output")}`,
-  ]
-    .filter((part): part is string => Boolean(part))
-    .join("")
-}
-
-const buildMemoryAgentManifestHead = (headTurns: CompressorTurnInput[], toolDigests: string[]): string => {
-  const sections = [
-    headTurns.length > 0 ? headTurns.map(renderMemoryAgentManifestTurn).join("\n\n") : "None.",
-  ]
-  if (toolDigests.length > 0) {
-    sections.push("", "# Older Memory-Agent Tool Result Digest", toolDigests.map((line) => `- ${line}`).join("\n"))
-  }
-  return sections.join("\n")
-}
+const buildMemoryAgentManifestHead = (headTurns: CompressorTurnInput[]): string =>
+  headTurns.length > 0 ? headTurns.map(renderMemoryAgentManifestTurn).join("\n\n") : "None."
 
 const renderMemoryAgentManifestTurn = (turn: CompressorTurnInput): string =>
   [
@@ -922,8 +784,8 @@ const contextHardLimitError = (
   thresholds: ContextCompressionThresholds,
   cause?: SocratesError,
 ): SocratesError =>
-  new SocratesError("context_hard_limit_exceeded", "Socrates refused to send a provider request above its hard input limit.", {
-    details: { inputTokens, hardLimitTokens: thresholds.hardLimitTokens, ...(cause ? { compactionError: cause.code } : {}) },
+  new SocratesError("context_hard_limit_exceeded", "Socrates refused to send a main-model request at or above the 170k compaction boundary without a safe compacted context.", {
+    details: { inputTokens, hardLimitTokens: effectiveCompactionTrigger(thresholds), ...(cause ? { compactionError: cause.code } : {}) },
     recoverable: true,
   })
 
@@ -951,25 +813,6 @@ const truncateWithNotice = (value: string, maxChars: number, label: string): str
     return value
   }
   return `${value.slice(0, maxChars)}\n[Compacted: ${label} exceeded ${maxChars} chars; inspect exact source through trace_retrieve.]`
-}
-
-const pathLikeStrings = (text: string): string[] => {
-  const matches = text.match(/(?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+/g) ?? []
-  return unique(matches)
-}
-
-const errorLikeText = (value: unknown): string | undefined => {
-  if (!value || typeof value !== "object") {
-    return undefined
-  }
-  const record = value as Record<string, unknown>
-  for (const key of ["error", "stderr", "message"]) {
-    const candidate = record[key]
-    if (typeof candidate === "string" && candidate.trim().length > 0) {
-      return candidate
-    }
-  }
-  return undefined
 }
 
 export const COMPRESSOR_SYSTEM_PROMPT = SOCRATES_COMPRESSOR_SYSTEM_PROMPT

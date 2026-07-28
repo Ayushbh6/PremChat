@@ -476,14 +476,14 @@
       "id": "authority.finalization",
       "kind": "deterministic_authority",
       "executorBinding": "finalization.atomic_commit",
-      "implementationPath": "apps/server/src/services/v2/goalFinalizationStore.ts",
+      "implementationPath": "apps/server/src/services/turn/validatedTurnFinalization.ts",
       "callers": [
-        "apps/server/src/services/v2/goalFinalizationStore.ts"
+        "apps/server/src/services/turn/validatedTurnFinalization.ts"
       ],
       "tests": [
         "apps/server/src/test/v2FlowRuntime.test.ts"
       ],
-      "status": "migration_compatibility"
+      "status": "canonical"
     },
     {
       "id": "context.stable_prompt",
@@ -542,9 +542,9 @@
       "status": "canonical"
     },
     {
-      "id": "context.user_approved_compaction",
+      "id": "context.automatic_compaction",
       "kind": "context_stage",
-      "executorBinding": "context.compact_with_consent",
+      "executorBinding": "context.compact_oldest_head",
       "implementationPath": "packages/core/src/context/contextCompression.ts",
       "callers": [
         "packages/core/src/context/contextCompression.ts"
@@ -553,7 +553,7 @@
         "packages/core/src/test/prepareTurnContext.test.ts",
         "packages/core/src/test/contextCompression.test.ts"
       ],
-      "status": "migration_compatibility"
+      "status": "canonical"
     },
     {
       "id": "worker.global_memory",
@@ -623,7 +623,7 @@
         "packages/core/src/test/AgentInstance.test.ts",
         "packages/core/src/test/AgentRuntime.test.ts"
       ],
-      "status": "migration_compatibility"
+      "status": "canonical"
     },
     {
       "id": "runtime.structured_repair",

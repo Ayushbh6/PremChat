@@ -37,7 +37,8 @@ Other compaction gates now enforce:
 
 - trigger at 170k estimated tokens;
 - successful rebuilt request at or below 120k;
-- 180k hard pre-provider ceiling;
+- fixed 170k model-dispatch ceiling when safe compaction fails;
+- approximately 70k recent exact completed-turn suffix by whole-turn boundary;
 - normal minimum reduction of 20k tokens;
 - anchors may name only turns actually supplied to the compressor;
 - active snapshots remove already represented raw turns before later token counts/provider calls while SQLite remains authoritative;

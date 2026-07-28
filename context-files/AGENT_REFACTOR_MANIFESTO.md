@@ -109,6 +109,8 @@ Define a small set of explicit primitives before instantiating any agent:
 - `RoleManifest`: the exact capabilities available to one agent role.
 - `ContextPipeline`: ordered preparation of goal scope, memory, visible history, retrieval, runtime state, and compression.
 
+A structured semantic phase may declare one flat model-facing wire schema beside its strict domain result when provider-native branch schemas are measurably unreliable. Both live in shared contracts; the shared runtime validates the wire form and the owning agent normalizes it immediately into the sole semantic result. This is a transport projection, never another router, provider-specific schema, or decision authority.
+
 These names describe responsibilities, not a requirement to create god classes. Routing, context preparation, execution, persistence, and projection remain focused modules behind one public architecture.
 
 No feature runtime may call a provider directly. No agent role may create its own private runner or tool-dispatch convention.
@@ -141,7 +143,7 @@ Prefer a small number of capable, coherent tools. Do not create a narrow tool fo
 
 ### 4. Instantiate Roles From The Shared Architecture
 
-Main Socrates, asynchronous Global Memory Agent work, Skill Writer, user-approved context compactors, confirmation workers, and final structured validation must be declared as agent definitions or explicitly catalogued deterministic authorities. Goal candidate retrieval, memory candidate retrieval, deterministic memory selection, goal-ledger transactions, and access-scope enforcement are catalogued deterministic services. The same-Socrates goal-resolution step is a declared phase of the main Socrates definition, not another independently configurable agent.
+Main Socrates, asynchronous Global Memory Agent work, Skill Writer, automatic provenance-linked context compactors, confirmation workers, and final structured validation must be declared as agent definitions or explicitly catalogued deterministic authorities. Goal candidate retrieval, memory candidate retrieval, deterministic memory selection, goal-ledger transactions, and access-scope enforcement are catalogued deterministic services. The same-Socrates goal-resolution step is a declared phase of the main Socrates definition, not another independently configurable agent.
 
 Roles may differ only through declared configuration:
 

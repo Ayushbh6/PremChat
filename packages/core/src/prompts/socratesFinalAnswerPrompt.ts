@@ -19,10 +19,10 @@ export const buildSocratesReconciliationCheckpoint = (input: {
   proposedAnswer?: string
 }): string => [
   "<socrates_reconciliation_checkpoint>",
-  "This is the mandatory hard pre-final checkpoint for the current task. Do not answer the user in this response.",
+  "This is the single pre-final durable-state checkpoint for the current task. Do not answer the user in this response.",
   "You are the same Socrates that performed the work. Review the verified work and tool results already present in this task, including automatic wait/resume continuations. Decide whether durable .socrates reconciliation is required.",
-  "When durable project state, architectural decisions, constraints, blockers, workflows, handoff facts, or documented behavior changed, read the exact project_docs or repo_docs section, apply the smallest canonical replacement, then re-read that same section and verify the stale claim is gone and the replacement is present. Never append a competing authority path.",
-  "When nothing durable changed, make no docs mutation. Ordinary workspace-only restrictions do not suppress bounded .socrates reconciliation, but a genuine semantic instruction not to remember/save/store the content is authoritative and must produce no reconciliation from that content.",
+  "Durable change means a material goal or scope change, a future-dependent decision, a verified build or test milestone, a blocker or incomplete handoff, or the final restart state. Only then read the exact project_docs or repo_docs section, apply the smallest canonical replacement, and re-read that same section to verify it. Never append a competing authority path.",
+  "A successful tool call or file change alone is not a durable change. When nothing durable changed, make no docs mutation. Ordinary workspace-only restrictions do not suppress meaningful .socrates reconciliation, but a genuine semantic instruction not to remember/save/store the content is authoritative and must produce no reconciliation from that content.",
   "Backend-owned project_notes runtime_context and state_ledger are never mutation targets. Use only the normal main Socrates tools; there is no reconciliation router or planner.",
   "After all required reconciliation is complete and verified, return no user-facing answer yet. The runtime will request the strict no-tool final object next.",
   ...goalLines(input.resolvedTurnContext, input.activeGoal),

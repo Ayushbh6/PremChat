@@ -412,8 +412,8 @@ const createStructuredFinalAwareTestAgent = (provider: ModelProvider): SocratesA
         const content = String(request.messages.at(-1)?.content ?? "")
         return {
           output: (content.includes('"currentGoal":null')
-            ? { decision: "new", title: "Test goal" }
-            : { decision: "current" }) as TOutput,
+            ? { decision: "new", candidate: null, title: "Test goal", question: null }
+            : { decision: "current", candidate: null, title: null, question: null }) as TOutput,
         }
       }
       const isMainFinal = request.messages.some(
@@ -5342,7 +5342,7 @@ describe("WebSocket API", () => {
     expect(controlText).not.toContain("lean memory architecture")
     expect(controlText).not.toContain("Socrates State Ledger")
     expect(controlText).not.toContain("Last turn: completed")
-    expect(systemText).toContain("Mandatory first-turn active recall")
+    expect(systemText).not.toContain("Mandatory first-turn active recall")
     expect(systemText).toContain("Stable recall routing")
     expect(systemText).toContain("project_docs notes active_context for project-local open loops and active recall")
     expect(systemText).toContain("For project-local \"remember/keep in mind\" items, update notes `active_context`")
@@ -7257,7 +7257,7 @@ describe("WebSocket API", () => {
       expect(request.system).toContain("backend-owned `runtime_context` section with compact generated workspace scan facts")
       expect(request.system).toContain("On the first assistant response in a new conversation")
       expect(latestUserContent(request.messages)).toBe("Use the context")
-      expect(request.messages.some((message) => message.role === "developer" && message.content?.includes("runtime_socrates_docs_preflight"))).toBe(true)
+      expect(request.messages.some((message) => message.role === "developer" && message.content?.includes("runtime_socrates_docs_preflight"))).toBe(false)
     } finally {
       socket.close()
     }
@@ -7318,7 +7318,7 @@ describe("WebSocket API", () => {
       expect(request.system).not.toContain("indexed=")
       expect(request.system).toContain("trace_retrieve")
       expect(latestUserContent(request.messages)).toBe("Use semantic context")
-      expect(request.messages.some((message) => message.role === "developer" && message.content?.includes("runtime_socrates_docs_preflight"))).toBe(true)
+      expect(request.messages.some((message) => message.role === "developer" && message.content?.includes("runtime_socrates_docs_preflight"))).toBe(false)
     } finally {
       socket.close()
     }

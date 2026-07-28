@@ -158,14 +158,14 @@ export class ReconciliationWatermarkController {
 
 export const buildSocratesProgressReconciliationCheckpoint = (checkpoint: ReconciliationCheckpoint): string => [
   "<socrates_progress_reconciliation_checkpoint>",
-  "This is a bounded progress checkpoint inside the current task. Do not answer the user in this response.",
+  "This is a meaningful progress checkpoint inside the current task. Do not answer the user in this response.",
   `Trigger: ${checkpoint.reason}. Review only verified task evidence ${checkpoint.evidenceFrom}-${checkpoint.evidenceTo}; the previous watermark is already reconciled.`,
   `Last verified mutation boundary: ${checkpoint.lastVerifiedMutationBoundary}.`,
-  "Decide yourself whether durable project state, architecture, decisions, blockers, workflows, handoff facts, or documented behavior changed. Tool volume and lines changed are signals only; they never prove a docs write is needed.",
+  "Decide whether durable state changed: a material goal or scope change, a future-dependent decision, a verified build or test milestone, a blocker or incomplete handoff, or the restart state. Tool volume and lines changed are signals only; they never prove a docs write is needed.",
   "If reconciliation is needed, read the exact project_docs or repo_docs section, make the smallest canonical replacement, and re-read it to verify the stale claim is gone. Never append a parallel authority path.",
   "If nothing durable changed, make no docs mutation. A genuine semantic instruction not to remember, save, or store the covered content remains authoritative.",
   "Use only normal main Socrates tools. There is no router, summarizer, or writer for this checkpoint. When finished, return no user-facing answer; continue the same task.",
-  ...(checkpoint.evidence.length ? ["Bounded evidence index:", ...checkpoint.evidence] : []),
+  ...(checkpoint.evidence.length ? ["Checkpoint evidence index:", ...checkpoint.evidence] : []),
   "</socrates_progress_reconciliation_checkpoint>",
 ].join("\n")
 

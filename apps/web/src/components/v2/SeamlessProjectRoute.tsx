@@ -337,25 +337,16 @@ export function SeamlessProjectRoute({ projectId }: SeamlessProjectRouteProps) {
   const messageById = new Map(snapshot.messages.map((message) => [message.id, message]));
   const composerConnected = runtime.isConnected && Boolean(runtimeConfig);
   const contextSummary = runtime.contextState ? (() => {
-    const activeItems = runtime.contextState.items.filter((item) => item.active);
-    const releasedCount = runtime.contextState.counts.releasedItemCount;
+    const exactItems = runtime.contextState.items;
     return {
-      items: activeItems.map((item) => ({
+      items: exactItems.map((item) => ({
         id: item.id,
         label: contextItemLabel(item.evidenceRef.sourceLocator, item.evidenceRef.sourceType),
         sourceType: item.evidenceRef.sourceType.replaceAll("_", " "),
-        disposition: item.disposition,
-        representation: item.representation,
-        ...(item.distilledText ? { distilledText: item.distilledText } : {}),
         ...(item.tokenEstimate !== undefined ? { tokenEstimate: item.tokenEstimate } : {}),
-        priority: item.priority,
       })),
-      contextUsageLabel: `${activeItems.length} active for this focus`,
-      exactEvidenceCount: activeItems.filter((item) => item.disposition === "keep_exact").length,
-      distilledEvidenceCount: activeItems.filter((item) => item.disposition === "distill").length,
-      unresolvedEvidenceCount: activeItems.filter((item) => item.disposition === "unresolved").length,
+      contextUsageLabel: `${exactItems.length} exact sources for this focus`,
       preservedEvidenceCount: runtime.contextState.counts.immutableEvidenceCount,
-      releasedItemCount: releasedCount,
     };
   })() : runtime.contextError ? { unavailableReason: runtime.contextError } : undefined;
   const approvalsByToolCallId = new Map(

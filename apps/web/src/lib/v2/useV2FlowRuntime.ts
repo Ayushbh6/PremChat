@@ -101,8 +101,7 @@ export function useV2FlowRuntime({ projectId }: UseV2FlowRuntimeInput) {
       // at or before that boundary no longer need to stay in the replay set.
       processed.clear();
     }
-    const contextMayHaveChanged = event.type === "v2.context.disposition.updated"
-      || event.type === "v2.message.completed"
+    const contextMayHaveChanged = event.type === "v2.message.completed"
       || (event.type === "v2.tool.call.updated" && event.payload.toolCall.status === "completed");
     if (contextMayHaveChanged) {
       void v2Api.getContext(event.projectId, event.flowId).then((nextContext) => {

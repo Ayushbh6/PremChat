@@ -15,8 +15,6 @@ import {
   type TerminalWaitWakeOn,
   type WaitToolInput,
   type V2Artifact,
-  type V2ContextDisposition,
-  type V2ContextItem,
   type V2CreateSpeechJobRequest,
   type V2CredentialInputRequest,
   type V2Error,
@@ -51,9 +49,6 @@ import type {
   ImmutableEvidenceRecord,
   ActiveGoalCard,
   GoalCandidateCard,
-  V2ContextDispositionDecision,
-  V2ContextItem as CoreV2ContextItem,
-  V2ContextState,
   V2GoalRoutingDecision,
   SocratesGoalResolutionResult,
 } from "@socrates/core"
@@ -69,6 +64,7 @@ import {
   type WorkSourceRuntime,
 } from "../workState/canonicalWorkStore"
 import { persistGoalFinalization } from "./goalFinalizationStore"
+import { commitValidatedTurnFinalization } from "../turn/validatedTurnFinalization"
 import {
   conversations,
   messageAttachments,
@@ -80,8 +76,6 @@ import {
   v2AgentTasks,
   v2Approvals,
   v2Artifacts,
-  v2ContextDispositions,
-  v2ContextItemSources,
   v2ContextItems,
   v2CredentialInputRequests,
   v2DeletionAuthorizations,
@@ -169,21 +163,25 @@ export type V2TaskLineage = {
   resumedCount: number
 }
 
-const DEFAULT_CONTEXT_POLICY = {
-  unresolvedMaxItems: 5,
-  unresolvedMaxAgeTurns: 3,
-  softPressurePercent: 65,
-  hardPressurePercent: 80,
-  targetAfterCompactionPercent: 40,
-} as const
-
 type UploadedFile = { originalName: string; data: Buffer; mimeType?: string }
 
-export type V2ContextPersistenceDecision = V2ContextDispositionDecision & Readonly<{
-  decidedBy?: V2ContextDisposition["decidedBy"]
-  reason?: string
-  distillationInstruction?: string
-  replacementContextItemId?: string
+export type V2ExactEvidenceProjection = Readonly<{
+  id: string
+  flowId: string
+  goalId?: string
+  evidenceRef: Readonly<{
+    evidenceId: string
+    flowId: string
+    sourceType: string
+    sourceLocator: string
+    contentHash: string
+    capturedAt: string
+  }>
+  disposition: "keep_exact"
+  representation: "exact"
+  tokenEstimate?: number
+  active: true
+  priority: number
 }>
 
 type CreatedV2Turn = {
@@ -225,8 +223,6 @@ export type GoalTransitionContext = Readonly<{
 
 export type V2ContextCounts = Readonly<{
   immutableEvidenceCount: number
-  activeItemCount: number
-  releasedItemCount: number
 }>
 
 export class V2FlowStore {
@@ -249,7 +245,7 @@ export class V2FlowStore {
             id: createId("v2flow"),
             projectId,
             status: "active",
-            contextPolicyJson: JSON.stringify(DEFAULT_CONTEXT_POLICY),
+            contextPolicyJson: "{}",
             revision: 0,
             lastEventSequence: 0,
             createdAt: now,
@@ -1995,52 +1991,61 @@ export class V2FlowStore {
       return { ...base, content: parts }
     })
   }
-  completeTurn(input: {
+  commitValidatedTurn(input: {
     projectId: string
     flowId: string
     turnId: string
     content: string
     reasoning?: string
     goalFinalization: GoalFinalization
+    persistUsageAndAudit?: (message: V2Message) => void
   }): V2Message {
-    const operation = this.handle.sqlite.transaction(() => {
-      const turn = this.requireTurn(input.projectId, input.flowId, input.turnId)
-      if (!turn.goalId) throw new SocratesError("v2_turn_goal_missing", "The Flow turn has not been assigned to a goal.")
-      if (!ACTIVE_TURN_STATUSES.includes(turn.status as (typeof ACTIVE_TURN_STATUSES)[number])) {
-        throw new SocratesError("v2_turn_not_active", "This Flow turn is no longer active.", { recoverable: true })
-      }
-      const now = nowIso()
-      const messageId = createId("v2msg")
-      const ordinal = this.nextInteger("v2_messages", "ordinal", "flow_id", input.flowId)
-      this.handle.db.insert(v2Messages).values({
-        id: messageId,
-        flowId: input.flowId,
-        projectId: input.projectId,
-        goalId: turn.goalId,
-        turnId: input.turnId,
-        ordinal,
-        role: "assistant",
-        content: input.content,
-        reasoning: input.reasoning,
-        status: "completed",
-        parentMessageId: turn.userMessageId,
-        createdAt: now,
-        completedAt: now,
-      }).run()
-      this.handle.db.update(v2Turns).set({ assistantMessageId: messageId, status: "completed", updatedAt: now, completedAt: now }).where(eq(v2Turns.id, input.turnId)).run()
-      this.handle.db.update(v2AgentTasks).set({ status: "completed", updatedAt: now, completedAt: now }).where(eq(v2AgentTasks.currentTurnId, input.turnId)).run()
-      this.handle.db.update(v2Goals).set({ lastActiveAt: now, updatedAt: now }).where(eq(v2Goals.id, turn.goalId)).run()
-      this.handle.db.update(v2Flows).set({ revision: sql`${v2Flows.revision} + 1`, updatedAt: now }).where(eq(v2Flows.id, input.flowId)).run()
-      this.handle.db.insert(v2GoalMessageLinks).values({
-        id: createId("v2link"), flowId: input.flowId, goalId: turn.goalId, messageId, turnId: input.turnId, relation: "primary", createdAt: now,
-      }).run()
-      this.finalizeGoal(input.projectId, input.flowId, turn.goalId, input.turnId, input.goalFinalization)
-      this.refreshCapsule(turn.goalId, input.flowId, input.turnId, now, "turn_completed")
-      const row = this.handle.db.select().from(v2Messages).where(eq(v2Messages.id, messageId)).get()
-      if (!row) throw new SocratesError("v2_turn_complete_failed", "The Flow response could not be saved.")
-      return mapMessage(row)
+    let boundGoalId = ""
+    let completedAt = ""
+    const message = commitValidatedTurnFinalization(this.handle, {
+      persistAnswerAndTask: () => {
+        const turn = this.requireTurn(input.projectId, input.flowId, input.turnId)
+        if (!turn.goalId) throw new SocratesError("v2_turn_goal_missing", "The Flow turn has not been assigned to a goal.")
+        if (!ACTIVE_TURN_STATUSES.includes(turn.status as (typeof ACTIVE_TURN_STATUSES)[number])) {
+          throw new SocratesError("v2_turn_not_active", "This Flow turn is no longer active.", { recoverable: true })
+        }
+        const now = nowIso()
+        const messageId = createId("v2msg")
+        const ordinal = this.nextInteger("v2_messages", "ordinal", "flow_id", input.flowId)
+        boundGoalId = turn.goalId
+        completedAt = now
+        this.handle.db.insert(v2Messages).values({
+          id: messageId,
+          flowId: input.flowId,
+          projectId: input.projectId,
+          goalId: turn.goalId,
+          turnId: input.turnId,
+          ordinal,
+          role: "assistant",
+          content: input.content,
+          reasoning: input.reasoning,
+          status: "completed",
+          parentMessageId: turn.userMessageId,
+          createdAt: now,
+          completedAt: now,
+        }).run()
+        this.handle.db.update(v2Turns).set({ assistantMessageId: messageId, status: "completed", updatedAt: now, completedAt: now }).where(eq(v2Turns.id, input.turnId)).run()
+        this.handle.db.update(v2AgentTasks).set({ status: "completed", updatedAt: now, completedAt: now }).where(eq(v2AgentTasks.currentTurnId, input.turnId)).run()
+        this.handle.db.update(v2Goals).set({ lastActiveAt: now, updatedAt: now }).where(eq(v2Goals.id, turn.goalId)).run()
+        this.handle.db.update(v2Flows).set({ revision: sql`${v2Flows.revision} + 1`, updatedAt: now }).where(eq(v2Flows.id, input.flowId)).run()
+        this.handle.db.insert(v2GoalMessageLinks).values({
+          id: createId("v2link"), flowId: input.flowId, goalId: turn.goalId, messageId, turnId: input.turnId, relation: "primary", createdAt: now,
+        }).run()
+        const row = this.handle.db.select().from(v2Messages).where(eq(v2Messages.id, messageId)).get()
+        if (!row) throw new SocratesError("v2_turn_complete_failed", "The Flow response could not be saved.")
+        return mapMessage(row)
+      },
+      persistBoundGoalAndCapsule: () => {
+        this.finalizeGoal(input.projectId, input.flowId, boundGoalId, input.turnId, input.goalFinalization)
+        this.refreshCapsule(boundGoalId, input.flowId, input.turnId, completedAt, "turn_completed")
+      },
+      ...(input.persistUsageAndAudit ? { persistUsageAndAudit: input.persistUsageAndAudit } : {}),
     })
-    const message = operation()
     try {
       this.projectV2TaskToClassic(input.projectId, input.flowId, input.turnId)
     } catch (error) {
@@ -2441,9 +2446,7 @@ export class V2FlowStore {
     mimeType?: string
     locator?: unknown
     metadata?: Record<string, unknown>
-    rank?: number
-    includeInContext?: boolean
-  }): { evidence: V2EvidenceItem; contextItem?: V2ContextItem } {
+  }): { evidence: V2EvidenceItem } {
     this.requireFlow(input.projectId, input.flowId)
     const exactContent = input.content ?? ""
     const now = nowIso()
@@ -2470,123 +2473,44 @@ export class V2FlowStore {
       createdAt: now,
       metadataJson: input.metadata === undefined ? undefined : JSON.stringify(input.metadata),
     }).run()
-    let contextItem: V2ContextItem | undefined
-    if (input.content !== undefined && input.includeInContext !== false) {
-      const turnOrdinal = input.turnId
-        ? this.handle.db.select({ ordinal: v2Turns.ordinal }).from(v2Turns).where(eq(v2Turns.id, input.turnId)).get()?.ordinal ?? 1
-        : 1
-      const contextId = createId("v2ctx")
-      this.handle.db.insert(v2ContextItems).values({
-        id: contextId,
-        flowId: input.flowId,
-        goalId: input.goalId,
-        turnId: input.turnId,
-        kind: "evidence_exact",
-        state: "active",
-        content: input.content,
-        tokenEstimate: estimateTokens(input.content),
-        rank: Math.max(0, input.rank ?? 50),
-        activeFromTurnOrdinal: turnOrdinal,
-        createdAt: now,
-        updatedAt: now,
-      }).run()
-      this.handle.db.insert(v2ContextItemSources).values({
-        id: createId("v2ctxsrc"), contextItemId: contextId, evidenceItemId: evidenceId, sourceOrder: 0, createdAt: now,
-      }).run()
-      const contextRow = this.handle.db.select().from(v2ContextItems).where(eq(v2ContextItems.id, contextId)).get()
-      if (contextRow) contextItem = mapContextItem(contextRow)
-    }
     const evidenceRow = this.handle.db.select().from(v2EvidenceItems).where(eq(v2EvidenceItems.id, evidenceId)).get()
     if (!evidenceRow) throw new SocratesError("v2_evidence_persist_failed", "Flow evidence could not be saved.")
-    return { evidence: mapEvidence(evidenceRow), ...(contextItem ? { contextItem } : {}) }
+    return { evidence: mapEvidence(evidenceRow) }
   }
 
-  getCoreContextState(flowId: string, turnIds?: readonly string[]): V2ContextState {
-    return this.loadCoreContextState(flowId, turnIds, false)
-  }
-
-  /**
-   * Returns only the projection eligible for the next model request. Released
-   * rows and their expensive exact evidence stay durable in SQLite but are not
-   * materialized by routine post-turn maintenance.
-   */
-  getActiveCoreContextState(flowId: string, turnIds?: readonly string[]): V2ContextState {
-    return this.loadCoreContextState(flowId, turnIds, true)
-  }
-
-  /**
-   * Loads the bounded, reference-only context projection used to assemble the
-   * next foreground model request. Exact evidence bytes and the duplicate
-   * exact text held by projection rows are deliberately not selected here.
-   */
-  getActiveContextItems(
+  /** Read-only exact-evidence inventory for the released Flow inspector. */
+  getExactEvidenceProjections(
     flowId: string,
     foregroundGoalId?: string,
     limit = V2_ACTIVE_CONTEXT_ITEM_LOAD_LIMIT,
-  ): CoreV2ContextItem[] {
+  ): V2ExactEvidenceProjection[] {
     const boundedLimit = Number.isFinite(limit)
       ? Math.max(1, Math.min(V2_ACTIVE_CONTEXT_ITEM_LOAD_LIMIT, Math.floor(limit)))
       : V2_ACTIVE_CONTEXT_ITEM_LOAD_LIMIT
     const rows = this.handle.db
       .select({
-        id: v2ContextItems.id,
-        flowId: v2ContextItems.flowId,
-        goalId: v2ContextItems.goalId,
-        rank: v2ContextItems.rank,
-        tokenEstimate: v2ContextItems.tokenEstimate,
-        activeFromTurnOrdinal: v2ContextItems.activeFromTurnOrdinal,
-        metadataJson: v2ContextItems.metadataJson,
-        distilledText: sql<string | null>`CASE WHEN ${v2ContextItems.kind} = 'evidence_distill' THEN ${v2ContextItems.content} ELSE NULL END`,
         evidenceId: v2EvidenceItems.id,
         evidenceFlowId: v2EvidenceItems.flowId,
+        goalId: v2EvidenceItems.goalId,
         evidenceSourceKind: v2EvidenceItems.sourceKind,
         evidenceHandle: v2EvidenceItems.handle,
         evidenceContentHash: v2EvidenceItems.contentHash,
         evidenceCreatedAt: v2EvidenceItems.createdAt,
+        tokenEstimate: v2EvidenceItems.tokenEstimate,
       })
-      .from(v2ContextItems)
-      .innerJoin(v2ContextItemSources, and(
-        eq(v2ContextItemSources.contextItemId, v2ContextItems.id),
-        eq(v2ContextItemSources.sourceOrder, 0),
-      ))
-      .innerJoin(v2EvidenceItems, eq(v2EvidenceItems.id, v2ContextItemSources.evidenceItemId))
+      .from(v2EvidenceItems)
       .where(and(
-        eq(v2ContextItems.flowId, flowId),
-        eq(v2ContextItems.state, "active"),
+        eq(v2EvidenceItems.flowId, flowId),
         foregroundGoalId
-          ? or(isNull(v2ContextItems.goalId), eq(v2ContextItems.goalId, foregroundGoalId))
+          ? or(isNull(v2EvidenceItems.goalId), eq(v2EvidenceItems.goalId, foregroundGoalId))
           : undefined,
       ))
-      .orderBy(
-        sql`CASE WHEN (
-          SELECT disposition
-          FROM v2_context_dispositions
-          WHERE context_item_id = ${v2ContextItems.id}
-          ORDER BY version DESC
-          LIMIT 1
-        ) = 'unresolved' THEN 0 ELSE 1 END`,
-        asc(v2ContextItems.rank),
-        desc(v2ContextItems.updatedAt),
-      )
+      .orderBy(desc(v2EvidenceItems.createdAt))
       .limit(boundedLimit)
       .all()
-    if (rows.length === 0) return []
-    const latestDispositions = latestDispositionRows(this.handle.db
-      .select()
-      .from(v2ContextDispositions)
-      .where(and(
-        eq(v2ContextDispositions.flowId, flowId),
-        inArray(v2ContextDispositions.contextItemId, rows.map((row) => row.id)),
-      ))
-      .orderBy(desc(v2ContextDispositions.version))
-      .all())
-    return rows.map((row): CoreV2ContextItem => {
-      const disposition = latestDispositions.get(row.id)
-      const kind = (disposition?.disposition ?? "keep_exact") as V2ContextDispositionDecision["disposition"]
-      const metadata = parseJsonObject(row.metadataJson)
-      return {
-        id: row.id,
-        flowId: row.flowId,
+    return rows.map((row, index) => ({
+        id: row.evidenceId,
+        flowId: row.evidenceFlowId,
         ...(row.goalId ? { goalId: row.goalId } : {}),
         evidenceRef: {
           evidenceId: row.evidenceId,
@@ -2596,32 +2520,20 @@ export class V2FlowStore {
           contentHash: row.evidenceContentHash,
           capturedAt: row.evidenceCreatedAt,
         },
-        disposition: kind,
-        representation: kind === "distill" ? "distilled" : "exact",
-        ...(kind === "distill" && row.distilledText ? { distilledText: row.distilledText } : {}),
-        tokenEstimate: row.tokenEstimate,
-        active: true,
-        priority: 100 - row.rank,
-        createdAtCompletedTurn: row.activeFromTurnOrdinal,
-        decidedAtCompletedTurn: Number(metadata.decidedAtCompletedTurn ?? row.activeFromTurnOrdinal),
-        ...(kind === "unresolved" ? {
-          unresolvedSinceCompletedTurn: Number(metadata.unresolvedSinceCompletedTurn ?? row.activeFromTurnOrdinal),
-          reviewDueAtCompletedTurn: Number(metadata.reviewDueAtCompletedTurn ?? row.activeFromTurnOrdinal + 3),
-        } : {}),
-      }
-    })
+        disposition: "keep_exact" as const,
+        representation: "exact" as const,
+        ...(row.tokenEstimate === null ? {} : { tokenEstimate: row.tokenEstimate }),
+        active: true as const,
+        priority: Math.max(0, 100 - index),
+      }))
   }
 
   getContextCounts(flowId: string): V2ContextCounts {
     const row = this.handle.sqlite.prepare(`
       SELECT
-        (SELECT COUNT(*) FROM v2_evidence_items WHERE flow_id = ?) AS immutableEvidenceCount,
-        (SELECT COUNT(*) FROM v2_context_items WHERE flow_id = ? AND state = 'active') AS activeItemCount,
-        (SELECT COUNT(*) FROM v2_context_items WHERE flow_id = ? AND state = 'released') AS releasedItemCount
-    `).get(flowId, flowId, flowId) as {
+        (SELECT COUNT(*) FROM v2_evidence_items WHERE flow_id = ?) AS immutableEvidenceCount
+    `).get(flowId) as {
       immutableEvidenceCount: number
-      activeItemCount: number
-      releasedItemCount: number
     }
     return row
   }
@@ -2642,95 +2554,6 @@ export class V2FlowStore {
       .limit(1)
       .get()
     return row ? mapCoreEvidence(row) : undefined
-  }
-
-  persistContextDispositions(input: {
-    projectId: string
-    flowId: string
-    goalId?: string
-    turnId: string
-    decisions: readonly V2ContextPersistenceDecision[]
-    completedTurn: number
-  }): V2ContextDisposition[] {
-    // The pure core policy is called by the orchestrator before this method.
-    // This persistence layer re-checks the two non-negotiable bounds so direct
-    // callers cannot bypass them.
-    const unresolvedBefore = this.getActiveCoreContextState(input.flowId).items.filter((item) => item.disposition === "unresolved")
-    const afterById = new Map(unresolvedBefore.map((item) => [item.id, item]))
-    for (const decision of input.decisions) {
-      if (decision.disposition === "unresolved") afterById.set(decision.contextItemId, unresolvedBefore.find((item) => item.id === decision.contextItemId) ?? ({} as never))
-      else afterById.delete(decision.contextItemId)
-    }
-    if (afterById.size > 5) throw new SocratesError("v2_context_unresolved_limit", "Flow can retain at most five unresolved context items.", { recoverable: true })
-    const now = nowIso()
-    const result: V2ContextDisposition[] = []
-    const operation = this.handle.sqlite.transaction(() => {
-      for (const decision of input.decisions) {
-        const item = this.handle.db.select().from(v2ContextItems).where(and(eq(v2ContextItems.id, decision.contextItemId), eq(v2ContextItems.flowId, input.flowId))).get()
-        if (!item) throw new SocratesError("v2_context_item_not_found", "Flow context item not found.", { recoverable: true })
-        const prior = this.handle.db.select().from(v2ContextDispositions).where(eq(v2ContextDispositions.contextItemId, item.id)).orderBy(desc(v2ContextDispositions.version)).limit(1).get()
-        const priorMetadata = parseJsonObject(item.metadataJson)
-        const unresolvedSince = decision.disposition === "unresolved"
-          ? Number(priorMetadata.unresolvedSinceCompletedTurn ?? input.completedTurn)
-          : undefined
-        const reviewDue = unresolvedSince === undefined ? undefined : Number(priorMetadata.reviewDueAtCompletedTurn ?? unresolvedSince + 3)
-        if (decision.disposition === "unresolved" && reviewDue !== undefined && input.completedTurn >= reviewDue) {
-          throw new SocratesError("v2_context_unresolved_review_due", "This unresolved context item must now be kept, distilled, or released.", {
-            details: { contextItemId: item.id, reviewDueAtCompletedTurn: reviewDue }, recoverable: true,
-          })
-        }
-        const id = createId("v2disp")
-        this.handle.db.insert(v2ContextDispositions).values({
-          id,
-          flowId: input.flowId,
-          goalId: item.goalId ?? input.goalId,
-          turnId: input.turnId,
-          contextItemId: item.id,
-          version: (prior?.version ?? 0) + 1,
-          disposition: decision.disposition,
-          reason: (decision.reason?.trim() || "Flow self-pruning decision").slice(0, 4_000),
-          decidedBy: decision.decidedBy ?? "main_agent",
-          unresolvedAgeTurns: decision.disposition === "unresolved" ? Math.max(0, input.completedTurn - (unresolvedSince ?? input.completedTurn)) : undefined,
-          unresolvedMaxAgeTurns: decision.disposition === "unresolved" ? 3 : undefined,
-          distillationInstruction: decision.disposition === "distill"
-            ? (decision.distillationInstruction?.trim() || "Retain only query-relevant facts and exact evidence handles.").slice(0, 4_000)
-            : undefined,
-          replacementContextItemId: decision.replacementContextItemId,
-          createdAt: now,
-        }).run()
-        const metadata = {
-          ...priorMetadata,
-          decidedAtCompletedTurn: input.completedTurn,
-          ...(decision.disposition === "unresolved" ? { unresolvedSinceCompletedTurn: unresolvedSince, reviewDueAtCompletedTurn: reviewDue } : {}),
-        }
-        if (decision.disposition !== "unresolved") {
-          delete metadata.unresolvedSinceCompletedTurn
-          delete metadata.reviewDueAtCompletedTurn
-        }
-        this.handle.db.update(v2ContextItems).set({
-          state: decision.disposition === "release" ? "released" : "active",
-          releasedAtTurnOrdinal: decision.disposition === "release" ? input.completedTurn : null,
-          ...(decision.disposition === "distill" && decision.distilledText ? { content: decision.distilledText, kind: "evidence_distill", tokenEstimate: estimateTokens(decision.distilledText) } : {}),
-          updatedAt: now,
-          metadataJson: JSON.stringify(metadata),
-        }).where(eq(v2ContextItems.id, item.id)).run()
-        const persisted = this.handle.db.select().from(v2ContextDispositions).where(eq(v2ContextDispositions.id, id)).get()
-        if (persisted) result.push(mapDisposition(persisted))
-      }
-    })
-    operation()
-    return result
-  }
-
-  getContextItem(flowId: string, contextItemId: string): V2ContextItem {
-    const row = this.handle.db
-      .select()
-      .from(v2ContextItems)
-      .where(and(eq(v2ContextItems.id, contextItemId), eq(v2ContextItems.flowId, flowId)))
-      .limit(1)
-      .get()
-    if (!row) throw new SocratesError("v2_context_item_not_found", "Flow context item not found.", { recoverable: true })
-    return mapContextItem(row)
   }
 
   retrieveExactEvidence(flowId: string, evidenceIds: readonly string[]): ImmutableEvidenceRecord[] {
@@ -3274,108 +3097,6 @@ export class V2FlowStore {
       },
     }
   }
-  private loadCoreContextState(
-    flowId: string,
-    turnIds: readonly string[] | undefined,
-    activeOnly: boolean,
-  ): V2ContextState {
-    const selectedTurnIds = turnIds ? uniqueStrings(turnIds) : undefined
-    if (selectedTurnIds && selectedTurnIds.length === 0) return { evidence: [], items: [] }
-    const itemWhere = selectedTurnIds
-      ? activeOnly
-        ? and(
-            eq(v2ContextItems.flowId, flowId),
-            eq(v2ContextItems.state, "active"),
-            inArray(v2ContextItems.turnId, selectedTurnIds),
-          )
-        : and(eq(v2ContextItems.flowId, flowId), inArray(v2ContextItems.turnId, selectedTurnIds))
-      : activeOnly
-        ? and(eq(v2ContextItems.flowId, flowId), eq(v2ContextItems.state, "active"))
-        : eq(v2ContextItems.flowId, flowId)
-    const itemRows = this.handle.db
-      .select()
-      .from(v2ContextItems)
-      .where(itemWhere)
-      .orderBy(asc(v2ContextItems.rank), asc(v2ContextItems.createdAt))
-      .all()
-    if (activeOnly && itemRows.length === 0) return { evidence: [], items: [] }
-
-    const itemIds = itemRows.map((row) => row.id)
-    const sources = itemIds.length === 0
-      ? []
-      : this.handle.db
-          .select()
-          .from(v2ContextItemSources)
-          .where(inArray(v2ContextItemSources.contextItemId, itemIds))
-          .orderBy(asc(v2ContextItemSources.sourceOrder))
-          .all()
-    const linkedEvidenceIds = uniqueStrings(sources.flatMap((source) => source.evidenceItemId ? [source.evidenceItemId] : []))
-    const evidenceRows = activeOnly
-      ? linkedEvidenceIds.length === 0
-        ? []
-        : this.handle.db
-            .select()
-            .from(v2EvidenceItems)
-            .where(and(eq(v2EvidenceItems.flowId, flowId), inArray(v2EvidenceItems.id, linkedEvidenceIds)))
-            .orderBy(asc(v2EvidenceItems.createdAt))
-            .all()
-      : this.handle.db
-          .select()
-          .from(v2EvidenceItems)
-          .where(selectedTurnIds
-            ? and(eq(v2EvidenceItems.flowId, flowId), inArray(v2EvidenceItems.turnId, selectedTurnIds))
-            : eq(v2EvidenceItems.flowId, flowId))
-          .orderBy(asc(v2EvidenceItems.createdAt))
-          .all()
-    const dispositionRows = itemIds.length === 0
-      ? []
-      : this.handle.db
-          .select()
-          .from(v2ContextDispositions)
-          .where(and(
-            eq(v2ContextDispositions.flowId, flowId),
-            inArray(v2ContextDispositions.contextItemId, itemIds),
-          ))
-          .orderBy(desc(v2ContextDispositions.version))
-          .all()
-    const latestDispositions = latestDispositionRows(dispositionRows)
-    const evidence = evidenceRows.map(mapCoreEvidence)
-    const evidenceById = new Map(evidence.map((record) => [record.ref.evidenceId, record]))
-    const evidenceSourceByItem = new Map<string, string>()
-    for (const source of sources) {
-      if (source.evidenceItemId && !evidenceSourceByItem.has(source.contextItemId)) {
-        evidenceSourceByItem.set(source.contextItemId, source.evidenceItemId)
-      }
-    }
-    const items: CoreV2ContextItem[] = itemRows.flatMap((row): CoreV2ContextItem[] => {
-      const evidenceId = evidenceSourceByItem.get(row.id)
-      const evidenceRecord = evidenceId ? evidenceById.get(evidenceId) : undefined
-      if (!evidenceRecord) return []
-      const disposition = latestDispositions.get(row.id)
-      const kind = (disposition?.disposition ?? (row.state === "released" ? "release" : "keep_exact")) as V2ContextDispositionDecision["disposition"]
-      const metadata = parseJsonObject(row.metadataJson)
-      return [{
-        id: row.id,
-        flowId: row.flowId,
-        ...(row.goalId ? { goalId: row.goalId } : {}),
-        evidenceRef: evidenceRecord.ref,
-        disposition: kind,
-        representation: kind === "distill" ? "distilled" as const : "exact" as const,
-        ...(kind === "distill" ? { distilledText: row.content } : {}),
-        tokenEstimate: row.tokenEstimate,
-        active: row.state === "active",
-        priority: 100 - row.rank,
-        createdAtCompletedTurn: row.activeFromTurnOrdinal,
-        decidedAtCompletedTurn: Number(metadata.decidedAtCompletedTurn ?? row.activeFromTurnOrdinal),
-        ...(kind === "unresolved" ? {
-          unresolvedSinceCompletedTurn: Number(metadata.unresolvedSinceCompletedTurn ?? row.activeFromTurnOrdinal),
-          reviewDueAtCompletedTurn: Number(metadata.reviewDueAtCompletedTurn ?? row.activeFromTurnOrdinal + 3),
-        } : {}),
-      }]
-    })
-    return { evidence, items }
-  }
-
   private reconcileClassicConversationTasks(bridgeId: string): void {
     const bridge = this.handle.db.select().from(v2ClassicConversationBridges)
       .where(eq(v2ClassicConversationBridges.id, bridgeId)).limit(1).get()
@@ -3640,19 +3361,6 @@ export class V2FlowStore {
       eq(v2TerminalSessions.goalId, goalId),
       inArray(v2TerminalSessions.status, [...ACTIVE_TERMINAL_STATUSES]),
     )).limit(10).all()
-    const unresolved = this.handle.sqlite.prepare(
-      `SELECT COALESCE(e.handle, ci.id) AS handle
-       FROM v2_context_items ci
-       LEFT JOIN v2_context_item_sources src ON src.context_item_id = ci.id
-       LEFT JOIN v2_evidence_items e ON e.id = src.evidence_item_id
-       JOIN v2_context_dispositions d ON d.id = (
-         SELECT newest.id FROM v2_context_dispositions newest
-         WHERE newest.context_item_id = ci.id
-         ORDER BY newest.version DESC LIMIT 1
-       )
-       WHERE ci.goal_id = ? AND ci.state = 'active' AND d.disposition = 'unresolved'
-       LIMIT 5`,
-    ).all(goalId) as Array<{ handle: string }>
     const latestError = this.handle.db.select({ code: v2Errors.code, message: v2Errors.message }).from(v2Errors).where(eq(v2Errors.goalId, goalId)).orderBy(desc(v2Errors.createdAt)).limit(1).get()
 
     const decisions = uniqueStrings([
@@ -3663,14 +3371,12 @@ export class V2FlowStore {
     const openQuestions = uniqueStrings([
       ...(waitingTurn?.waitingReason ? [`Waiting: ${waitingTurn.waitingReason}`] : []),
       ...pendingApprovals.map((approval) => `Approval needed: ${approval.actionKind.replaceAll("_", " ")}`),
-      ...unresolved.map((item) => `Review unresolved evidence: ${item.handle}`),
       ...((trigger === "failed" && latestError) ? [`Resolve ${latestError.code}: ${latestError.message}`] : []),
     ]).slice(0, 20)
     const nextActions = uniqueStrings([
       ...(waitingTurn?.waitingReason ? [`Resume when the Terminal wait completes: ${waitingTurn.waitingReason}`] : []),
       ...activeTerminals.map((terminal) => `Continue Terminal ${terminal.name} (${terminal.status}).`),
       ...pendingApprovals.map((approval) => `Resolve approval for ${approval.actionKind.replaceAll("_", " ")}.`),
-      ...unresolved.map((item) => `Classify ${item.handle} as keep exact, distill, or release.`),
     ]).slice(0, 20)
     const state = [goal.status, trigger.replaceAll("_", " ")].join(" · ")
     const summary = buildCapsuleSummary({
@@ -4013,39 +3719,6 @@ const mapCoreEvidence = (row: typeof v2EvidenceItems.$inferSelect): ImmutableEvi
   ...(row.metadataJson ? { metadata: parseJsonObject(row.metadataJson) } : {}),
 })
 
-const mapContextItem = (row: typeof v2ContextItems.$inferSelect): V2ContextItem => ({
-  id: row.id,
-  flowId: row.flowId,
-  ...(row.goalId ? { goalId: row.goalId } : {}),
-  ...(row.turnId ? { turnId: row.turnId } : {}),
-  kind: row.kind as V2ContextItem["kind"],
-  state: row.state as V2ContextItem["state"],
-  content: row.content,
-  tokenEstimate: row.tokenEstimate,
-  rank: row.rank,
-  activeFromTurnOrdinal: row.activeFromTurnOrdinal,
-  ...(row.releasedAtTurnOrdinal === null ? {} : { releasedAtTurnOrdinal: row.releasedAtTurnOrdinal }),
-  createdAt: row.createdAt,
-  updatedAt: row.updatedAt,
-})
-
-const mapDisposition = (row: typeof v2ContextDispositions.$inferSelect): V2ContextDisposition => ({
-  id: row.id,
-  flowId: row.flowId,
-  ...(row.goalId ? { goalId: row.goalId } : {}),
-  turnId: row.turnId,
-  contextItemId: row.contextItemId,
-  version: row.version,
-  disposition: row.disposition as V2ContextDisposition["disposition"],
-  reason: row.reason,
-  decidedBy: row.decidedBy as V2ContextDisposition["decidedBy"],
-  ...(row.unresolvedAgeTurns === null ? {} : { unresolvedAgeTurns: row.unresolvedAgeTurns }),
-  ...(row.unresolvedMaxAgeTurns === null ? {} : { unresolvedMaxAgeTurns: row.unresolvedMaxAgeTurns }),
-  ...(row.distillationInstruction ? { distillationInstruction: row.distillationInstruction } : {}),
-  ...(row.replacementContextItemId ? { replacementContextItemId: row.replacementContextItemId } : {}),
-  createdAt: row.createdAt,
-})
-
 const mapTerminal = (row: typeof v2TerminalSessions.$inferSelect): V2Terminal => ({
   id: row.id,
   flowId: row.flowId,
@@ -4323,12 +3996,6 @@ const insertV2RuntimeConfig = (
     contextWindowTokens: runtimeConfig.contextWindowTokens,
     createdAt,
   }).run()
-}
-
-const latestDispositionRows = (rows: Array<typeof v2ContextDispositions.$inferSelect>): Map<string, typeof v2ContextDispositions.$inferSelect> => {
-  const latest = new Map<string, typeof v2ContextDispositions.$inferSelect>()
-  for (const row of rows) if (!latest.has(row.contextItemId)) latest.set(row.contextItemId, row)
-  return latest
 }
 
 const normalizeUnknownError = (error: unknown): {

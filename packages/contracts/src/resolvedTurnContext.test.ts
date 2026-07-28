@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { resolvedTurnContextSchema, resolvedTurnContextSeedSchema } from "./resolvedTurnContext"
-import { socratesGoalResolutionOutputSchema } from "./turnResolution"
+import { socratesGoalResolutionModelOutputSchema, socratesGoalResolutionOutputSchema } from "./turnResolution"
 
 const exact = "x".repeat(30_000)
 const seed = {
@@ -33,5 +33,13 @@ describe("resolved turn context contracts", () => {
     expect(socratesGoalResolutionOutputSchema.safeParse({ decision: "new", title: "Handle today's email" }).success).toBe(true)
     expect(socratesGoalResolutionOutputSchema.safeParse({ decision: "clarify", question: "Which outcome do you mean?" }).success).toBe(true)
     expect(socratesGoalResolutionOutputSchema.safeParse({ decision: "resume", candidate: 2 }).success).toBe(false)
+    expect(socratesGoalResolutionOutputSchema.safeParse({ decision: "current", candidate: 1 }).success).toBe(false)
+    expect(socratesGoalResolutionOutputSchema.safeParse({ decision: "older" }).success).toBe(false)
+    expect(socratesGoalResolutionModelOutputSchema.safeParse({
+      decision: "older",
+      candidate: 2,
+      title: null,
+      question: null,
+    }).success).toBe(true)
   })
 })

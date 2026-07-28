@@ -99,7 +99,7 @@ describe("V2TerminalRuntime supervisor continuity", () => {
     const continuation = store.beginTerminalTaskContinuation(wakes[0]!)
     expect(continuation).toMatchObject({ taskId: wakes[0]?.taskId, userMessage: { id: created.userMessage.id } })
     if (!continuation) throw new Error("Expected the durable Terminal task to continue.")
-    store.completeTurn({
+    store.commitValidatedTurn({
       goalFinalization: { state: "active", note: "The task remains active." },
       projectId: "proj_terminal",
       flowId: flow.id,

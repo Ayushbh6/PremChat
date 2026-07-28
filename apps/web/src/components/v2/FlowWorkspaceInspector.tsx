@@ -3,17 +3,14 @@
 import {
   AudioLines,
   CircleDashed,
-  CircleHelp,
   FileText,
   Layers3,
   ListTodo,
   LockKeyhole,
   Paperclip,
-  Sparkles,
   X,
 } from "lucide-react";
 import type {
-  FlowContextItemView,
   FlowContextSummary,
   FlowGoalView,
   FlowVoiceOption,
@@ -49,18 +46,6 @@ const goalStatusLabel: Record<FlowGoalView["status"], string> = {
   completed: "Finished",
   discarded: "Discarded",
   archived: "Archived",
-};
-
-const contextItemIcon = (item: FlowContextItemView) => {
-  if (item.disposition === "distill") return <Sparkles aria-hidden="true" />;
-  if (item.disposition === "unresolved") return <CircleHelp aria-hidden="true" />;
-  return <FileText aria-hidden="true" />;
-};
-
-const contextItemState = (item: FlowContextItemView): string => {
-  if (item.disposition === "distill") return "Distilled";
-  if (item.disposition === "unresolved") return "Unresolved";
-  return "Exact";
 };
 
 export function FlowWorkspaceInspector({
@@ -155,14 +140,13 @@ export function FlowWorkspaceInspector({
                 </div>
                 <ul className={styles.contextItemList}>
                   {contextItems.map((item) => (
-                    <li key={item.id} data-disposition={item.disposition}>
-                      <span className={styles.contextItemIcon}>{contextItemIcon(item)}</span>
+                    <li key={item.id}>
+                      <span className={styles.contextItemIcon}><FileText aria-hidden="true" /></span>
                       <span className={styles.contextItemCopy}>
                         <strong>{item.label}</strong>
                         <small>{item.sourceType}{item.tokenEstimate !== undefined ? ` · about ${item.tokenEstimate.toLocaleString()} tokens` : ""}</small>
-                        {item.distilledText && <p>{item.distilledText}</p>}
                       </span>
-                      <span className={styles.contextItemState}>{contextItemState(item)}</span>
+                      <span className={styles.contextItemState}>Exact</span>
                     </li>
                   ))}
                 </ul>
@@ -172,8 +156,8 @@ export function FlowWorkspaceInspector({
             <section className={styles.preservedContextStrip}>
               <CircleDashed aria-hidden="true" />
               <div>
-                <strong>{contextSummary?.releasedItemCount ?? 0} set aside from active context</strong>
-                <p>Exact evidence remains stored and can be retrieved again. It is never deleted by pruning.</p>
+                <strong>Exact evidence stays durable</strong>
+                <p>Turn-local releases only remove large outputs from the live model context. Stored evidence remains retrievable.</p>
               </div>
             </section>
           </div>

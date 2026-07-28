@@ -36,7 +36,7 @@
         "context.exact_messages",
         "context.runtime_state",
         "context.tool_definitions",
-        "context.user_approved_compaction",
+        "context.automatic_compaction",
         "runtime.structured_repair",
         "runtime.frontier_handover"
       ],
@@ -84,7 +84,7 @@
         "context.exact_messages",
         "context.runtime_state",
         "context.tool_definitions",
-        "context.user_approved_compaction"
+        "context.automatic_compaction"
       ],
       "dynamicCapabilityPrefixes": [],
       "modelTools": [
@@ -106,7 +106,7 @@
         "context.stable_prompt",
         "context.exact_messages",
         "context.tool_definitions",
-        "context.user_approved_compaction",
+        "context.automatic_compaction",
         "runtime.structured_repair"
       ],
       "dynamicCapabilityPrefixes": [],
@@ -120,7 +120,7 @@
         "context.stable_prompt",
         "context.exact_messages",
         "context.tool_definitions",
-        "context.user_approved_compaction",
+        "context.automatic_compaction",
         "runtime.structured_repair"
       ],
       "dynamicCapabilityPrefixes": [],
@@ -144,7 +144,7 @@
         "context.stable_prompt",
         "context.exact_messages",
         "context.tool_definitions",
-        "context.user_approved_compaction",
+        "context.automatic_compaction",
         "runtime.structured_repair"
       ],
       "dynamicCapabilityPrefixes": [],
@@ -169,7 +169,7 @@
         "context.stable_prompt",
         "context.exact_messages",
         "context.tool_definitions",
-        "context.user_approved_compaction",
+        "context.automatic_compaction",
         "runtime.structured_repair"
       ],
       "dynamicCapabilityPrefixes": [],
@@ -183,7 +183,7 @@
         "context.stable_prompt",
         "context.exact_messages",
         "context.tool_definitions",
-        "context.user_approved_compaction",
+        "context.automatic_compaction",
         "runtime.structured_repair"
       ],
       "dynamicCapabilityPrefixes": [],
@@ -197,7 +197,7 @@
         "context.stable_prompt",
         "context.exact_messages",
         "context.tool_definitions",
-        "context.user_approved_compaction",
+        "context.automatic_compaction",
         "runtime.structured_repair"
       ],
       "dynamicCapabilityPrefixes": [],

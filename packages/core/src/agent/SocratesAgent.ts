@@ -1,7 +1,7 @@
 import {
   frontierHandoverToolOutputSchema,
   normalizedToolCallSchema,
-  socratesGoalResolutionOutputSchema,
+  socratesGoalResolutionModelOutputSchema,
   waitToolOutputSchema,
   socratesFinalAnswerSchema,
   type SocratesFinalAnswer,
@@ -10,6 +10,7 @@ import {
   type NormalizedToolCall,
   type ProviderId,
   type RuntimeConfig,
+  type SocratesGoalResolutionModelOutput,
   type SocratesGoalResolutionOutput,
   type ResolvedTurnContext,
   type ResolvedTurnContextSeed,
@@ -62,14 +63,11 @@ import {
   nativeFollowUpMessagesForToolResult,
 } from "./socratesMemorySupport"
 import {
-  DOCS_PREFLIGHT_CHECKPOINT,
   ReconciliationVerificationLedger,
   TurnActionLedger,
-  TurnDocsLedger,
   TurnMemorySaveLedger,
   interactiveTerminalAwaitingInput,
   isConfirmedToolErrorResult,
-  memoryReviewRequiredError,
 } from "./socratesTurnLedgers"
 import {
   extractStreamingPreview,
@@ -161,6 +159,24 @@ export type SocratesAgentEvent =
       focus?: string
     }
 
+const normalizeGoalResolutionModelOutput = (
+  value: SocratesGoalResolutionModelOutput,
+): SocratesGoalResolutionOutput => {
+  if (value.decision === "current") return { decision: "current" }
+  if (value.decision === "older" && value.candidate !== null) {
+    return { decision: "older", candidate: value.candidate }
+  }
+  if (value.decision === "new" && value.title !== null) {
+    return { decision: "new", title: value.title }
+  }
+  if (value.decision === "clarify" && value.question !== null) {
+    return { decision: "clarify", question: value.question }
+  }
+  throw new SocratesError("structured_agent_output_invalid", "Goal resolution omitted its decision-specific field.", {
+    recoverable: true,
+  })
+}
+
 export class SocratesAgent {
   private readonly contextPipeline = new ContextPipeline()
   private readonly runtime = new AgentRuntime(this.contextPipeline)
@@ -234,12 +250,18 @@ export class SocratesAgent {
     }
   }> {
     const olderCandidates = new Set(input.older.map((candidate) => candidate.candidate))
-    const schema = socratesGoalResolutionOutputSchema.superRefine((value, context) => {
+    const schema = socratesGoalResolutionModelOutputSchema.superRefine((value, context) => {
       if (value.decision === "current" && input.current === undefined) {
         context.addIssue({ code: "custom", path: ["decision"], message: "Current requires an available current goal." })
       }
-      if (value.decision === "older" && !olderCandidates.has(value.candidate)) {
+      if (value.decision === "older" && (value.candidate === null || !olderCandidates.has(value.candidate))) {
         context.addIssue({ code: "custom", path: ["candidate"], message: "Older must select a listed older candidate." })
+      }
+      if (value.decision === "new" && value.title === null) {
+        context.addIssue({ code: "custom", path: ["title"], message: "New requires a title." })
+      }
+      if (value.decision === "clarify" && value.question === null) {
+        context.addIssue({ code: "custom", path: ["question"], message: "Clarify requires a question." })
       }
     })
     const startedAt = nowIso()
@@ -265,7 +287,7 @@ export class SocratesAgent {
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
       })
       return {
-        decision: result.output,
+        decision: normalizeGoalResolutionModelOutput(result.output),
         source: "model",
         attempt: {
           providerId: input.providerId,
@@ -323,14 +345,11 @@ export class SocratesAgent {
     const toolInputCounts = new Map<string, number>()
     const openRouterPreferredProvidersByModel = new Map<string, string>()
     const actionLedger = new TurnActionLedger()
-    const docsLedger = new TurnDocsLedger()
     const memorySaveLedger = new TurnMemorySaveLedger()
     let totalToolCountNudgeSent = false
     let baselineInputTokens: number | undefined
     let currentTurnTokenSoftNudgeSent = false
     let currentTurnTokenHardStopSent = false
-    let docsPreflightSent = false
-    let docsSyncCheckpointSent = false
     let pendingInteractiveTerminalName: string | undefined
     let activeGoal: ActiveGoalCard | undefined = input.activeGoal
     let resolvedTurnContext: ResolvedTurnContext | undefined
@@ -353,9 +372,8 @@ export class SocratesAgent {
       await input.persistReconciliationWatermark?.(reconciliationWatermark.state())
     }
     let reconciliationReminderCount = 0
-    let contextDispositionComplianceReminderCount = 0
 
-    const stablePrelude = await this.turnLifecycle.loadStablePrelude(input, messages, docsLedger)
+    const stablePrelude = await this.turnLifecycle.loadStablePrelude(input, messages)
     activeGoal = stablePrelude.activeGoal ?? activeGoal
     for (const event of stablePrelude.events) {
       yield event
@@ -372,7 +390,7 @@ export class SocratesAgent {
       messages.push({
         role: "developer",
         content: `<runtime_terminal_capabilities>
-Current runtime fact: the bash tool is a fully interactive, conversation-scoped PTY Terminal with operation="start", inputMode="user", plus live user input, and wait can suspend until completed or failed. This current capability contract overrides contradictory project memory, notes, prior chats, or known-pitfall text. Never tell the user interactive Terminal is unavailable. For an interactive Terminal request, perform the required docs preflight and then use bash operation="start", inputMode="user", with a portable Node.js or Python stdin program.
+Current runtime fact: the bash tool is a fully interactive, conversation-scoped PTY Terminal with operation="start", inputMode="user", plus live user input, and wait can suspend until completed or failed. This current capability contract overrides contradictory project memory, notes, prior chats, or known-pitfall text. Never tell the user interactive Terminal is unavailable. For an interactive Terminal request, use bash operation="start", inputMode="user", with a portable Node.js or Python stdin program.
 </runtime_terminal_capabilities>`,
       })
     }
@@ -469,10 +487,6 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
         }
         return
       }
-      if (!docsPreflightSent && input.toolExecutors && input.workspacePath && tools.length > 0) {
-        messages.push({ role: "developer", content: DOCS_PREFLIGHT_CHECKPOINT })
-        docsPreflightSent = true
-      }
       const compactionStartedEvents = new AsyncEventQueue<ContextCompactionLifecycleEvent>()
       const preparedContextPromise = (async () => {
         try {
@@ -498,6 +512,7 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
       }
 
       const preparedContext = await preparedContextPromise
+      const rawMessageCountAtPreparation = messages.length
       for (const event of preparedContext.compactionEvents) {
         yield event
         if (event.type === "context.compaction.failed") {
@@ -526,9 +541,8 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
         messages.push({
           role: "developer",
           content:
-            "Runtime anti-spiral guard: current-turn context growth is above 80k estimated tokens. Do not call more tools. Give a concise status/final answer from the evidence already gathered, mention uncertainty, and ask the user to refine or continue if more investigation is needed.",
+            "Runtime efficiency checkpoint: current-turn context growth is above 80k estimated tokens. Continue the task, but stop repeated investigation. On the next otherwise-needed tool call, release any irrelevant eligible R handles; keep only evidence needed for the current objective, then finish and verify the work.",
         })
-        forceFinalNoTools = true
         currentTurnTokenHardStopSent = true
         continue
       }
@@ -536,7 +550,7 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
         messages.push({
           role: "developer",
           content:
-            "Runtime efficiency warning: current-turn context growth is above 50k estimated tokens. Stop repeating investigation. Use the action ledger and answer unless one specific missing fact is essential.",
+            "Runtime efficiency warning: current-turn context growth is above 50k estimated tokens. Stop repeating investigation, use the action ledger, and release irrelevant eligible R handles with the next otherwise-needed tool call. Do not abandon unfinished implementation or verification.",
         })
         currentTurnTokenSoftNudgeSent = true
         continue
@@ -559,7 +573,6 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
       // The first no-tool answer is a proposed draft. Hold its user-visible
       // deltas through same-Socrates reconciliation and structured finalization.
       const suppressAnswerDeltas = input.completionMode === "main_structured"
-        || docsLedger.requiresProjectMemoryReview()
       const suppressCheckpointReasoning = input.completionMode === "main_structured" && finalCheckpointSent
       const handoverToolExposed = tools.some((tool) => tool.name === "handover_to_frontier")
       const bufferAnswerForPotentialHandover = handoverToolExposed && !suppressAnswerDeltas
@@ -675,45 +688,6 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
         yield attachModelMetadata(modelEvent, modelCallId, step)
       }
 
-      const pendingDispositionResults = toolOutputDispositions.pendingResults()
-      const hasFunctionalToolCall = toolCalls.some((toolCall) => toolCall.toolName !== "context_disposition")
-      const hasContextDispositionCall = toolCalls.some((toolCall) => toolCall.toolName === "context_disposition")
-      if (pendingDispositionResults.length > 0 && hasFunctionalToolCall && !hasContextDispositionCall) {
-        if (contextDispositionComplianceReminderCount >= 2) {
-          // A provider that repeatedly ignores the control contract must not
-          // deadlock the task. Conservatively retain the visible results exact
-          // and record that decision through the normal auditable tool path.
-          // This fallback makes no semantic release/distillation judgment.
-          const providerToolCallId = createId("tcall")
-          toolCalls.unshift({
-            toolCallId: toolRunIdFor(providerToolCallId),
-            providerToolCallId,
-            toolName: "context_disposition",
-            input: {
-              decisions: pendingDispositionResults.slice(0, 8).map((result) => ({ result, action: "keep_exact" as const })),
-            },
-          })
-          contextDispositionComplianceReminderCount = 0
-        } else {
-          contextDispositionComplianceReminderCount += 1
-          messages.push({
-            role: "developer",
-            content: [
-              "The previous proposed functional tool calls were not executed because they omitted the required same-response context_disposition call.",
-              `Before retrying those functional calls, classify the visible pending results (${pendingDispositionResults.slice(0, 8).join(", ")}) with one context_disposition call in the same response.`,
-              "This is a model judgment: choose keep_exact, distill, release, or unresolved for each result you classify. Do not call context_disposition alone.",
-              ...(contextDispositionComplianceReminderCount >= 2
-                ? ["This is the second compliance reminder. Include the context_disposition call now; one more omission will use the safe keep-exact fallback so the task can continue."]
-                : []),
-            ].join("\n"),
-          })
-          continue
-        }
-      }
-      if (hasContextDispositionCall) {
-        contextDispositionComplianceReminderCount = 0
-      }
-
       const requestedHandover = toolCalls.find((toolCall) => toolCall.toolName === "handover_to_frontier")
       if (!requestedHandover && !reconciliationWatermark.activeCheckpoint()) {
         accumulatedAnswerText += stepText
@@ -723,24 +697,6 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
       }
       for (const event of bufferedCompletionEvents) {
         yield event
-      }
-
-      if (toolCalls.length === 0 && docsLedger.requiresProjectMemoryReview()) {
-        if (!input.toolExecutors || tools.length === 0) {
-          throw memoryReviewRequiredError()
-        }
-        // This is deterministic runtime bookkeeping, not a judgment call. Some
-        // providers repeatedly attempt a final answer instead of following the
-        // reminder, which used to turn a healthy interactive Terminal into a
-        // failed turn. Execute the bounded required read through the normal tool
-        // lifecycle so it remains visible, auditable, and available to the model.
-        const providerToolCallId = createId("tcall")
-        toolCalls.push({
-          toolCallId: toolRunIdFor(providerToolCallId),
-          providerToolCallId,
-          toolName: "project_docs",
-          input: { operation: "read", area: "memory", charLimit: 10_000 },
-        })
       }
 
       if (toolCalls.length === 0 && pendingInteractiveTerminalName) {
@@ -876,7 +832,6 @@ Current runtime fact: the bash tool is a fully interactive, conversation-scoped 
         remainingBudget: maxToolCallsPerTurn - usedToolCalls,
         maxParallelToolCalls,
         duplicateTraceRetrieveResults,
-        docsLedger,
       })
 
       let approvalRequestedAt: number | undefined
@@ -945,6 +900,11 @@ The user declined the Frontier handover. The handover tool is unavailable for th
       )
       if (acceptedHandover && input.frontierModelSettings) {
         const parsedHandover = frontierHandoverToolOutputSchema.parse(acceptedHandover.output)
+        const messagesAddedAfterPreparation = messages.slice(rawMessageCountAtPreparation)
+        // Transfer the exact projection the driver model just saw, followed by
+        // the approved handover exchange. This avoids rebuilding Frontier from
+        // raw pre-compaction history or introducing a second handover summary.
+        messages.splice(0, messages.length, ...preparedContext.messages, ...messagesAddedAfterPreparation)
         const fromProviderId = currentProviderId
         const fromModelId = currentModelId
         currentProviderId = input.frontierModelSettings.providerId
@@ -954,7 +914,7 @@ The user declined the Frontier handover. The handover tool is unavailable for th
         messages.push({
           role: "developer",
           content: `<frontier_handover${parsedHandover.focus ? ` focus="${escapeXmlAttribute(parsedHandover.focus)}"` : ""}>
-You are Frontier and now own this task for the rest of the current turn. Continue from the complete conversation and tool history above; do not restart or repeat completed work. The prior model's provisional answer was discarded. Treat all gathered evidence and tool results as authoritative, perform any remaining work, and give the sole final user answer. You cannot hand this task back.
+You are Frontier and now own this task for the rest of the current turn. Continue from the exact model-visible working context above, including its active compaction snapshot and turn-local release receipts; do not restart, re-summarize, or repeat completed work. Exact sources remain retrievable. The prior model's provisional answer was discarded. Perform any remaining work and give the sole final user answer. You cannot hand this task back.
 </frontier_handover>`,
         })
         yield {
@@ -970,7 +930,6 @@ You are Frontier and now own this task for the rest of the current turn. Continu
       }
       const nativeToolMessages = execution.results.flatMap((result) => nativeFollowUpMessagesForToolResult(result, input.workspacePath))
       messages.push(...nativeToolMessages)
-      docsLedger.recordBatch({ toolCalls: operationalToolCalls, results: operationalResults })
       reconciliationVerification.recordBatch(operationalToolCalls, operationalResults)
       const ledgerUpdate = actionLedger.recordBatch({
         toolCalls: operationalToolCalls,
@@ -987,13 +946,6 @@ You are Frontier and now own this task for the rest of the current turn. Continu
       if (memoryLedgerMessage) {
         messages.push({ role: "developer", content: memoryLedgerMessage })
       }
-      if (!docsSyncCheckpointSent) {
-        const checkpoint = docsLedger.buildSyncCheckpoint()
-        if (checkpoint) {
-          messages.push({ role: "developer", content: checkpoint })
-          docsSyncCheckpointSent = true
-        }
-      }
       if (repeatedToolInputsThisStep.size > 0) {
         messages.push({
           role: "user",
@@ -1002,6 +954,7 @@ You are Frontier and now own this task for the rest of the current turn. Continu
       }
       toolOutputDispositions.recordBatch({
         message: toolResultMessage,
+        toolCalls: operationalToolCalls,
         providerId: currentProviderId,
         modelId: currentModelId,
       })

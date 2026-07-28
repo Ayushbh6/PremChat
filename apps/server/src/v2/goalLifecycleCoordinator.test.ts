@@ -43,7 +43,7 @@ describe("Flow goal-aware memory retrieval", () => {
       countTokens: async (request) => ({ providerId: request.providerId, modelId: request.modelId, inputTokens: 1, baseTokens: 1, method: "local_tiktoken", safetyMarginPercent: 0 }),
       async *stream() { yield { type: "model.completed" } },
       async generateStructured<TOutput>(_request: StructuredModelRequest<TOutput>) {
-        return { output: { decision: "older", candidate: 2 } as TOutput }
+        return { output: { decision: "older", candidate: 2, title: null, question: null } as TOutput }
       },
     }
     const store = {

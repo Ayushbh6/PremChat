@@ -97,7 +97,6 @@ export const createV2ContextCompressionRuntime = (
           goalId: input.goalId,
           modelCallId,
         },
-        includeInContext: false,
       })
     },
     completeSnapshot: (snapshot) => {
@@ -117,7 +116,6 @@ export const createV2ContextCompressionRuntime = (
           sourceHandles: snapshot.sourceHandles,
         },
         metadata: completedSnapshotMetadata(input.goalId, modelCallId, snapshot),
-        includeInContext: false,
       })
       if (modelCallId) {
         input.store.completeModelCall({
@@ -166,7 +164,6 @@ export const createV2ContextCompressionRuntime = (
           errorId: error.id,
           ...(modelCallId ? { modelCallId } : {}),
         },
-        includeInContext: false,
       })
       if (modelCallId) {
         input.store.completeModelCall({ modelCallId, errorId: error.id })

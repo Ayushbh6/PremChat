@@ -12,13 +12,13 @@ index_tags: [tool_usage]
 <!-- socrates:section id="purpose" kind="purpose" tags="tools" -->
 ## Purpose
 
-- `context_disposition`: Classify substantial tool outputs that you have already inspected so the runtime can manage the current turn before its next model call. Use this only in the same response as at least one functional tool call. Never call it alone and never call it when you are giving the final answer. For each supplied result handle choose keep_exact, distill, release, or unresolved. distill requires a concise summary; other actions must omit summary. Exact evidence is always retained outside model context.
+- `context_disposition`: Release unneeded large temporary result handles from the current model-visible turn. Call only alongside at least one normal tool call, never alone and never before a final answer. Pass release with one or more exact R handles from the latest hidden reminder. Omit handles that are still needed. Release never deletes exact audit evidence.
 <!-- /socrates:section -->
 
 <!-- socrates:section id="when_to_use" kind="routing" tags="tools" -->
 ## When To Use
 
-- Use `context_disposition` when the active task requires its cataloged read/retrieval capability.
+- Use `context_disposition` only to release eligible R handles alongside another normal tool call; omission must never block work.
 <!-- /socrates:section -->
 
 <!-- socrates:section id="inputs" kind="schema" tags="tools" -->

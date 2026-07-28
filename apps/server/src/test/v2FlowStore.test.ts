@@ -2,11 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
-import {
-  assembleV2GoalWorkingContext,
-  deriveV2ContextBudget,
-  type SocratesGoalResolutionResult,
-} from "@socrates/core"
+import type { SocratesGoalResolutionResult } from "@socrates/core"
 import { createId, nowIso } from "@socrates/shared"
 import { openDatabase, runMigrations, type DatabaseHandle } from "../db/client"
 import { loadCanonicalTraceRows } from "../services/retrieval/canonicalSources"
@@ -291,7 +287,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       result: forcedCreateResult(store, first.flow.id),
     })
     expect(applied.goal.status).toBe("foreground")
-    const assistant = store.completeTurn({
+    const assistant = store.commitValidatedTurn({
       goalFinalization: { state: "active", note: "The task remains active." },
       projectId: "proj_one",
       flowId: first.flow.id,
@@ -320,7 +316,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       messageContent: first.userMessage.content,
       result: forcedCreateResult(store, flow.id),
     })
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "First response", goalFinalization: { state: "active", note: "The task remains active." } })
+    store.commitValidatedTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "First response", goalFinalization: { state: "active", note: "The task remains active." } })
 
     const second = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "A completely different second goal", runtimeConfig })
     store.applyRouting({ projectId: "proj_one", flowId: flow.id, turnId: second.turn.id, messageId: second.userMessage.id, messageContent: second.userMessage.content, result: forcedCreateResult(store, flow.id) })
@@ -410,7 +406,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
     expect(store.countV1Rows()).toEqual(baselineV1Rows)
   })
 
-  it("bounds long-Flow snapshots, message pages, model history, capsules, and lazy active evidence", async () => {
+  it("bounds long-Flow snapshots, message pages, model history, capsules, and exact evidence inventory", () => {
     const { handle, store } = setup()
     const baselineV1Rows = store.countV1Rows()
     const flow = store.ensureFlow("proj_one").flow
@@ -429,7 +425,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       messageContent: first.userMessage.content,
       result: forcedCreateResult(store, flow.id),
     }).goal
-    store.completeTurn({
+    store.commitValidatedTurn({
       goalFinalization: { state: "active", note: "The task remains active." },
       projectId: "proj_one",
       flowId: flow.id,
@@ -520,38 +516,18 @@ describe("V2FlowStore isolation and lifecycle", () => {
     expect(snapshot.latestCapsules).toHaveLength(2)
     expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM v2_goal_capsules WHERE flow_id = ?").get(flow.id)).toMatchObject({ count: 4 })
 
-    const lightItems = store.getActiveContextItems(flow.id, goal.id)
+    const lightItems = store.getExactEvidenceProjections(flow.id, goal.id)
     expect(lightItems).toHaveLength(256)
     expect(JSON.stringify(lightItems)).not.toContain("xxxxxxxxxxxxxxxx")
     expect(store.getContextCounts(flow.id)).toEqual({
       immutableEvidenceCount: 600,
-      activeItemCount: 400,
-      releasedItemCount: 200,
     })
-    const retrievedBatches: string[][] = []
-    const assembled = await assembleV2GoalWorkingContext({
-      foregroundGoalId: goal.id,
-      query: "long Flow evidence",
-      messages: [],
-      contextItems: lightItems,
-      budget: deriveV2ContextBudget(),
-      evidenceTokenLimit: 1_000,
-      exactRetriever: (refs) => {
-        retrievedBatches.push(refs.map((ref) => ref.evidenceId))
-        return store.retrieveExactEvidence(flow.id, refs.map((ref) => ref.evidenceId)).map((record) => ({
-          evidenceRef: record.ref,
-          exactContent: record.exactContent,
-        }))
-      },
-    })
-    expect(retrievedBatches[0]).toHaveLength(1)
-    expect(assembled.exactEvidence).toHaveLength(1)
-    expect(assembled.estimatedTokens).toBeLessThanOrEqual(1_000)
+    expect(lightItems.every((item) => item.disposition === "keep_exact" && item.representation === "exact")).toBe(true)
     expect(store.retrieveExactEvidence(flow.id, ["v2ev_bulk_0"])[0]?.exactContent).toHaveLength(4_000)
     expect(store.countV1Rows()).toEqual(baselineV1Rows)
   })
 
-  it("releases only active context while immutable exact evidence remains retrievable", () => {
+  it("keeps immutable exact evidence retrievable without creating a parallel context item", () => {
     const { handle, store } = setup()
     const flow = store.ensureFlow("proj_one").flow
     const turn = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Inspect evidence", runtimeConfig })
@@ -563,57 +539,10 @@ describe("V2FlowStore isolation and lifecycle", () => {
       title: "Page 7",
       content: "The exact source statement remains immutable.",
     })
-    expect(recorded.contextItem).toBeDefined()
     expect(() => handle.sqlite.prepare("UPDATE v2_evidence_items SET content = 'changed' WHERE id = ?").run(recorded.evidence.id)).toThrow()
     expect(() => handle.sqlite.prepare("DELETE FROM v2_evidence_items WHERE id = ?").run(recorded.evidence.id)).toThrow()
-
-    store.persistContextDispositions({
-      projectId: "proj_one",
-      flowId: flow.id,
-      turnId: turn.turn.id,
-      decisions: [{ contextItemId: recorded.contextItem?.id ?? "missing", disposition: "release" }],
-      completedTurn: 1,
-    })
-    const state = store.getCoreContextState(flow.id)
-    expect(state.items[0]?.active).toBe(false)
-    expect(state.evidence[0]?.exactContent).toBe("The exact source statement remains immutable.")
+    expect(store.getExactEvidenceProjections(flow.id)).toHaveLength(1)
     expect(store.retrieveExactEvidence(flow.id, [recorded.evidence.id])[0]?.exactContent).toContain("exact source")
-  })
-
-  it("enforces five unresolved items and the original three-turn review deadline", () => {
-    const { store } = setup()
-    const flow = store.ensureFlow("proj_one").flow
-    const turn = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Bound unresolved context", runtimeConfig })
-    const contextIds = Array.from({ length: 6 }, (_, index) => store.recordEvidence({
-      projectId: "proj_one",
-      flowId: flow.id,
-      turnId: turn.turn.id,
-      sourceKind: "retrieval_chunk",
-      title: `Chunk ${index + 1}`,
-      content: `Evidence ${index + 1}`,
-    }).contextItem?.id ?? "missing")
-    expect(() => store.persistContextDispositions({
-      projectId: "proj_one",
-      flowId: flow.id,
-      turnId: turn.turn.id,
-      decisions: contextIds.map((contextItemId) => ({ contextItemId, disposition: "unresolved" as const })),
-      completedTurn: 1,
-    })).toThrow(/at most five/i)
-
-    store.persistContextDispositions({
-      projectId: "proj_one",
-      flowId: flow.id,
-      turnId: turn.turn.id,
-      decisions: [{ contextItemId: contextIds[0] ?? "missing", disposition: "unresolved" }],
-      completedTurn: 1,
-    })
-    expect(() => store.persistContextDispositions({
-      projectId: "proj_one",
-      flowId: flow.id,
-      turnId: turn.turn.id,
-      decisions: [{ contextItemId: contextIds[0] ?? "missing", disposition: "unresolved" }],
-      completedTurn: 4,
-    })).toThrow(/must now be kept, distilled, or released/i)
   })
 
   it("keeps parked-goal capsules resumable without rewriting every trivial turn", () => {
@@ -634,7 +563,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       messageContent: first.userMessage.content,
       result: forcedCreateResult(store, flow.id),
     }).goal
-    store.completeTurn({
+    store.commitValidatedTurn({
       goalFinalization: { state: "active", note: "The task remains active." },
       projectId: "proj_one",
       flowId: flow.id,
@@ -679,7 +608,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       messageContent: second.userMessage.content,
       result: continueResult,
     })
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: second.turn.id, content: "Done.", goalFinalization: { state: "active", note: "The task remains active." } })
+    store.commitValidatedTurn({ projectId: "proj_one", flowId: flow.id, turnId: second.turn.id, content: "Done.", goalFinalization: { state: "active", note: "The task remains active." } })
     expect(store.getSnapshot("proj_one", flow.id).latestCapsules.find((item) => item.goalId === createdGoal.id)?.version).toBe(2)
 
     const third = store.createTurn({
@@ -726,7 +655,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       messageContent: turn.userMessage.content,
       result: forcedCreateResult(store, initial.flow.id),
     }).goal
-    const completed = store.completeTurn({
+    const completed = store.commitValidatedTurn({
       projectId: "proj_one",
       flowId: initial.flow.id,
       turnId: turn.turn.id,
@@ -762,7 +691,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
     const flow = store.ensureFlow("proj_one").flow
     const first = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Implement authentication tests", runtimeConfig })
     const work = store.applyRouting({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, messageId: first.userMessage.id, messageContent: first.userMessage.content, result: forcedCreateResult(store, flow.id) }).goal
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "Initial authentication work is ready.", goalFinalization: { state: "active", note: "The task remains active." } })
+    store.commitValidatedTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "Initial authentication work is ready.", goalFinalization: { state: "active", note: "The task remains active." } })
 
     const ambiguous = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "What about the second one?", runtimeConfig })
     const goals = store.listGoalsForResolution(flow.id)
@@ -819,7 +748,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, messageId: first.userMessage.id,
       messageContent: first.userMessage.content, result: forcedCreateResult(store, flow.id),
     }).goal
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "The memory ledger review found one stale ownership note.", goalFinalization: { state: "active", note: "The task remains active." } })
+    store.commitValidatedTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "The memory ledger review found one stale ownership note.", goalFinalization: { state: "active", note: "The task remains active." } })
 
     const second = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Great, now move to trace retrieval", runtimeConfig })
     const traceGoal = store.applyRouting({
@@ -844,7 +773,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       turnId: turn.turn.id, toolName: "search", arguments: { query: "bridge" }, requiresApproval: false,
     })
     store.completeToolCall(tool.id, { matches: 1 })
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: turn.turn.id, content: "Bridge built.", goalFinalization: { state: "active", note: "The task remains active." } })
+    store.commitValidatedTurn({ projectId: "proj_one", flowId: flow.id, turnId: turn.turn.id, content: "Bridge built.", goalFinalization: { state: "active", note: "The task remains active." } })
     expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM v2_classic_message_links").get()).toMatchObject({ count: 0 })
     expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM conversations WHERE project_id = ?").get("proj_one")).toMatchObject({ count: 0 })
     const bridge = store.openFocusInClassic("proj_one", flow.id, work.id)
@@ -910,7 +839,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, messageId: created.userMessage.id,
       messageContent: created.userMessage.content, result: forcedCreateResult(store, flow.id),
     }).goal
-    const assistant = store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, content: "Original Flow answer", goalFinalization: { state: "active", note: "The task remains active." } })
+    const assistant = store.commitValidatedTurn({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, content: "Original Flow answer", goalFinalization: { state: "active", note: "The task remains active." } })
     const bridge = store.openFocusInClassic("proj_one", flow.id, goal.id)
     const shadow = seedClassicTurn(handle, {
       conversationId: bridge.conversationId,
@@ -977,7 +906,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
     const flow = store.ensureFlow("proj_one").flow
     const created = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Flow-only source", runtimeConfig })
     const goal = store.applyRouting({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, messageId: created.userMessage.id, messageContent: created.userMessage.content, result: forcedCreateResult(store, flow.id) }).goal
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, content: "Flow-only answer", goalFinalization: { state: "active", note: "The task remains active." } })
+    store.commitValidatedTurn({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, content: "Flow-only answer", goalFinalization: { state: "active", note: "The task remains active." } })
     const bridge = store.openFocusInClassic("proj_one", flow.id, goal.id)
     const classicOnly = new SocratesStore(handle, undefined, undefined, { socratesHome: path.join(root, "home") })
     expect(classicOnly.getConversation("proj_one", bridge.conversationId).messages).toEqual([])
@@ -1107,7 +1036,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
       messageContent: created.userMessage.content,
       result: forcedCreateResult(store, initial.flow.id),
     }).goal
-    store.completeTurn({
+    store.commitValidatedTurn({
       projectId: "proj_one",
       flowId: initial.flow.id,
       turnId: created.turn.id,
@@ -1150,7 +1079,7 @@ describe("V2FlowStore isolation and lifecycle", () => {
     const created = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Review the DBMS notes", runtimeConfig })
     const work = store.applyRouting({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, messageId: created.userMessage.id, messageContent: created.userMessage.content, result: forcedCreateResult(store, flow.id) }).goal
     const evidence = store.recordEvidence({ projectId: "proj_one", flowId: flow.id, goalId: work.id, turnId: created.turn.id, sourceKind: "tool_output", title: "DBMS notes", content: "Exact tool output" })
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, content: "The notes are organized.", goalFinalization: { state: "active", note: "The task remains active." } })
+    store.commitValidatedTurn({ projectId: "proj_one", flowId: flow.id, turnId: created.turn.id, content: "The notes are organized.", goalFinalization: { state: "active", note: "The task remains active." } })
     const bridge = store.openFocusInClassic("proj_one", flow.id, work.id)
 
     expect(handle.sqlite.prepare("SELECT COUNT(*) AS count FROM messages WHERE conversation_id = ?").get(bridge.conversationId)).toMatchObject({ count: 0 })
@@ -1167,13 +1096,13 @@ describe("V2FlowStore isolation and lifecycle", () => {
     const flow = store.ensureFlow("proj_one").flow
     const first = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Review DBMS", runtimeConfig })
     const dbms = store.applyRouting({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, messageId: first.userMessage.id, messageContent: first.userMessage.content, result: forcedCreateResult(store, flow.id) }).goal
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "DBMS reviewed.", goalFinalization: { state: "active", note: "The task remains active." } })
+    store.commitValidatedTurn({ projectId: "proj_one", flowId: flow.id, turnId: first.turn.id, content: "DBMS reviewed.", goalFinalization: { state: "active", note: "The task remains active." } })
     const dbmsBridge = store.openFocusInClassic("proj_one", flow.id, dbms.id)
     store.continueClassicConversationInSeamless("proj_one", dbmsBridge.conversationId)
 
     const second = store.createTurn({ projectId: "proj_one", flowId: flow.id, clientMessageId: createId("v2msg"), content: "Prepare the release", runtimeConfig })
     const release = store.applyRouting({ projectId: "proj_one", flowId: flow.id, turnId: second.turn.id, messageId: second.userMessage.id, messageContent: second.userMessage.content, result: forcedCreateResult(store, flow.id) }).goal
-    store.completeTurn({ projectId: "proj_one", flowId: flow.id, turnId: second.turn.id, content: "Release prepared.", goalFinalization: { state: "active", note: "The task remains active." } })
+    store.commitValidatedTurn({ projectId: "proj_one", flowId: flow.id, turnId: second.turn.id, content: "Release prepared.", goalFinalization: { state: "active", note: "The task remains active." } })
 
     const result = store.deleteGoal("proj_one", flow.id, dbms.id)
     const snapshot = store.getSnapshot("proj_one", flow.id)

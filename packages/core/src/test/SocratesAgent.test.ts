@@ -48,7 +48,7 @@ describe("SocratesAgent", () => {
     expect(requestJson).toContain("Hi")
     expect(requestJson).toContain("Read before existing-file mutations")
     expect(requestJson).toContain("do not mutate user workspace artifacts")
-    expect(requestJson).toContain("project-doc housekeeping remains governed by the memory rules")
+    expect(requestJson).toContain("project-doc reconciliation remains governed by the durable-state rules")
     expect(requestJson).toContain("Product copy says Terminal; tool id is bash")
     expect(requestJson).toContain("tool_docs")
     expect(requestJson).toContain("skills")
@@ -59,7 +59,7 @@ describe("SocratesAgent", () => {
     expect(requestJson).toContain(".socrates/MEMORY.md")
     expect(requestJson).toContain("live cross-conversation project memory")
     expect(requestJson).toContain("active assistant notebook")
-    expect(requestJson).toContain("Explicit docs operating loop")
+    expect(requestJson).toContain("Durable-state operating loop")
     expect(requestJson).toContain("repo_docs")
     expect(requestJson).toContain("A separate Global Memory Agent runs in the background")
     expect(requestJson).toContain("A genuine user instruction not to remember")
@@ -74,8 +74,8 @@ describe("SocratesAgent", () => {
     expect(requestJson).toContain("Difficulty or importance alone is not a blocker")
     expect(requestJson).toContain("always pauses for explicit user approval")
     expect(requestJson).toContain("Treat long read/search/Terminal/MCP/retrieval outputs as temporary evidence")
-    expect(requestJson).toContain("Prefer distill when only a compact set of findings")
-    expect(requestJson).toContain("Long reads and large tool outputs should normally be distilled or released")
+    expect(requestJson).toContain("release unneeded handles with context_disposition")
+    expect(requestJson).toContain("Release is optional")
   })
 
   it("rejects dynamic tools outside the main role manifest before model execution", async () => {
@@ -252,10 +252,11 @@ describe("SocratesAgent", () => {
     expect(driverRequest?.tools?.map((tool) => tool.name)).toContain("handover_to_frontier")
     expect(frontierRequests).toHaveLength(2)
     expect(frontierRequests.every((request) => !request.tools?.some((tool) => tool.name === "handover_to_frontier"))).toBe(true)
+    expect(frontierRequests[0]?.messages.slice(0, driverRequest?.messages.length)).toEqual(driverRequest?.messages)
     expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("Resolve this difficult lifecycle problem")
     expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("handover_to_frontier")
     expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("Resolve the conflicting lifecycle evidence")
-    expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("Frontier and now own this task")
+    expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("exact model-visible working context")
     expect(streamed.filter((event) => event.type === "model.answer.delta")).toHaveLength(0)
     expect(streamed).toContainEqual({
       type: "agent.final_result",
@@ -1109,7 +1110,7 @@ describe("SocratesAgent", () => {
     expect(JSON.stringify(requests[1])).not.toContain("HIDDEN_DUPLICATE_INDEX_PAYLOAD")
   })
 
-  it("piggybacks model-chosen tool-output distillation on the next functional tool call", async () => {
+  it("piggybacks release-only tool-output control on the next functional tool call", async () => {
     const requests: Array<{ messages: unknown; tools: string[] }> = []
     let calls = 0
     const provider: ModelProvider = {
@@ -1134,9 +1135,7 @@ describe("SocratesAgent", () => {
             toolCall: {
               toolCallId: "dispose_large",
               toolName: "context_disposition",
-              input: {
-                decisions: [{ result: "result_1", action: "distill", summary: "The report opening establishes the central evidence." }],
-              },
+              input: { release: ["R1"] },
             },
           }
           yield {
@@ -1185,14 +1184,14 @@ describe("SocratesAgent", () => {
     expect(requests).toHaveLength(3)
     expect(requests[0]?.tools).toContain("context_disposition")
     expect(JSON.stringify(requests[1]?.messages)).toContain("UNIQUE_LARGE_REPORT_MARKER")
-    expect(JSON.stringify(requests[1]?.messages)).toContain("result_1")
+    expect(JSON.stringify(requests[1]?.messages)).toContain("Large temporary result R1")
     expect(JSON.stringify(requests[2]?.messages)).not.toContain("UNIQUE_LARGE_REPORT_MARKER")
-    expect(JSON.stringify(requests[2]?.messages)).toContain("The report opening establishes the central evidence.")
+    expect(JSON.stringify(requests[2]?.messages)).toContain('"contextDisposition":"released"')
     expect(completedTools[0]).toBe("read")
     expect(new Set(completedTools.slice(1))).toEqual(new Set(["context_disposition", "current_time"]))
   })
 
-  it("blocks an unclassified next functional call and retries it with a model-chosen disposition", async () => {
+  it("never blocks a normal functional call when a large-result release is omitted", async () => {
     const requests: Array<{ messages: unknown }> = []
     let calls = 0
     const provider: ModelProvider = {
@@ -1212,24 +1211,6 @@ describe("SocratesAgent", () => {
           yield {
             type: "model.tool_call.completed",
             toolCall: { toolCallId: "unclassified_time", toolName: "current_time", input: {} },
-          }
-          yield { type: "model.completed", finishReason: "tool-calls" }
-          return
-        }
-        if (calls === 3) {
-          yield {
-            type: "model.tool_call.completed",
-            toolCall: {
-              toolCallId: "dispose_large",
-              toolName: "context_disposition",
-              input: {
-                decisions: [{ result: "result_1", action: "distill", summary: "The report contains the evidence needed for the final comparison." }],
-              },
-            },
-          }
-          yield {
-            type: "model.tool_call.completed",
-            toolCall: { toolCallId: "classified_time", toolName: "current_time", input: {} },
           }
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
@@ -1270,16 +1251,16 @@ describe("SocratesAgent", () => {
       if (event.type === "tool.call.completed") completedTools.push(event.toolName)
     }
 
-    expect(requests).toHaveLength(4)
-    expect(JSON.stringify(requests[2]?.messages)).toContain("were not executed")
-    expect(JSON.stringify(requests[2]?.messages)).toContain("result_1")
-    expect(JSON.stringify(requests[3]?.messages)).not.toContain("UNIQUE_RETRY_REPORT_MARKER")
+    expect(requests).toHaveLength(3)
+    expect(JSON.stringify(requests[1]?.messages)).toContain("Large temporary result R1")
+    expect(JSON.stringify(requests[2]?.messages)).toContain("UNIQUE_RETRY_REPORT_MARKER")
+    expect(JSON.stringify(requests[2]?.messages)).not.toContain("were not executed")
     expect(completedTools[0]).toBe("read")
-    expect(new Set(completedTools.slice(1))).toEqual(new Set(["context_disposition", "current_time"]))
+    expect(new Set(completedTools.slice(1))).toEqual(new Set(["current_time"]))
     expect(completedTools.filter((toolName) => toolName === "current_time")).toHaveLength(1)
   })
 
-  it("falls back to auditable keep-exact after two disposition omissions", async () => {
+  it("does not inject a disposition call after repeated omissions", async () => {
     let calls = 0
     const provider: ModelProvider = {
       countTokens: fakeCountTokens,
@@ -1293,7 +1274,7 @@ describe("SocratesAgent", () => {
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
-        if (calls <= 4) {
+        if (calls === 2) {
           yield {
             type: "model.tool_call.completed",
             toolCall: { toolCallId: `ignored_time_${calls}`, toolName: "current_time", input: {} },
@@ -1314,7 +1295,6 @@ describe("SocratesAgent", () => {
     })
 
     const completedTools: string[] = []
-    const startedDispositionInputs: unknown[] = []
     const agent = new SocratesAgent(provider)
     for await (const event of agent.streamTurn({
       completionMode: "worker_text",
@@ -1335,15 +1315,14 @@ describe("SocratesAgent", () => {
       requestApproval: async () => ({ decision: "approved" }),
       maxToolCallsPerTurn: 2,
     })) {
-      if (event.type === "tool.call.started" && event.toolName === "context_disposition") startedDispositionInputs.push(event.input)
       if (event.type === "tool.call.completed") completedTools.push(event.toolName)
     }
 
-    expect(calls).toBe(5)
+    expect(calls).toBe(3)
     expect(completedTools[0]).toBe("read")
-    expect(new Set(completedTools.slice(1))).toEqual(new Set(["context_disposition", "current_time"]))
+    expect(new Set(completedTools.slice(1))).toEqual(new Set(["current_time"]))
     expect(completedTools.filter((toolName) => toolName === "current_time")).toHaveLength(1)
-    expect(startedDispositionInputs).toEqual([{ decisions: [{ result: "result_1", action: "keep_exact" }] }])
+    expect(completedTools).not.toContain("context_disposition")
   })
 
   it("adds a cache-safe same-turn memory save ledger after memory_note results", async () => {
@@ -2383,7 +2362,7 @@ describe("SocratesAgent", () => {
     expect(finalMessages).toContain("Runtime anti-spiral guard")
   })
 
-  it("forces a final no-tools call after current-turn token growth crosses the hard guard", async () => {
+  it("steers large current turns without disabling tools or abandoning the task", async () => {
     const countRequests: CountedRequest[] = []
     const streamRequests: ModelRequestLike[] = []
     let countCalls = 0
@@ -2447,11 +2426,12 @@ describe("SocratesAgent", () => {
       // Drain the turn.
     }
 
-    expect(countRequests.at(-1)?.toolCount).toBe(0)
-    expect(streamRequests.at(-1)?.tools).toHaveLength(0)
+    expect(countRequests.at(-1)?.toolCount).toBeGreaterThan(0)
+    expect(streamRequests.at(-1)?.tools?.length ?? 0).toBeGreaterThan(0)
     const finalMessages = JSON.stringify(countRequests.at(-1)?.messages)
     expect(finalMessages).toContain("current-turn context growth is above 50k")
     expect(finalMessages).toContain("current-turn context growth is above 80k")
+    expect(finalMessages).toContain("Do not abandon unfinished implementation or verification")
   })
 
   it("omits tools after ten confirmed tool execution errors", async () => {
@@ -2690,13 +2670,11 @@ describe("SocratesAgent", () => {
     expect(editDryRuns).toEqual([true, false])
     expect(approvals[0]).toContain("-old")
     expect(approvals[0]).toContain("+new")
-    expect(JSON.stringify(streamRequests[0]?.messages)).toContain("runtime_socrates_docs_preflight")
-    expect(JSON.stringify(streamRequests[1]?.messages)).toContain("runtime_docs_sync_checkpoint")
-    expect(JSON.stringify(streamRequests[1]?.messages)).toContain("Before final answer, close the Socrates docs loop")
-    expect(JSON.stringify(streamRequests[1]?.messages)).toContain("repo_docs")
+    expect(JSON.stringify(streamRequests)).not.toContain("runtime_socrates_docs_preflight")
+    expect(JSON.stringify(streamRequests)).not.toContain("runtime_docs_sync_checkpoint")
   })
 
-  it("requires project notes and repo docs preflight before action tools", async () => {
+  it("allows an action tool without project and repo docs ceremony", async () => {
     let calls = 0
     const streamRequests: ModelRequestLike[] = []
     const approvals: string[] = []
@@ -2763,15 +2741,13 @@ describe("SocratesAgent", () => {
     }
 
     const failed = streamed.find((event): event is Extract<SocratesAgentEvent, { type: "tool.call.failed" }> => event.type === "tool.call.failed")
-    expect(failed?.error.code).toBe("docs_preflight_required")
-    expect(JSON.stringify(streamRequests[1]?.messages)).toContain("docs_preflight_required")
-    expect(JSON.stringify(streamRequests[1]?.messages)).toContain('project_docs with area=\\"notes\\"')
-    expect(JSON.stringify(streamRequests[1]?.messages)).toContain("call repo_docs in this same turn using read, search, read_index, or read_section")
-    expect(approvals).toEqual([])
-    expect(editInputs).toEqual([])
+    expect(failed).toBeUndefined()
+    expect(JSON.stringify(streamRequests)).not.toContain("docs_preflight_required")
+    expect(approvals).toHaveLength(1)
+    expect(editInputs).toHaveLength(2)
   })
 
-  it("injects one bounded docs preflight and one bounded docs-sync checkpoint per turn", async () => {
+  it("does not inject per-action docs checkpoints", async () => {
     let calls = 0
     const streamRequests: ModelRequestLike[] = []
     const provider: ModelProvider = {
@@ -2872,19 +2848,9 @@ describe("SocratesAgent", () => {
     expect(streamRequests).toHaveLength(4)
     const firstRequest = JSON.stringify(streamRequests[0]?.messages)
     const finalRequest = JSON.stringify(streamRequests[3]?.messages)
-    expect(countSubstring(firstRequest, "<runtime_socrates_docs_preflight>")).toBe(1)
-    expect(countSubstring(finalRequest, "<runtime_socrates_docs_preflight>")).toBe(1)
-    expect(countSubstring(finalRequest, "<runtime_docs_sync_checkpoint>")).toBe(1)
-    const preflight = stringMessageContents(streamRequests[0]?.messages).find((content) => content.includes("runtime_socrates_docs_preflight"))
-    expect(preflight).toBeDefined()
-    expect(preflight?.length).toBeLessThanOrEqual(1_000)
-    expect(preflight).toContain("call skills list before project_docs")
-    const checkpoint = stringMessageContents(streamRequests[1]?.messages).find((content) => content.includes("runtime_docs_sync_checkpoint"))
-    expect(checkpoint).toBeDefined()
-    expect(checkpoint?.length).toBeLessThanOrEqual(1_000)
-    expect(checkpoint).toContain("project_docs")
-    expect(checkpoint).toContain("repo_docs")
-    expect(checkpoint).toContain("files changed: README.md")
+    expect(countSubstring(firstRequest, "<runtime_socrates_docs_preflight>")).toBe(0)
+    expect(countSubstring(finalRequest, "<runtime_socrates_docs_preflight>")).toBe(0)
+    expect(countSubstring(finalRequest, "<runtime_docs_sync_checkpoint>")).toBe(0)
   })
 
   it("feeds read image results back to vision-capable models as native image parts", async () => {
@@ -3150,8 +3116,8 @@ describe("SocratesAgent", () => {
     expect(dynamicContext).toContain("Local-first AI workspace.")
     expect(dynamicContext).toContain("Read repo_docs before answering.")
     expect(request.system).toContain("If the current date or exact time matters, call current_time")
-    expect(request.system).toContain("Mandatory first-turn active recall")
-    expect(request.system).toContain('operation="read_section", area="notes", sectionId="active_context"')
+    expect(request.system).toContain("greetings do not require a ceremonial docs call")
+    expect(request.system).toContain("prepared capsule and latest exact exchange")
     expect(request.system).toContain("Project notes include an `active_context` section")
     expect(request.system).toContain("write one compact entry to project_docs notes `active_context`")
     expect(request.system).toContain("backend-owned `runtime_context` section with compact generated workspace scan facts")

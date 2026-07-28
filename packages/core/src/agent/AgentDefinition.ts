@@ -19,7 +19,7 @@ export type AgentContextStage =
   | "exact_messages"
   | "runtime_context"
   | "tool_definitions"
-  | "consent_gated_compaction"
+  | "automatic_compaction"
 
 export type ContextProfile = Readonly<{
   id: string
@@ -181,5 +181,5 @@ const CONTEXT_STAGE_ORDER: readonly AgentContextStage[] = [
   "exact_messages",
   "runtime_context",
   "tool_definitions",
-  "consent_gated_compaction",
+  "automatic_compaction",
 ]

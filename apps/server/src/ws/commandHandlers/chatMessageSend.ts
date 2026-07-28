@@ -45,7 +45,7 @@ const requireCommandScope = (command: ClientCommand): { projectId: string; conve
   return { projectId: command.projectId, conversationId: command.conversationId }
 }
 
-const contextBudgetTokens = DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS.hardLimitTokens
+const contextBudgetTokens = DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS.triggerTokens
 
 export const handleChatMessageSend = async (
   socket: WebSocket | undefined,
@@ -244,7 +244,7 @@ export const handleChatMessageSend = async (
         abortSignal: abortController.signal,
       })
       if (routed.status === "clarification") {
-        const assistantMessage = store.completeAgentTurnAtomically({
+        const assistantMessage = store.commitValidatedTurn({
           conversationId,
           sessionId: created.sessionId,
           turnId: created.turnId,
@@ -863,22 +863,37 @@ export const handleChatMessageSend = async (
       }
       return
     }
-
     if (!finalResult) {
       throw new SocratesError("agent_final_result_missing", "Socrates completed without a validated final result.", { recoverable: true })
     }
     const validatedFinalResult = finalResult
-    const assistantMessage = store.completeAgentTurnAtomically({
+    const assistantMessage = store.commitValidatedTurn({
       conversationId,
       sessionId: created.sessionId,
       turnId: created.turnId,
       content: validatedFinalResult.finalAnswer,
       reasoning: reasoningText,
       ...(flowStore ? {
-        afterPersist: (message) => {
+        persistBoundGoalAndCapsule: (message) => {
           flowStore.finalizeClassicGoal(created.turnId, validatedFinalResult.goalFinalization, message.id)
         },
       } : {}),
+      persistUsageAndAudit: (message) => {
+        for (const modelCallId of modelCallIds) {
+          store.completeModelCall({
+            modelCallId,
+            response: { messageId: message.id, finish: "completed" },
+            ...(responseMetadataByModelCallId.has(modelCallId)
+              ? { providerResponse: responseMetadataByModelCallId.get(modelCallId) }
+              : {}),
+            ...(latestUsageByModelCallId.get(modelCallId)
+              ? { usage: toStoredUsage(latestUsageByModelCallId.get(modelCallId) as ModelUsage) }
+              : {}),
+          })
+        }
+        store.recordProjectStateLedgerTurn(projectId, conversationId, created.turnId, "completed", validatedFinalResult.finalAnswer)
+        store.completeTerminalTaskForTurn(created.turnId, "completed")
+      },
     })
     durableTurnCommitted = true
     const turnUsageReport = store.buildTurnUsageReport(created.turnId)
@@ -920,19 +935,7 @@ export const handleChatMessageSend = async (
 
     const finalizedGoal = flowStore?.getClassicGoalForTurn(created.turnId)
     if (finalizedGoal) store.indexGoalRetrieval(projectId, finalizedGoal.goalId)
-    for (const modelCallId of modelCallIds) {
-      store.completeModelCall({
-        modelCallId,
-        response: { messageId: assistantMessage.id, finish: "completed" },
-        ...(responseMetadataByModelCallId.has(modelCallId)
-          ? { providerResponse: responseMetadataByModelCallId.get(modelCallId) }
-          : {}),
-        ...(latestUsageByModelCallId.get(modelCallId) ? { usage: toStoredUsage(latestUsageByModelCallId.get(modelCallId) as ModelUsage) } : {}),
-      })
-    }
     store.indexTurnTraceDocuments(projectId, conversationId, created.turnId)
-    store.recordProjectStateLedgerTurn(projectId, conversationId, created.turnId, "completed", validatedFinalResult.finalAnswer)
-    store.completeTerminalTaskForTurn(created.turnId, "completed")
 
     const postTurnHistory = store.getConversationModelMessages(projectId, conversationId, { includeImageParts })
     await agent.precomputeContext({

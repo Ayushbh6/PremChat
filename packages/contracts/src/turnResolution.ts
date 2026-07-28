@@ -9,6 +9,19 @@ export const socratesGoalResolutionOutputSchema = z.discriminatedUnion("decision
 
 export type SocratesGoalResolutionOutput = z.infer<typeof socratesGoalResolutionOutputSchema>
 
+// This is deliberately separate from the normalized result schema above. Models
+// receive one flat object instead of an anyOf branch, which avoids first-branch
+// bias in provider-native structured generation. The runtime normalizes it after
+// validating the decision-specific field.
+export const socratesGoalResolutionModelOutputSchema = z.object({
+  decision: z.enum(["current", "older", "new", "clarify"]),
+  candidate: z.number().int().min(1).max(5).nullable(),
+  title: z.string().trim().min(1).max(200).nullable(),
+  question: z.string().trim().min(1).max(500).nullable(),
+}).strict()
+
+export type SocratesGoalResolutionModelOutput = z.infer<typeof socratesGoalResolutionModelOutputSchema>
+
 export const goalCandidateSchema = z.object({
   resultNumber: z.number().int().positive(),
   goalId: z.string().min(1),

@@ -113,6 +113,8 @@ new
 clarify
 ```
 
+Those four outcomes remain the only product semantics even if the provider transport uses one flat structured envelope for reliable generation. The backend validates and normalizes that envelope before any goal mutation.
+
 There is no separate semantic distinction between `continue` and `resume`; selecting a goal is enough, and deterministic backend state knows whether its current pointer must change.
 
 Socrates always sees the current goal capsule and latest exact exchange even when hybrid retrieval gives them a weak score. Retrieved older goal capsules appear afterward as numbered alternatives. The simple decision is:

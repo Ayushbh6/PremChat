@@ -118,7 +118,7 @@ The target generator must derive the existing tool-guide output under `apps/serv
 ## 5. Adding Or Changing An Agent Role
 
 1. Confirm that the capability is genuinely model-driven. Prefer deterministic code for deterministic work.
-2. Define strict input and output contracts.
+2. Define strict input and output contracts. If real-provider evidence proves a branch-heavy output unreliable, a single flat model-facing wire contract may sit beside the domain result in `packages/contracts`; normalize it immediately in the owning agent and test that the semantic result is unchanged.
 3. Add one declarative `AgentDefinition` specifying prompt id, completion contract, model-setting role, `RoleManifest`, limits, timeout, repair/fallback policy, context profile, and persistence scope.
 4. Reuse the shared `AgentRuntime`; never subclass or wrap it into a private provider loop.
 5. Reuse the shared `ContextPipeline`, selecting only declared stages.

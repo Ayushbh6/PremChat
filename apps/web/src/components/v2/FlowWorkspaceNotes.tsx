@@ -323,7 +323,7 @@ export function FlowWorkspaceNotes({
             visibleContextItems.map((item) => (
               <span key={item.id} className={styles.noteLine}>
                 <span>{item.label}</span>
-                <small>{item.disposition === "keep_exact" ? "Exact" : item.disposition === "distill" ? "Distilled" : "Review"}</small>
+                <small>Exact</small>
               </span>
             ))
           ) : (

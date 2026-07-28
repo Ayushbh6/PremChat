@@ -10,7 +10,6 @@ export type CompressorTurnInput = {
 export type SocratesCompressorUserPromptInput = {
   previousSummary?: string
   headTurns: CompressorTurnInput[]
-  currentTurnDigest?: string[]
 }
 
 export const SOCRATES_COMPRESSOR_SYSTEM_PROMPT = `You are the Socrates Compressor Agent.
@@ -24,8 +23,7 @@ facts in the right fields, not to print JSON manually.
 <task>
 Compress only:
 - the Previous Summary, if present;
-- the Old Head Turns To Compress;
-- the Current Turn Tool Digest, if present.
+- the Old Head Turns To Compress.
 
 Do not summarize the recent raw tail. The newest raw Q&A turns remain outside your output and will be appended
 verbatim after this summary.
@@ -80,7 +78,7 @@ Field meaning:
 - Use empty arrays for sections with no evidence. Do not write filler such as "None", "None explicitly stated", or "No blockers".
 - If a source claim may be stale, historical, or only true inside an old conversation, label it as source-scoped: "The compressed source said ..." or "Historical note from Turn <number>: ...".
 - Treat all old-head claims about current code state, thresholds, model defaults, fallback models, repo version, file sizes,
-  test status, package counts, and generated artifacts as historical unless the Current Turn Tool Digest explicitly verifies them.
+  test status, package counts, and generated artifacts as historical until future work verifies them against the live repository.
 - Never put unverified historical code-state claims in constraints or decisions as if they are current truth.
 - Put stale-but-useful code-state claims in criticalContext or toolState with "Historical source claim from Turn <number>:".
 - If input mixes projects or workspaces, keep facts source-scoped. Prefix lines when helpful, e.g. "Socrates:" or "TU Work:".
@@ -185,9 +183,6 @@ export const buildSocratesCompressorUserContent = (input: SocratesCompressorUser
     "# Old Head Turns To Compress",
     input.headTurns.length > 0 ? input.headTurns.map(renderTurn).join("\n\n") : "None.",
   ]
-  if (input.currentTurnDigest && input.currentTurnDigest.length > 0) {
-    sections.push("", "# Current Turn Tool Digest", input.currentTurnDigest.map((line) => `- ${line}`).join("\n"))
-  }
   return sections.join("\n")
 }
 

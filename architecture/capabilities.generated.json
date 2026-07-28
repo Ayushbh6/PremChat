@@ -844,7 +844,7 @@
     },
     {
       "id": "tool.handover_to_frontier",
-      "description": "Request a one-way handover of the current task to the configured Frontier model for the remainder of this turn. The user must approve the transfer. Frontier automatically receives the full conversation, every tool call and result, and all work already completed. You are the primary worker: make a real, substantive effort first, and request handover only after reaching a concrete unresolved capability or reliability blocker that you cannot overcome with the available evidence and tools. Do not request it merely because a task is long, difficult, high consequence, involves code or several ordinary tools, or encountered one recoverable error. Call this tool alone and without accompanying prose. focus is optional and must be a compact direction of at most 20 words; never restate the full request.",
+      "description": "Request a one-way handover of the current task to the configured Frontier model for the remainder of this turn. The user must approve the transfer. Frontier receives the exact current model-visible working context, including any active compaction snapshot, retained tool results, release receipts, and work completed so far; canonical exact evidence remains retrievable. You are the primary worker: make a real, substantive effort first, and request handover only after reaching a concrete unresolved capability or reliability blocker that you cannot overcome with the available evidence and tools. Do not request it merely because a task is long, difficult, high consequence, involves code or several ordinary tools, or encountered one recoverable error. Call this tool alone and without accompanying prose. focus is optional and must be a compact direction of at most 20 words; never restate the full request.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates"
@@ -886,7 +886,7 @@
       },
       "documentationTitle": "Calling Frontier model",
       "documentationGuidance": [
-        "Request a one-way handover of the current task to the configured Frontier model for the remainder of this turn. The user must approve the transfer. Frontier automatically receives the full conversation, every tool call and result, and all work already completed. You are the primary worker: make a real, substantive effort first, and request handover only after reaching a concrete unresolved capability or reliability blocker that you cannot overcome with the available evidence and tools. Do not request it merely because a task is long, difficult, high consequence, involves code or several ordinary tools, or encountered one recoverable error. Call this tool alone and without accompanying prose. focus is optional and must be a compact direction of at most 20 words; never restate the full request."
+        "Request a one-way handover of the current task to the configured Frontier model for the remainder of this turn. The user must approve the transfer. Frontier receives the exact current model-visible working context, including any active compaction snapshot, retained tool results, release receipts, and work completed so far; canonical exact evidence remains retrievable. You are the primary worker: make a real, substantive effort first, and request handover only after reaching a concrete unresolved capability or reliability blocker that you cannot overcome with the available evidence and tools. Do not request it merely because a task is long, difficult, high consequence, involves code or several ordinary tools, or encountered one recoverable error. Call this tool alone and without accompanying prose. focus is optional and must be a compact direction of at most 20 words; never restate the full request."
       ],
       "documentationPaths": [
         "handover_to_frontier.md"
@@ -4334,7 +4334,7 @@
     },
     {
       "id": "tool.context_disposition",
-      "description": "Classify substantial tool outputs that you have already inspected so the runtime can manage the current turn before its next model call. Use this only in the same response as at least one functional tool call. Never call it alone and never call it when you are giving the final answer. For each supplied result handle choose keep_exact, distill, release, or unresolved. distill requires a concise summary; other actions must omit summary. Exact evidence is always retained outside model context.",
+      "description": "Release unneeded large temporary result handles from the current model-visible turn. Call only alongside at least one normal tool call, never alone and never before a final answer. Pass release with one or more exact R handles from the latest hidden reminder. Omit handles that are still needed. Release never deletes exact audit evidence.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates"
@@ -4348,42 +4348,18 @@
       "providerSchema": {
         "type": "object",
         "properties": {
-          "decisions": {
+          "release": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "result": {
-                  "type": "string",
-                  "pattern": "^result_[1-9]\\d*$"
-                },
-                "action": {
-                  "type": "string",
-                  "enum": [
-                    "keep_exact",
-                    "distill",
-                    "release",
-                    "unresolved"
-                  ]
-                },
-                "summary": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 1200
-                }
-              },
-              "required": [
-                "result",
-                "action"
-              ],
-              "additionalProperties": false
+              "type": "string",
+              "pattern": "^R[1-9]\\d*$"
             },
             "minItems": 1,
             "maxItems": 8
           }
         },
         "required": [
-          "decisions"
+          "release"
         ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
@@ -4406,7 +4382,7 @@
       },
       "documentationTitle": "Context disposition",
       "documentationGuidance": [
-        "Classify substantial tool outputs that you have already inspected so the runtime can manage the current turn before its next model call. Use this only in the same response as at least one functional tool call. Never call it alone and never call it when you are giving the final answer. For each supplied result handle choose keep_exact, distill, release, or unresolved. distill requires a concise summary; other actions must omit summary. Exact evidence is always retained outside model context."
+        "Release unneeded large temporary result handles from the current model-visible turn. Call only alongside at least one normal tool call, never alone and never before a final answer. Pass release with one or more exact R handles from the latest hidden reminder. Omit handles that are still needed. Release never deletes exact audit evidence."
       ],
       "documentationPaths": [
         "context_disposition.md"
@@ -4600,7 +4576,7 @@
     },
     {
       "id": "authority.finalization",
-      "description": "Validate and persist the substantive answer and bound work-state outcome before publication.",
+      "description": "Validate and atomically persist the answer, task, bound goal, capsule, usage, and audit state before publication.",
       "kind": "deterministic_authority",
       "allowedRoles": [
         "socrates"
@@ -4631,14 +4607,14 @@
       "source": {
         "owner": "apps/server",
         "definitionPath": "packages/core/src/capabilities/CapabilityCatalog.ts",
-        "implementationPath": "apps/server/src/services/v2/goalFinalizationStore.ts",
+        "implementationPath": "apps/server/src/services/turn/validatedTurnFinalization.ts",
         "callers": [
-          "apps/server/src/services/v2/goalFinalizationStore.ts"
+          "apps/server/src/services/turn/validatedTurnFinalization.ts"
         ],
         "tests": [
           "apps/server/src/test/v2FlowRuntime.test.ts"
         ],
-        "status": "migration_compatibility"
+        "status": "canonical"
       }
     },
     {
@@ -4839,8 +4815,8 @@
       }
     },
     {
-      "id": "context.user_approved_compaction",
-      "description": "Apply a specifically user-approved lossy context transformation while retaining exact provenance.",
+      "id": "context.automatic_compaction",
+      "description": "Automatically replace only the oldest completed-turn model projection at 170k while retaining exact provenance and a recent whole-turn suffix.",
       "kind": "context_stage",
       "allowedRoles": [
         "socrates",
@@ -4857,7 +4833,7 @@
         "conversation",
         "global"
       ],
-      "executorBinding": "context.compact_with_consent",
+      "executorBinding": "context.compact_oldest_head",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {
@@ -4887,7 +4863,7 @@
           "packages/core/src/test/prepareTurnContext.test.ts",
           "packages/core/src/test/contextCompression.test.ts"
         ],
-        "status": "migration_compatibility"
+        "status": "canonical"
       }
     },
     {
@@ -5065,7 +5041,7 @@
     },
     {
       "id": "worker.context_compactor",
-      "description": "Produce a user-approved context derivative through the shared runtime.",
+      "description": "Produce the provenance-linked automatic oldest-head context derivative through the shared runtime.",
       "kind": "structured_worker",
       "allowedRoles": [
         "socrates_context_compactor",
@@ -5106,7 +5082,7 @@
           "packages/core/src/test/AgentInstance.test.ts",
           "packages/core/src/test/AgentRuntime.test.ts"
         ],
-        "status": "migration_compatibility"
+        "status": "canonical"
       }
     },
     {

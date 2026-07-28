@@ -2,26 +2,17 @@ import { describe, expect, it } from "vitest"
 import { contextDispositionToolInputSchema } from "./tools"
 
 describe("contextDispositionToolInputSchema", () => {
-  it("accepts the compact three-field distillation decision", () => {
-    expect(contextDispositionToolInputSchema.parse({
-      decisions: [{ result: "result_1", action: "distill", summary: "The opening establishes the report scope." }],
-    })).toEqual({
-      decisions: [{ result: "result_1", action: "distill", summary: "The opening establishes the report scope." }],
+  it("accepts only a compact release handle list", () => {
+    expect(contextDispositionToolInputSchema.parse({ release: ["R1", "R600"] })).toEqual({
+      release: ["R1", "R600"],
     })
   })
 
-  it("requires a summary only for distill and rejects duplicate handles", () => {
+  it("rejects legacy decisions, malformed handles, and duplicates", () => {
     expect(contextDispositionToolInputSchema.safeParse({
-      decisions: [{ result: "result_1", action: "distill" }],
+      decisions: [{ result: "result_1", action: "release" }],
     }).success).toBe(false)
-    expect(contextDispositionToolInputSchema.safeParse({
-      decisions: [{ result: "result_1", action: "release", summary: "not allowed" }],
-    }).success).toBe(false)
-    expect(contextDispositionToolInputSchema.safeParse({
-      decisions: [
-        { result: "result_1", action: "keep_exact" },
-        { result: "result_1", action: "release" },
-      ],
-    }).success).toBe(false)
+    expect(contextDispositionToolInputSchema.safeParse({ release: ["result_1"] }).success).toBe(false)
+    expect(contextDispositionToolInputSchema.safeParse({ release: ["R1", "R1"] }).success).toBe(false)
   })
 })

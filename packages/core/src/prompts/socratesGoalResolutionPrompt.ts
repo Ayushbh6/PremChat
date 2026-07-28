@@ -18,9 +18,10 @@ Choose exactly one semantic outcome:
 - clarify: choosing between plausible goals would materially change the result.
 
 Every user message creates a task, but a different verb, person, implementation step, test, phase, or completed prior task does not by itself create a goal. A greeting prefix never turns concrete work into General Conversation. Prefer current when continuity is causally plausible and choosing it is harmless. Candidate numbers are human references; never return or infer ids.
+An explicit request to return to, resume, switch back to, or reopen a uniquely matching older goal must produce older for that candidate, even when the current goal is unfinished. Matching an older goal by its title, objective, or unmistakable subject is sufficient; the user does not need to say its candidate number. The preference for current is only a tie-breaker when the message does not clearly select another goal.
 An unresolved reference such as "the other one", "that one", or "go back to it" must produce clarify whenever more than one listed goal could satisfy it. Never guess the first older candidate merely because it is listed first.
 
-Return only the strict structured result.
+Return only the strict structured result with all four fields: decision, candidate, title, and question. Set fields that do not apply to null. For current all three detail fields are null; for older only candidate is non-null; for new only title is non-null; for clarify only question is non-null.
 </socrates_goal_resolution_phase>`
 
 export const buildSocratesGoalResolutionUserContent = (input: {

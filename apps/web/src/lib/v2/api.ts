@@ -72,24 +72,17 @@ const v2ContextStateSchema = z
         contentHash: z.string(),
         capturedAt: z.string(),
       }).strict(),
-      disposition: z.enum(["keep_exact", "distill", "release", "unresolved"]),
-      representation: z.enum(["exact", "distilled"]),
-      distilledText: z.string().optional(),
+      disposition: z.literal("keep_exact"),
+      representation: z.literal("exact"),
       tokenEstimate: z.number().int().nonnegative().optional(),
-      active: z.boolean(),
+      active: z.literal(true),
       priority: z.number(),
-      createdAtCompletedTurn: z.number().int().nonnegative(),
-      decidedAtCompletedTurn: z.number().int().nonnegative(),
-      unresolvedSinceCompletedTurn: z.number().int().nonnegative().optional(),
-      reviewDueAtCompletedTurn: z.number().int().nonnegative().optional(),
     }).strict()),
   })
   .strict();
 const v2ContextCountsSchema = z
   .object({
     immutableEvidenceCount: z.number().int().nonnegative(),
-    activeItemCount: z.number().int().nonnegative(),
-    releasedItemCount: z.number().int().nonnegative(),
   })
   .strict();
 const v2ContextResponseSchema = z

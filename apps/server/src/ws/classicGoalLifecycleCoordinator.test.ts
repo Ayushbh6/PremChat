@@ -33,7 +33,7 @@ describe("Classic shared goal resolution", () => {
       async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
         resolutionSystem = request.system
         resolutionPayload = JSON.parse(String(request.messages[0]?.content)) as Record<string, unknown>
-        return { output: { decision: "current" } as TOutput }
+        return { output: { decision: "current", candidate: null, title: null, question: null } as TOutput }
       },
     }
     const snapshot = {

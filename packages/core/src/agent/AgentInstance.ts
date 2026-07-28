@@ -136,7 +136,7 @@ const CONTEXT_STAGE_CAPABILITY_IDS = {
   exact_messages: "context.exact_messages",
   runtime_context: "context.runtime_state",
   tool_definitions: "context.tool_definitions",
-  consent_gated_compaction: "context.user_approved_compaction",
+  automatic_compaction: "context.automatic_compaction",
 } as const
 
 const assertContextProfileMatchesCapabilities = <TPromptContext, TOutput>(
@@ -167,10 +167,10 @@ const assertContextProfileSupportsRun = <TPromptContext, TOutput>(
       `Agent ${definition.id} has model tools but context profile ${definition.contextProfile.id} omits tool_definitions.`,
     )
   }
-  if (input.contextCompression?.enabled && !stages.includes("consent_gated_compaction")) {
+  if (input.contextCompression?.enabled && !stages.includes("automatic_compaction")) {
     throw new SocratesError(
       "agent_context_profile_mismatch",
-      `Agent ${definition.id} enabled compaction but context profile ${definition.contextProfile.id} omits consent_gated_compaction.`,
+      `Agent ${definition.id} enabled compaction but context profile ${definition.contextProfile.id} omits automatic_compaction.`,
     )
   }
 }

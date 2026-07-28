@@ -39,7 +39,7 @@ const canaries = [
   ["The failing command is pnpm --filter @socrates/core test -- contextCompression.test.ts and the file is packages/core/src/context/contextCompression.ts.", "Recorded the exact command and file path; this failure remains unresolved."],
   ["I prefer discussing edges, agreeing a plan, setting a goal, implementing, and then reviewing.", "Recorded the user's ordered collaboration workflow as a durable preference."],
   ["The attached source is .socrates/attachments/pasted-text-eval.txt. Read it selectively before relying on it.", "Recorded the attachment path and the requirement to inspect it before answering."],
-  ["Correction: MEMORY_HARD_CAP=200000 is stale. The final hard cap is MEMORY_HARD_CAP=180000 and post-compaction target is 120000.", "Superseded the provisional cap. Current decision: MEMORY_HARD_CAP=180000; target=120000."],
+  ["Correction: MEMORY_HARD_CAP=200000 is stale. The final dispatch cap is MEMORY_HARD_CAP=170000 and post-compaction ceiling is 120000.", "Superseded the provisional cap. Current decision: MEMORY_HARD_CAP=170000; ceiling=120000."],
   ["The registry is authoritative TypeScript; the generated surface map is only the tiny model-readable projection.", "Recorded the architecture decision and marked the registry implementation complete."],
   ["The unresolved task is to prove exact trace recovery after repeated compaction. Do not mark it completed until the downstream agent retrieves ORCHID-NEBULA-731.", "Kept exact trace recovery open; registry implementation is completed separately."],
 ]
@@ -57,7 +57,7 @@ const dataset = {
   turns,
   checks: [
     { id: "exact_quote", required: ["ORCHID-NEBULA-731"] },
-    { id: "current_cap", required: ["180000", "120000"], forbidden: ["final hard cap is MEMORY_HARD_CAP=200000"] },
+    { id: "current_cap", required: ["170000", "120000"], forbidden: ["final hard cap is MEMORY_HARD_CAP=200000"] },
     { id: "command", required: ["pnpm --filter @socrates/core test -- contextCompression.test.ts"] },
     { id: "file_path", required: ["packages/core/src/context/contextCompression.ts"] },
     { id: "workflow", requiredConcepts: ["discuss", "plan", "goal", "implement", "review"] },

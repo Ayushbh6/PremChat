@@ -343,7 +343,6 @@ export function v2FlowRuntimeReducer(
     }
     case "v2.error.created":
       return { ...state, lastRuntimeError: event.payload.error.message };
-    case "v2.context.disposition.updated":
     case "v2.artifact.created":
     case "v2.speech.job.updated":
       return state;

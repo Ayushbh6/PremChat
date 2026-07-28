@@ -6,7 +6,7 @@
     {
       "id": "main-agent-provider-loop",
       "path": "packages/core/src/agent/SocratesAgent.ts",
-      "anchors": ["export class SocratesAgent", "this.runtime.run", "this.turnLifecycle.runPostEvidenceMemoryLoop"],
+      "anchors": ["export class SocratesAgent", "this.runtime.run", "this.turnLifecycle.executeToolCalls"],
       "finding": "Classic, Flow, and Skill Writer retain one Socrates lifecycle while all provider execution enters through AgentRuntime."
     },
     {
@@ -16,34 +16,34 @@
       "finding": "Main model steps, text workers, and structured workers share the one public provider-neutral AgentRuntime boundary."
     },
     {
-      "id": "flow-goal-router-empty-tools",
-      "path": "packages/core/src/tools/registry.ts",
-      "anchors": ["createGoalRouterToolRegistry", "new ToolRegistry([goalSearchTool])"],
-      "finding": "The shared Goal Router has one bounded read-only goal_search tool; runtime execution caps it at three calls."
+      "id": "parallel-goal-memory-candidates",
+      "path": "apps/server/src/services/turn/turnCandidateRetrieval.ts",
+      "anchors": ["export const retrieveTurnCandidates", "Promise.allSettled", "rankExactMemoryCandidates"],
+      "finding": "Goal and memory candidates are retrieved concurrently, then memory selection is deterministic and may perform one goal-aware refinement."
     },
     {
-      "id": "flow-goal-router-context-shape",
-      "path": "packages/core/src/prompts/goalRouterPrompt.ts",
-      "anchors": ["immediatelyPrecedingExchanges", "selectedGoalHistory", "currentCandidate", "candidates:"],
-      "finding": "The router receives the full latest request, three immediately preceding visible Q&A pairs, five selected-goal Q&A pairs, and bounded goal cards."
+      "id": "same-socrates-goal-resolution",
+      "path": "packages/core/src/prompts/socratesGoalResolutionPrompt.ts",
+      "anchors": ["SOCRATES_GOAL_RESOLUTION_PHASE_PROMPT", "currentGoal", "latestExactExchangeInCurrentGoal"],
+      "finding": "The selected main Socrates performs the four-way goal decision without a router agent or router tools."
     },
     {
       "id": "validated-main-answer-owns-finalization",
-      "path": "packages/core/src/agent/SocratesAgent.ts",
-      "anchors": ["socratesFinalAnswerSchema", "type: \"agent.final_result\"", "finalAnswerMode === \"structured\""],
-      "finding": "The main Socrates turn emits one validated answer and goal-finalization result after reconciliation; the detached post router is no longer a completion authority."
+      "path": "apps/server/src/services/turn/validatedTurnFinalization.ts",
+      "anchors": ["commitValidatedTurnFinalization", "persistAnswerAndTask", "persistBoundGoalAndCapsule", "persistUsageAndAudit"],
+      "finding": "Classic and Flow commit the validated answer, task, bound goal/capsule, usage, and audit effects through one atomic finalization authority."
     },
     {
-      "id": "focus-ledger-second-completion-authority",
-      "path": "apps/server/src/services/v2/flowStore.ts",
-      "anchors": ["input.request.operation === \"complete_current\"", "Completion is staged and will commit after the final response is saved."],
-      "finding": "Flow also permits the main model to stage completion through focus_ledger."
+      "id": "release-only-large-result-control",
+      "path": "packages/core/src/context/toolOutputDisposition.ts",
+      "anchors": ["Large temporary result", "release ${candidate.result} alongside your next normal tool call", "No current-turn tool outputs were released."],
+      "finding": "Only qualifying large current-turn tool outputs receive R handles; release piggybacks on a normal tool call and exact evidence remains durable."
     },
     {
-      "id": "completion-selects-general",
-      "path": "apps/server/src/services/v2/flowStore.ts",
-      "anchors": ["Lifecycle and view selection are deliberately independent", "remain selected until an explicit routing"],
-      "finding": "Validated completion changes goal lifecycle without changing the selected Flow goal."
+      "id": "automatic-oldest-head-compaction",
+      "path": "packages/core/src/context/contextCompression.ts",
+      "anchors": ["CONTEXT_MODEL_DISPATCH_CEILING_TOKENS = 170_000", "recentTailTargetTokens: 70_000", "context_compaction_no_safe_head"],
+      "finding": "One shared automatic compactor preserves a recent whole-turn suffix, never rewrites the active turn, and blocks unsafe dispatch above 170k."
     },
     {
       "id": "canonical-cross-view-projections",
@@ -54,8 +54,8 @@
     {
       "id": "direct-soul-provider-call",
       "path": "packages/core/src/agent/SoulConfirmationAgent.ts",
-      "anchors": ["export class SoulConfirmationAgent", "new AgentRuntime()", "soulConfirmationAgentOutputSchema"],
-      "finding": "Soul confirmation is a strict no-tool agent using the same AgentRuntime boundary."
+      "anchors": ["export class SoulConfirmationAgent", "new AgentInstance(soulConfirmationAgentDefinition)", "toolExecutors: {}"],
+      "finding": "Soul confirmation is a strict no-tool AgentInstance using the same shared runtime boundary."
     },
     {
       "id": "flow-live-activity-presentation",

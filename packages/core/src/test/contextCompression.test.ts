@@ -28,17 +28,14 @@ describe("context compression", () => {
     expect(SOCRATES_COMPRESSOR_SYSTEM_PROMPT).toContain("never replace an exact identifier with only a paraphrase")
   })
 
-  it("uses one v1 trigger and tail/tool pressure defaults", () => {
+  it("uses one 170k ceiling with a 70k whole-turn tail and 100k target", () => {
     expect(DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS).toEqual({
       triggerTokens: 170_000,
-      excellentTargetTokens: 60_000,
-      preferredTargetTokens: 80_000,
+      excellentTargetTokens: 80_000,
+      preferredTargetTokens: 100_000,
       postCompactionTargetTokens: 120_000,
-      hardLimitTokens: 180_000,
       minimumReductionTokens: 20_000,
-      recentTailTargetTokens: 50_000,
-      currentTurnToolTailTargetTokens: 50_000,
-      currentTurnToolResultFloor: 5,
+      recentTailTargetTokens: 70_000,
     })
   })
 
@@ -90,9 +87,9 @@ describe("context compression", () => {
       "context.compaction.started",
       "context.compaction.completed",
     ])
-    expect(prepared.compactionEvents[0]).toMatchObject({ targetTokens: 80_000 })
+    expect(prepared.compactionEvents[0]).toMatchObject({ targetTokens: 100_000 })
     expect(prepared.compactionEvents[1]).toMatchObject({ sizeClass: "excellent" })
-    expect(startedTargets).toEqual([80_000])
+    expect(startedTargets).toEqual([100_000])
     expect(String(prepared.messages[0]?.content)).toContain("<socrates_internal_context_compaction>")
     expect(String(prepared.messages[0]?.content)).toContain("# Anchors")
     expect(prepared.estimatedTokens).toBe(60_000)
@@ -186,7 +183,7 @@ describe("context compression", () => {
     ])
   }, SLOW_COMPRESSION_TEST_TIMEOUT_MS)
 
-  it("shrinks the raw recent tail when fixed context would exceed the preferred total", async () => {
+  it("shrinks the raw recent tail by whole turns when fixed context would exceed the safe total", async () => {
     const provider = structuredProvider({ counts: [10, 5], outputs: [validChat()] })
     const messages = [
       { role: "user" as const, content: "old head", id: "msg_head", turnId: "turn_1" },
@@ -205,7 +202,7 @@ describe("context compression", () => {
         enabled: true,
         thresholds: {
           triggerTokens: 10,
-          preferredTargetTokens: 6_100,
+          postCompactionTargetTokens: 6_100,
           recentTailTargetTokens: 50_000,
         },
       },
@@ -295,7 +292,7 @@ describe("context compression", () => {
     const completed: string[] = []
     const failed: string[] = []
 
-    const prepared = await prepareContextForModelCall({
+    await expect(prepareContextForModelCall({
       provider,
       providerId: "openai",
       modelId: "gpt-5.4-mini",
@@ -316,6 +313,9 @@ describe("context compression", () => {
           failed.push(input.snapshotId)
         },
       },
+    })).rejects.toMatchObject({
+      code: "context_hard_limit_exceeded",
+      details: { compactionError: "structured_agent_output_invalid" },
     })
 
     expect(provider.structuredRequests.map((request) => `${request.providerId}:${request.modelId}`)).toEqual([
@@ -326,7 +326,6 @@ describe("context compression", () => {
     ])
     expect(completed).toEqual([])
     expect(failed).toEqual([expect.stringMatching(/^ctxcmp_/)])
-    expect(prepared.compactionEvents.map((event) => event.type)).toEqual(["context.compaction.failed"])
   })
 
   it("recounts packed context before returning and activating it", async () => {
@@ -462,8 +461,6 @@ describe("context compression", () => {
         thresholds: {
           triggerTokens: 170_000,
           recentTailTargetTokens: 500,
-          currentTurnToolTailTargetTokens: 1,
-          currentTurnToolResultFloor: 5,
         },
         startSnapshot: (input) => {
           started.push(input)
@@ -480,10 +477,8 @@ describe("context compression", () => {
     expect(compressorInput).toContain("HEAD_FAILURE_SENTINEL")
     expect(compressorInput).not.toContain("TAIL_RAW_SENTINEL")
     expect(compressorInput).not.toContain("ACTIVE_CONTEXT_SENTINEL")
-    expect(compressorInput).toContain("# Current Turn Tool Digest")
-    expect(compressorInput).toContain("older tool result read")
-    expect(compressorInput).toContain("workspace/old1.md")
-    expect(compressorInput).toContain("ACTIVE_TOOL_OMIT_SENTINEL_1")
+    expect(compressorInput).not.toContain("# Current Turn Tool Digest")
+    expect(compressorInput).not.toContain("ACTIVE_TOOL_OMIT_SENTINEL_1")
 
     expect(started[0]?.sourceMessageIds).toEqual(["msg_head_1u", "msg_head_1a", "msg_head_2u", "msg_head_2a"])
     expect(started[0]?.sourceTurnIds).toEqual(["turn_head_1", "turn_head_2"])
@@ -525,15 +520,15 @@ describe("context compression", () => {
     expect(packed).toContain("socrates_internal_context_compaction")
     expect(packed).toContain("TAIL_RAW_SENTINEL")
     expect(packed).toContain("ACTIVE_CONTEXT_SENTINEL")
-    expect(packed).toContain("contextCompacted")
+    expect(packed).not.toContain("contextCompacted")
+    expect(packed).toContain("ACTIVE_TOOL_OMIT_SENTINEL_1")
     expect(packed).toContain("ACTIVE_TOOL_RAW_SENTINEL_7")
     expect(packed).toContain("ACTIVE_TOOL_RAW_SENTINEL_3")
-    expect(packed).not.toContain("ACTIVE_TOOL_OMIT_SENTINEL_1")
     expect(prepared.compactionEvents.map((event) => event.type)).toEqual(["context.compaction.started", "context.compaction.completed"])
   }, SLOW_COMPRESSION_TEST_TIMEOUT_MS)
 
-  it("keeps the latest five tool results and compacts older current-turn tool results", async () => {
-    const provider = structuredProvider({ counts: [170_000, 80_000], outputs: [validChat({ toolState: ["Older tool digest captured."], anchors: [] })] })
+  it("refuses to mutate an oversized active turn when there is no completed head to compact", async () => {
+    const provider = structuredProvider({ counts: [170_000] })
     const messages = [
       {
         role: "user" as const,
@@ -557,7 +552,7 @@ describe("context compression", () => {
       },
     ]
 
-    const prepared = await prepareContextForModelCall({
+    await expect(prepareContextForModelCall({
       provider,
       providerId: "openai",
       modelId: "gpt-5.4-mini",
@@ -566,23 +561,13 @@ describe("context compression", () => {
       messages,
       compression: {
         enabled: true,
-        thresholds: {
-          triggerTokens: 170_000,
-          currentTurnToolTailTargetTokens: 1,
-          currentTurnToolResultFloor: 5,
-        },
+        thresholds: { triggerTokens: 170_000 },
       },
+    })).rejects.toMatchObject({
+      code: "context_hard_limit_exceeded",
+      details: { hardLimitTokens: 170_000, compactionError: "context_compaction_no_safe_head" },
     })
-
-    const packed = JSON.stringify(prepared.messages)
-    expect(packed).toContain("tool_7")
-    expect(packed).toContain("result 7")
-    expect(packed).toContain("tool_3")
-    expect(packed).toContain("result 3")
-    expect(packed).toContain("tool_1")
-    expect(packed).toContain("contextCompacted")
-    expect(packed).not.toContain("result 1 " + "x".repeat(900))
-    expect(String(provider.structuredRequests[0]?.messages[0]?.content)).toContain("older tool result read")
+    expect(provider.structuredRequests).toHaveLength(0)
   }, SLOW_COMPRESSION_TEST_TIMEOUT_MS)
 
   it("precomputes at the same 170k trigger", async () => {
@@ -606,7 +591,7 @@ describe("context compression", () => {
     })
 
     expect(events.map((event) => event.type)).toEqual(["context.compaction.started", "context.compaction.completed"])
-    expect(events[0]).toMatchObject({ reason: "precompute", targetTokens: 80_000 })
+    expect(events[0]).toMatchObject({ reason: "precompute", targetTokens: 100_000 })
     expect(completed).toEqual([expect.stringMatching(/^ctxcmp_/)])
   })
 
@@ -665,10 +650,10 @@ describe("context compression", () => {
 
   it("rejects anchors whose turns are absent from compressor input", async () => {
     const provider = structuredProvider({
-      counts: [170_000],
+      counts: [170_000, 60_000],
       outputs: [validChat({ anchors: ["Turn 99: invented anchor."] }), validChat({ anchors: ["Turn 99: still invented."] })],
     })
-    const prepared = await prepareContextForModelCall({
+    await expect(prepareContextForModelCall({
       provider,
       providerId: "openai",
       modelId: "gpt-5.4-mini",
@@ -676,11 +661,9 @@ describe("context compression", () => {
       system: "system",
       messages: threeTurnMessages(),
       compression: { enabled: true, thresholds: { recentTailTargetTokens: 1 } },
-    })
-
-    expect(prepared.compactionEvents[0]).toMatchObject({
-      type: "context.compaction.failed",
-      error: { code: "compressor_anchor_turn_not_in_input" },
+    })).rejects.toMatchObject({
+      code: "context_hard_limit_exceeded",
+      details: { compactionError: "compressor_anchor_turn_not_in_input" },
     })
   })
 
@@ -732,8 +715,8 @@ describe("context compression", () => {
     }
   })
 
-  it("refuses provider context above the hard limit when compaction is disabled", async () => {
-    const provider = structuredProvider({ counts: [180_001] })
+  it("refuses provider context at the 170k boundary when compaction is disabled", async () => {
+    const provider = structuredProvider({ counts: [170_000] })
     await expect(prepareContextForModelCall({
       provider,
       providerId: "openai",
@@ -759,7 +742,7 @@ describe("context compression", () => {
   })
 
   it("accepts an above-preferred result below 120k and labels it acceptable", async () => {
-    const provider = structuredProvider({ counts: [170_000, 100_000], outputs: [validChat()] })
+    const provider = structuredProvider({ counts: [170_000, 110_000], outputs: [validChat()] })
     const prepared = await prepareContextForModelCall({
       provider,
       providerId: "openai",

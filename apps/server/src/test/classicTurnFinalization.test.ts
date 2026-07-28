@@ -39,12 +39,12 @@ describe("Classic final-answer commit", () => {
     ).run(now)
     const store = new SocratesStore(handle, undefined, undefined, { socratesHome: path.join(root, "home") })
 
-    expect(() => store.completeAgentTurnAtomically({
+    expect(() => store.commitValidatedTurn({
       conversationId: "conv_atomic",
       sessionId: "sess_atomic",
       turnId: "turn_atomic",
       content: "Validated answer",
-      afterPersist: () => {
+      persistBoundGoalAndCapsule: () => {
         throw new Error("forced goal finalization failure")
       },
     })).toThrow("forced goal finalization failure")

@@ -251,7 +251,11 @@ function generatedToolDocs(inventory) {
       : entries[0]?.documentationTitle ?? entries[0]?.modelToolName
     const purpose = entries.map((entry) => `- \`${entry.modelToolName}\`: ${entry.description}`)
     const routing = [
-      ...entries.map((entry) => `- Use \`${entry.modelToolName}\` when the active task requires its cataloged ${entry.policy.approval === "automatic" ? "read/retrieval" : "mutation/execution"} capability.`),
+      ...entries.map((entry) => entry.id === "tool.context_disposition"
+        ? "- Use `context_disposition` only to release eligible R handles alongside another normal tool call; omission must never block work."
+        : entry.id === "tool.handover_to_frontier"
+          ? "- Use `handover_to_frontier` only after substantive effort reaches a concrete capability or reliability blocker and the user approves the one-way transfer."
+          : `- Use \`${entry.modelToolName}\` when the active task requires its cataloged ${entry.policy.approval === "automatic" ? "read/retrieval" : "mutation/execution"} capability.`),
       ...entries.flatMap((entry) => entry.documentationGuidance.slice(1).map((guidance) => `- ${guidance}`)),
     ]
     const inputs = entries.map((entry) => `- \`${entry.modelToolName}\` uses the one canonical schema owned by \`${entry.id}\`; send only documented fields and do not add aliases or placeholder values.`)
