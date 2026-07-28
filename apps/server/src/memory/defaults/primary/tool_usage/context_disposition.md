@@ -12,7 +12,7 @@ index_tags: [tool_usage]
 <!-- socrates:section id="purpose" kind="purpose" tags="tools" -->
 ## Purpose
 
-- `context_disposition`: Release unneeded large temporary result handles from the current model-visible turn. Call only alongside at least one normal tool call, never alone and never before a final answer. Pass release with one or more exact R handles from the latest hidden reminder. Omit handles that are still needed. Release never deletes exact audit evidence.
+- `context_disposition`: Release unneeded large temporary result handles from the current model-visible turn. Call only alongside at least one normal tool call, never alone and never before a final answer. Pass release with one or more exact R handles from result-local notices. Omit handles that are still needed. Release never deletes exact audit evidence.
 <!-- /socrates:section -->
 
 <!-- socrates:section id="when_to_use" kind="routing" tags="tools" -->

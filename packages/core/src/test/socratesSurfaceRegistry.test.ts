@@ -20,12 +20,12 @@ describe("Socrates surface registry", () => {
     expect(first).not.toContain("Beta")
   })
 
-  it("defines .socrates as a bounded planning and disposable-work surface", () => {
+  it("defines .socrates as a flexible planning and disposable-work surface", () => {
     const prompt = buildSocratesSystemPrompt()
-    expect(prompt).toContain("using whatever clear filenames and layout best fit the task")
-    expect(prompt).toContain("not a particular document name")
+    expect(prompt).toContain(".socrates is Socrates' project brain and flexible working space")
+    expect(prompt).toContain("Process matters, not filenames or ceremony")
     expect(prompt).toContain(".socrates/work/")
-    expect(prompt).toContain("Keep production code, user deliverables, migrations, and permanent repository tests in their proper repo locations")
-    expect(prompt).toContain("Do not create planning ceremony for trivial answers or tiny edits")
+    expect(prompt).toContain("Generated product code, user deliverables, migrations, and permanent tests belong in the repo/workspace")
+    expect(prompt).toContain("Do not update docs just because a command ran")
   })
 })

@@ -10,7 +10,12 @@ import type {
 } from "@socrates/contracts"
 import { capabilityCatalog, socratesMainAgentDefinition, type FileFreshnessTracker } from "@socrates/core"
 import type { McpRuntime } from "@socrates/mcp"
-import { SocratesError } from "@socrates/shared"
+import {
+  limitModelOutputText,
+  MAX_MODEL_OUTPUT_TOKEN_LIMIT,
+  resolveModelOutputCharLimit,
+  SocratesError,
+} from "@socrates/shared"
 import { applyTextEdits } from "@socrates/workspace"
 import type { SocratesStore } from "../store"
 
@@ -36,23 +41,19 @@ export const readSocratesResource = async (
   const fullContent = await resolveResourceContent(input.path, context)
   const hash = hashText(fullContent)
   context.fileFreshness?.record(input.path, hash, context.workspacePath)
-  const charLimit = Math.min(input.charLimit ?? DEFAULT_CHAR_LIMIT, 80_000)
-  const offset = input.offset ?? 0
-  const content = fullContent.slice(offset, offset + charLimit)
-  const nextOffset = offset + content.length
+  const limited = limitModelOutputText(fullContent, {
+    ...(input.charLimit !== undefined ? { charLimit: input.charLimit } : {}),
+    ...(input.tokenLimit !== undefined ? { tokenLimit: input.tokenLimit } : {}),
+    defaultCharLimit: DEFAULT_CHAR_LIMIT,
+    ...(input.offset !== undefined ? { offset: input.offset } : {}),
+  })
   return {
     path: input.path,
     kind: "resource",
-    content,
+    content: limited.text,
     contentHash: hash,
     sizeBytes: Buffer.byteLength(fullContent, "utf8"),
-    truncation: {
-      truncated: nextOffset < fullContent.length,
-      charLimit,
-      originalLength: fullContent.length,
-      returnedLength: content.length,
-      ...(nextOffset < fullContent.length ? { nextOffset } : {}),
-    },
+    truncation: limited.truncation,
   }
 }
 
@@ -80,7 +81,8 @@ export const searchSocratesResources = async (
   const regex = input.regex ? compileRegex(input.query, input.caseSensitive) : undefined
   const needle = input.caseSensitive ? input.query : input.query.toLowerCase()
   const matches: SearchToolOutput["matches"] = []
-  const maxResults = input.maxResults ?? 50
+  const maxResults = Math.min(input.maxResults ?? 20, 50)
+  let shortenedLines = 0
   for (const result of settled) {
     if (result.status !== "fulfilled") continue
     const { path, content } = result.value
@@ -92,6 +94,7 @@ export const searchSocratesResources = async (
     for (const [index, line] of content.split(/\r?\n/).entries()) {
       const haystack = input.caseSensitive ? line : line.toLowerCase()
       if (regex ? regex.test(line) : haystack.includes(needle)) {
+        if (line.length > 1_000) shortenedLines += 1
         matches.push({ path, line: index + 1, text: line.slice(0, 1_000) })
         if (matches.length >= maxResults) break
       }
@@ -99,21 +102,33 @@ export const searchSocratesResources = async (
     if (matches.length >= maxResults) break
   }
   const serialized = JSON.stringify(matches)
-  const charLimit = input.charLimit ?? DEFAULT_CHAR_LIMIT
+  const charLimit = resolveModelOutputCharLimit({
+    ...(input.charLimit !== undefined ? { charLimit: input.charLimit } : {}),
+    tokenLimit: MAX_MODEL_OUTPUT_TOKEN_LIMIT,
+    defaultCharLimit: DEFAULT_CHAR_LIMIT,
+    defaultTokenLimit: MAX_MODEL_OUTPUT_TOKEN_LIMIT,
+  })
   let bounded = matches
   while (bounded.length > 0 && JSON.stringify(bounded).length > charLimit) bounded = bounded.slice(0, -1)
+  const resultLimitReached = matches.length >= maxResults
+  const warnings = [
+    ...(input.maxResults && input.maxResults > 50 ? ["Search maxResults was capped at 50. Narrow the resource path or query."] : []),
+    ...(resultLimitReached ? [`Search results reached the ${maxResults}-result limit. Narrow the resource path or query.`] : []),
+    ...(shortenedLines > 0 ? [`${shortenedLines} oversized matching line${shortenedLines === 1 ? " was" : "s were"} shortened to 1,000 characters. Read the exact resource and offset for full text.`] : []),
+    ...(settled.some((result) => result.status === "rejected") ? ["One or more governed resource surfaces were unavailable."] : []),
+  ]
   return {
     mode: input.mode,
     query: input.query,
     matches: bounded,
     totalMatches: matches.length,
     truncation: {
-      truncated: bounded.length < matches.length,
+      truncated: bounded.length < matches.length || resultLimitReached || shortenedLines > 0,
       charLimit,
       originalLength: serialized.length,
       returnedLength: JSON.stringify(bounded).length,
     },
-    ...(settled.some((result) => result.status === "rejected") ? { warnings: ["One or more governed resource surfaces were unavailable."] } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
   }
 }
 
@@ -174,7 +189,12 @@ export const editSocratesResource = async (
     if (persisted !== next) throw new SocratesError("edit_verification_failed", "Governed resource edit did not persist exactly.")
   }
   const afterHash = hashText(next)
-  const diff = renderReplacementDiff(input.path, current, next)
+  const fullDiff = renderReplacementDiff(input.path, current, next)
+  const limitedDiff = limitModelOutputText(fullDiff, {
+    charLimit: DEFAULT_CHAR_LIMIT,
+    tokenLimit: MAX_MODEL_OUTPUT_TOKEN_LIMIT,
+    defaultTokenLimit: MAX_MODEL_OUTPUT_TOKEN_LIMIT,
+  })
   return {
     changedFiles: [{
       path: input.path,
@@ -186,14 +206,9 @@ export const editSocratesResource = async (
       sizeBytesAfter: Buffer.byteLength(next, "utf8"),
       lineDelta: lineCount(next) - lineCount(current),
     }],
-    diff,
+    diff: limitedDiff.text,
     dryRun,
-    truncation: {
-      truncated: false,
-      charLimit: Math.max(diff.length, 1),
-      originalLength: diff.length,
-      returnedLength: diff.length,
-    },
+    truncation: limitedDiff.truncation,
   }
 }
 
@@ -307,7 +322,7 @@ const normalizeSkillScope = (scope: string): "builtin" | "global" | "project" =>
 }
 const compileRegex = (query: string, caseSensitive = false): RegExp => {
   try {
-    return new RegExp(query, caseSensitive ? "g" : "gi")
+    return new RegExp(query, caseSensitive ? "" : "i")
   } catch {
     throw new SocratesError("search_regex_invalid", "Search regex is invalid.", { recoverable: true })
   }
@@ -317,7 +332,7 @@ const hashText = (value: string): string => crypto.createHash("sha256").update(v
 const lineCount = (value: string): number => value.length === 0 ? 0 : value.split(/\r?\n/).length
 const renderReplacementDiff = (path: string, before: string, after: string): string => before === after
   ? ""
-  : [`--- ${path}`, `+++ ${path}`, `@@ full governed resource @@`, `-${before}`, `+${after}`].join("\n").slice(0, 80_000)
+  : [`--- ${path}`, `+++ ${path}`, `@@ full governed resource @@`, `-${before}`, `+${after}`].join("\n")
 const resourceIndex = (): string => [
   "socrates://identity",
   "socrates://user/profile",

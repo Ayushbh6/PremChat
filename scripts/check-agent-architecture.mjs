@@ -140,6 +140,44 @@ for (const retiredPath of [
 ]) {
   if (await exists(retiredPath)) throw new Error(`Retired model-tool definition remains on disk: ${retiredPath}.`)
 }
+for (const retiredPath of [
+  "packages/core/src/agent/socratesTurnLedgers.ts",
+  "packages/core/src/prompts/socratesFinalAnswerPrompt.ts",
+]) {
+  if (await exists(retiredPath)) throw new Error(`Retired main-loop authority remains on disk: ${retiredPath}.`)
+}
+
+const mainAgentSource = await readFile(resolve(root, "packages/core/src/agent/SocratesAgent.ts"), "utf8")
+if (mainAgentSource.includes("generateStructured")) {
+  throw new Error("Main Socrates still owns a detached structured-output call; finalization must remain in the foreground stream.")
+}
+if (!mainAgentSource.includes("parseSocratesFinalOutput(stepText)")) {
+  throw new Error("Main Socrates no longer validates its final object inside the foreground stream.")
+}
+if (!mainAgentSource.includes("structuredOutputSchema: socratesFinalAnswerSchema")) {
+  throw new Error("Main Socrates no longer enforces its terminal schema on the same foreground provider request.")
+}
+const aiSdkProviderSource = await readFile(resolve(root, "packages/providers/src/ai-sdk/AiSdkProvider.ts"), "utf8")
+if (!aiSdkProviderSource.includes("Output.object({ schema: request.structuredOutputSchema")) {
+  throw new Error("AI SDK providers no longer enforce the foreground terminal schema natively.")
+}
+const directDeepSeekProviderSource = await readFile(resolve(root, "packages/providers/src/deepseek/DeepSeekChatProvider.ts"), "utf8")
+if (!directDeepSeekProviderSource.includes("jsonObject: true, schema: request.structuredOutputSchema")) {
+  throw new Error("Direct DeepSeek no longer enforces the foreground terminal schema natively.")
+}
+for (const retiredMarker of [
+  "Runtime action ledger",
+  "socrates_memory_save_ledger",
+  "socrates_reconciliation_checkpoint",
+  "socrates_progress_reconciliation_checkpoint",
+  "socrates_final_answer_checkpoint",
+]) {
+  if (mainAgentSource.includes(retiredMarker)) throw new Error(`Retired hidden main-loop message remains: ${retiredMarker}.`)
+}
+const directDeveloperMessagePushes = [...mainAgentSource.matchAll(/messages\.push\(\{\s*role:\s*"developer"/g)]
+if (directDeveloperMessagePushes.length !== 1 || !mainAgentSource.includes('messages.push({ role: "developer", content: renderResolvedTurnContext(resolvedTurnContext) })')) {
+  throw new Error("Main Socrates may directly append only the declared resolved-turn context developer message.")
+}
 
 for (const capability of capabilities) {
   if (!capability.executorBinding) throw new Error(`Capability ${capability.id} has no executor binding.`)

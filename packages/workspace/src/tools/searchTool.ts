@@ -3,12 +3,13 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { promisify } from "node:util"
 import type { SearchToolInput, SearchToolOutput } from "@socrates/contracts"
-import { SocratesError } from "@socrates/shared"
-import { clampCharLimit, isSecretMaterialPath, resolveWorkspacePath, toWorkspaceRelativePath } from "./common"
+import { MAX_MODEL_OUTPUT_TOKEN_LIMIT, resolveModelOutputCharLimit, SocratesError } from "@socrates/shared"
+import { isSecretMaterialPath, resolveWorkspacePath, toWorkspaceRelativePath } from "./common"
 
 const execFileAsync = promisify(execFile)
 const defaultMaxResults = 20
 const hardMaxResults = 50
+const maxMatchTextCharacters = 1_000
 const skippedDirectories = new Set([".git", "node_modules", "dist", "build", ".next", ".turbo", "coverage"])
 
 export const searchWorkspace = async (input: SearchToolInput, context: { workspacePath: string }): Promise<SearchToolOutput> => {
@@ -19,7 +20,11 @@ export const searchWorkspace = async (input: SearchToolInput, context: { workspa
     })
   }
   const maxResults = Math.min(input.maxResults ?? defaultMaxResults, hardMaxResults)
-  const charLimit = clampCharLimit(input.charLimit)
+  const charLimit = resolveModelOutputCharLimit({
+    ...(input.charLimit !== undefined ? { charLimit: input.charLimit } : {}),
+    tokenLimit: MAX_MODEL_OUTPUT_TOKEN_LIMIT,
+    defaultTokenLimit: MAX_MODEL_OUTPUT_TOKEN_LIMIT,
+  })
   const warnings: string[] = []
   if (input.maxResults && input.maxResults > hardMaxResults) {
     warnings.push(`Search maxResults was capped at ${hardMaxResults}. Narrow path/query or paginate with a more specific search.`)
@@ -31,7 +36,7 @@ export const searchWorkspace = async (input: SearchToolInput, context: { workspa
       : await searchText(root, context.workspacePath, input, maxResults, warnings)
 
   addResultCapWarning(matches.length, maxResults, warnings)
-  const cappedMatches = matches.slice(0, maxResults)
+  const cappedMatches = shortenMatchText(matches.slice(0, maxResults), warnings)
   const boundedMatches = boundMatches(cappedMatches, charLimit)
   const serialized = JSON.stringify(matches)
   const boundedSerialized = JSON.stringify(boundedMatches)
@@ -49,6 +54,22 @@ export const searchWorkspace = async (input: SearchToolInput, context: { workspa
     },
     ...(warnings.length > 0 ? { warnings } : {}),
   }
+}
+
+const shortenMatchText = (
+  matches: SearchToolOutput["matches"],
+  warnings: string[],
+): SearchToolOutput["matches"] => {
+  let shortened = 0
+  const result = matches.map((match) => {
+    if (!match.text || match.text.length <= maxMatchTextCharacters) return match
+    shortened += 1
+    return { ...match, text: `${match.text.slice(0, maxMatchTextCharacters - 3)}...` }
+  })
+  if (shortened > 0) {
+    warnings.push(`${shortened} oversized matching line${shortened === 1 ? " was" : "s were"} shortened to ${maxMatchTextCharacters} characters. Read the exact file and offset for full text.`)
+  }
+  return result
 }
 
 const boundMatches = (matches: SearchToolOutput["matches"], charLimit: number): SearchToolOutput["matches"] => {

@@ -108,7 +108,7 @@ export {
   RECONCILIATION_ACTIVITY_EVIDENCE_LIMIT,
   RECONCILIATION_LONG_TASK_MS,
   ReconciliationWatermarkController,
-  buildSocratesProgressReconciliationCheckpoint,
+  buildSocratesReconciliationNotice,
   type ReconciliationCheckpoint,
   type ReconciliationCheckpointReason,
   type ReconciliationWatermarkState,

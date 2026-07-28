@@ -117,6 +117,25 @@ describe("AI SDK provider request shape", () => {
     expect(options).not.toHaveProperty("activeTools")
   })
 
+  it("enforces a native structured terminal response on the same streamed tool request", async () => {
+    const provider = new AiSdkProvider({
+      getApiKey: () => "test-key",
+    })
+    const schema = z.object({ answer: z.string() }).strict()
+
+    for await (const _event of provider.stream({
+      ...modelRequest("openrouter", "deepseek/deepseek-v4-pro"),
+      structuredOutputSchema: schema,
+    })) {
+      // Drain the mocked stream.
+    }
+
+    expect(aiMocks.outputObject).toHaveBeenCalledWith({ schema })
+    const options = aiMocks.streamText.mock.calls[0]?.[0] as { output?: unknown; tools?: Record<string, unknown> }
+    expect(options.output).toEqual({ type: "mock-output-object", input: { schema } })
+    expect(Object.keys(options.tools ?? {})).toEqual(["read"])
+  })
+
   it("passes stable OpenAI prompt cache options for cache-affinity routing", async () => {
     const provider = new AiSdkProvider({
       getApiKey: () => "test-key",

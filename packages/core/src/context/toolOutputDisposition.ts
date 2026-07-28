@@ -6,18 +6,11 @@ import {
   type ProviderId,
 } from "@socrates/contracts"
 import { estimateTextTokens, type ModelMessage, type ModelMessagePart } from "@socrates/providers"
+import { appendResultLocalNotice, removeResultLocalNotice } from "./resultLocalNotices"
 
 export const TOOL_OUTPUT_RELEASE_TRIGGER_TOKENS = 3_000
 
-const REMINDER_OPEN = "<socrates_large_temporary_results>"
-const REMINDER_CLOSE = "</socrates_large_temporary_results>"
-
 type ToolResultPart = Extract<ModelMessagePart, { type: "tool-result" }>
-
-type ReminderBatch = {
-  message: ModelMessage
-  handles: string[]
-}
 
 type Candidate = {
   result: string
@@ -25,14 +18,13 @@ type Candidate = {
   target: string
   estimatedTokens: number
   part: ToolResultPart
-  batch: ReminderBatch
 }
 
 export class ToolOutputDispositionLedger {
   private readonly candidates = new Map<string, Candidate>()
   private nextResultNumber = 1
 
-  constructor(private readonly messages: ModelMessage[]) {}
+  constructor(_messages?: ModelMessage[]) {}
 
   recordBatch(input: {
     message: ModelMessage
@@ -46,7 +38,6 @@ export class ToolOutputDispositionLedger {
       callsById.set(call.toolCallId, call)
       if (call.providerToolCallId) callsById.set(call.providerToolCallId, call)
     }
-    const batch: ReminderBatch = { message: { role: "developer", content: "" }, handles: [] }
     for (const part of input.message.content) {
       if (part.type !== "tool-result" || part.toolName === "context_disposition" || !isSuccessfulToolOutput(part.output)) continue
       const estimatedTokens = estimateTextTokens(safeStringify(part.output), {
@@ -64,20 +55,19 @@ export class ToolOutputDispositionLedger {
         target: targetFor(part.toolName, call?.input),
         estimatedTokens,
         part,
-        batch,
       }
-      batch.handles.push(result)
       this.candidates.set(result, candidate)
+      appendResultLocalNotice(part, {
+        kind: "large_result_release",
+        key: result,
+        text: renderReminder(candidate),
+      })
     }
-    if (batch.handles.length === 0) return
-    batch.message.content = renderReminder(batch.handles.map((handle) => this.candidates.get(handle)!))
-    this.messages.push(batch.message)
   }
 
   apply(input: ContextDispositionToolInput, piggybacked: boolean): ContextDispositionToolOutput {
     const released: string[] = []
     const ignored: string[] = []
-    const touchedBatches = new Set<ReminderBatch>()
     for (const result of input.release) {
       const candidate = this.candidates.get(result)
       if (!candidate) {
@@ -94,9 +84,8 @@ export class ToolOutputDispositionLedger {
       })
       this.candidates.delete(candidate.result)
       released.push(candidate.result)
-      touchedBatches.add(candidate.batch)
+      removeResultLocalNotice(candidate.part, "large_result_release", candidate.result)
     }
-    for (const batch of touchedBatches) this.refreshReminder(batch)
     const dispositionSummary = released.length === 0
       ? "No current-turn tool outputs were released."
       : `Released ${released.length} current-turn tool-result projection${released.length === 1 ? "" : "s"}.`
@@ -114,26 +103,10 @@ export class ToolOutputDispositionLedger {
     return [...this.candidates.keys()]
   }
 
-  private refreshReminder(batch: ReminderBatch): void {
-    const active = batch.handles.flatMap((handle) => {
-      const candidate = this.candidates.get(handle)
-      return candidate ? [candidate] : []
-    })
-    if (active.length > 0) {
-      batch.message.content = renderReminder(active)
-      return
-    }
-    const index = this.messages.indexOf(batch.message)
-    if (index >= 0) this.messages.splice(index, 1)
-  }
 }
 
-const renderReminder = (candidates: Candidate[]): string => [
-  REMINDER_OPEN,
-  ...candidates.map((candidate) =>
-    `Large temporary result ${candidate.result}: ${candidate.target}, ~${candidate.estimatedTokens} tokens. After extracting what you need, release ${candidate.result} alongside your next normal tool call. If still needed or answering now, do nothing.`),
-  REMINDER_CLOSE,
-].join("\n")
+const renderReminder = (candidate: Candidate): string =>
+  `Large temporary result ${candidate.result}: ${candidate.target}, ~${candidate.estimatedTokens} tokens. After extracting what you need, release ${candidate.result} alongside your next normal tool call. If still needed or answering now, do nothing.`
 
 const targetFor = (toolName: string, input: unknown): string => {
   const record = input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : undefined

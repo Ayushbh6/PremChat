@@ -11,7 +11,7 @@ export const contextDispositionTool: SocratesTool<ContextDispositionToolInput, C
   name: "context_disposition",
   displayName: "Context disposition",
   description:
-    "Release unneeded large temporary result handles from the current model-visible turn. Call only alongside at least one normal tool call, never alone and never before a final answer. Pass release with one or more exact R handles from the latest hidden reminder. Omit handles that are still needed. Release never deletes exact audit evidence.",
+    "Release unneeded large temporary result handles from the current model-visible turn. Call only alongside at least one normal tool call, never alone and never before a final answer. Pass release with one or more exact R handles from result-local notices. Omit handles that are still needed. Release never deletes exact audit evidence.",
   inputSchema: contextDispositionToolInputSchema,
   resultSchema: contextDispositionToolOutputSchema,
   permission: "read",

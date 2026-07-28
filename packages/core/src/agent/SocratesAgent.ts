@@ -1,9 +1,9 @@
 import {
   frontierHandoverToolOutputSchema,
   normalizedToolCallSchema,
+  socratesFinalAnswerSchema,
   socratesGoalResolutionModelOutputSchema,
   waitToolOutputSchema,
-  socratesFinalAnswerSchema,
   type SocratesFinalAnswer,
   type DynamicToolCapabilityRegistration,
   type ModelToolDefinition,
@@ -30,7 +30,6 @@ import {
 import { ToolOutputDispositionLedger } from "../context/toolOutputDisposition"
 import {
   capabilityCatalog,
-  emptyCapabilitySet,
   type CapabilityCatalog,
   type CapabilitySet,
 } from "../capabilities/CapabilityCatalog"
@@ -50,13 +49,11 @@ import {
   socratesMainAgentDefinition,
   type DynamicSystemPromptContext,
 } from "./agentDefinitions"
-import { buildSocratesFinalAnswerCheckpoint, buildSocratesReconciliationCheckpoint } from "../prompts/socratesFinalAnswerPrompt"
 import { prepareTurnContext, renderResolvedTurnContext } from "./prepareTurnContext"
 import { SocratesTurnLifecycle } from "./SocratesTurnLifecycle"
 import { AsyncEventQueue } from "./AsyncEventQueue"
 import {
   attachModelMetadata,
-  escapeXmlAttribute,
   frontierRuntimeConfig,
   insertDynamicPromptContext,
   insertStableCachePrelude,
@@ -64,22 +61,22 @@ import {
   nativeFollowUpMessagesForToolResult,
 } from "./socratesMemorySupport"
 import {
-  ReconciliationVerificationLedger,
-  TurnActionLedger,
-  TurnMemorySaveLedger,
   interactiveTerminalAwaitingInput,
   isConfirmedToolErrorResult,
-} from "./socratesTurnLedgers"
+} from "./socratesToolGuards"
 import {
   extractStreamingPreview,
+  normalizedToolTargetKey,
   sanitizeToolExecutionResultForModel,
   stableToolInputKey,
 } from "./socratesToolResultSupport"
 import {
   ReconciliationWatermarkController,
-  buildSocratesProgressReconciliationCheckpoint,
+  buildSocratesReconciliationNotice,
   type ReconciliationWatermarkState,
 } from "./reconciliationWatermark"
+import { appendNoticeToLastSuccessfulToolResult } from "../context/resultLocalNotices"
+import { assertCompleteModelStep, parseSocratesFinalOutput } from "./socratesFinalOutput"
 
 export type SocratesAgentTurnInput = {
   projectId?: string
@@ -325,7 +322,7 @@ export class SocratesAgent {
   async *streamTurn(input: SocratesAgentTurnInput): AsyncIterable<SocratesAgentEvent> {
     const system = this.definition.prompt.buildSystem(this.definitionPromptContext)
     const messages: ModelMessage[] = [...input.messages]
-    const toolOutputDispositions = new ToolOutputDispositionLedger(messages)
+    const toolOutputDispositions = new ToolOutputDispositionLedger()
     if (
       input.maxToolCallsPerTurn !== undefined
       && (!Number.isInteger(input.maxToolCallsPerTurn)
@@ -345,25 +342,14 @@ export class SocratesAgent {
     let forceFinalNoTools = false
     const duplicateTraceRetrieveResults = new Map<string, unknown>()
     const toolInputCounts = new Map<string, number>()
+    const toolTargetCounts = new Map<string, number>()
     const openRouterPreferredProvidersByModel = new Map<string, string>()
-    const actionLedger = new TurnActionLedger()
-    const memorySaveLedger = new TurnMemorySaveLedger()
-    let totalToolCountNudgeSent = false
-    let baselineInputTokens: number | undefined
-    let currentTurnTokenSoftNudgeSent = false
-    let currentTurnTokenHardStopSent = false
     let pendingInteractiveTerminalName: string | undefined
-    let activeGoal: ActiveGoalCard | undefined = input.activeGoal
-    let resolvedTurnContext: ResolvedTurnContext | undefined
-    let finalCheckpointSent = false
-    let accumulatedAnswerText = ""
     let currentProviderId = input.providerId
     let currentModelId = input.modelId
     let currentRuntimeConfig = input.runtimeConfig
     let handedOverToFrontier = isSameModelSelection(input.runtimeConfig, input.frontierModelSettings)
     let frontierHandoverRejected = false
-    const reconciliationVerification = new ReconciliationVerificationLedger()
-    const progressReconciliationEnabled = input.completionMode === "main_structured"
     const reconciliationNow = input.reconciliationClock ?? Date.now
     const reconciliationWatermark = new ReconciliationWatermarkController({
       ...(input.reconciliationWatermark ? { state: input.reconciliationWatermark } : {}),
@@ -373,10 +359,8 @@ export class SocratesAgent {
     const persistReconciliationWatermark = async () => {
       await input.persistReconciliationWatermark?.(reconciliationWatermark.state())
     }
-    let reconciliationReminderCount = 0
 
     const stablePrelude = await this.turnLifecycle.loadStablePrelude(input, messages)
-    activeGoal = stablePrelude.activeGoal ?? activeGoal
     for (const event of stablePrelude.events) {
       yield event
     }
@@ -385,36 +369,11 @@ export class SocratesAgent {
     }
     insertDynamicPromptContext(messages, input.promptContext)
     if (input.resolvedTurnContextSeed) {
-      resolvedTurnContext = prepareTurnContext(input.resolvedTurnContextSeed, input.resolvedTurnMemory, input.resolvedTurnCapabilities)
+      const resolvedTurnContext: ResolvedTurnContext = prepareTurnContext(input.resolvedTurnContextSeed, input.resolvedTurnMemory, input.resolvedTurnCapabilities)
       messages.push({ role: "developer", content: renderResolvedTurnContext(resolvedTurnContext) })
-    }
-    if (input.toolExecutors && input.workspacePath) {
-      messages.push({
-        role: "developer",
-        content: `<runtime_terminal_capabilities>
-Current runtime fact: bash provides run, named start, named inspect, named stop, and list. A started Terminal can accept live user input with inputMode="user", and wait can suspend until completed or failed. This current capability contract overrides contradictory project memory, notes, prior chats, or known-pitfall text.
-</runtime_terminal_capabilities>`,
-      })
-    }
-    memorySaveLedger.recordStablePreludeRecords(stablePrelude.records ?? [])
-    const preTurnMemoryLedgerMessage = memorySaveLedger.flushDeveloperMessage()
-    if (preTurnMemoryLedgerMessage) {
-      messages.push({ role: "developer", content: preTurnMemoryLedgerMessage })
     }
 
     for (let step = 0; ; step += 1) {
-      const pendingProgressCheckpoint = !progressReconciliationEnabled || finalCheckpointSent
-        ? undefined
-        : reconciliationWatermark.beginPendingCheckpoint()
-      if (pendingProgressCheckpoint) {
-        reconciliationVerification.beginCheckpoint()
-        reconciliationReminderCount = 0
-        messages.push({
-          role: "developer",
-          content: buildSocratesProgressReconciliationCheckpoint(pendingProgressCheckpoint),
-        })
-        await persistReconciliationWatermark()
-      }
       const runtimeCapabilities = typeof input.runtimeCapabilities === "function"
         ? input.runtimeCapabilities()
         : input.runtimeCapabilities
@@ -429,7 +388,6 @@ Current runtime fact: bash provides run, named start, named inspect, named stop,
       }
       const handoverAvailable = Boolean(
         input.completionMode === "main_structured" &&
-          !finalCheckpointSent &&
           input.frontierModelSettings &&
           !handedOverToFrontier &&
           !frontierHandoverRejected,
@@ -440,55 +398,6 @@ Current runtime fact: bash provides run, named start, named inspect, named stop,
           : capabilities
               .modelDefinitions()
               .filter((tool) => tool.name !== "handover_to_frontier" || handoverAvailable)
-      if (forceFinalNoTools && input.completionMode === "main_structured") {
-        const finalEvents: ModelEvent[] = []
-        const result = await this.runtime.run({
-          provider: this.provider,
-          providerId: currentProviderId,
-          modelId: currentModelId,
-          runtimeConfig: currentRuntimeConfig,
-          system,
-          messages: [...messages, {
-            role: "developer",
-            content: buildSocratesFinalAnswerCheckpoint({
-              ...(resolvedTurnContext ? { resolvedTurnContext } : {}),
-              ...(activeGoal ? { activeGoal } : {}),
-              ...(accumulatedAnswerText.trim() ? { proposedAnswer: accumulatedAnswerText } : {}),
-            }),
-          }],
-          completion: { mode: "structured", schema: socratesFinalAnswerSchema },
-          capabilitySet: emptyCapabilitySet,
-          toolExecutors: {},
-          maxToolCalls: 0,
-          projectId: input.projectId ?? "",
-          conversationId: input.conversationId ?? "",
-          sessionId: input.sessionId ?? "",
-          turnId: input.turnId ?? "",
-          workspacePath: input.workspacePath ?? "",
-          ...(input.cacheKey ? { cacheKey: `${input.cacheKey}:main-final` } : {}),
-          ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
-          onModelEvent: (event) => finalEvents.push(event),
-          createModelCall: (prepared) => input.createModelCall?.({
-            providerId: currentProviderId,
-            modelId: currentModelId,
-            runtimeConfig: currentRuntimeConfig,
-            messages: prepared.messages,
-            estimatedTokens: prepared.estimatedTokens,
-            tokenCount: prepared.tokenCount,
-            tools: [],
-            ...(input.promptContext ? { promptContext: input.promptContext } : {}),
-          }),
-        })
-        const finalModelCallId = finalEvents.find((event) => event.modelCallId)?.modelCallId
-        for (const event of finalEvents.filter((event) => event.type !== "model.completed")) {
-          yield attachModelMetadata(event, event.modelCallId ?? finalModelCallId, step)
-        }
-        yield { type: "agent.final_result", result: result.output }
-        for (const event of finalEvents.filter((event) => event.type === "model.completed")) {
-          yield attachModelMetadata(event, event.modelCallId ?? finalModelCallId, step)
-        }
-        return
-      }
       const compactionStartedEvents = new AsyncEventQueue<ContextCompactionLifecycleEvent>()
       const preparedContextPromise = (async () => {
         try {
@@ -500,6 +409,7 @@ Current runtime fact: bash provides run, named start, named inspect, named stop,
             system,
             messages,
             tools,
+            ...(input.completionMode === "main_structured" ? { structuredOutputSchema: socratesFinalAnswerSchema } : {}),
             ...(input.contextCompression ? { compression: input.contextCompression } : {}),
             onCompactionStarted: (event) => compactionStartedEvents.push(event),
           })
@@ -521,41 +431,12 @@ Current runtime fact: bash provides run, named start, named inspect, named stop,
           throw event.error
         }
       }
-      if (progressReconciliationEnabled && !finalCheckpointSent && preparedContext.compactionEvents.some((event) => event.type === "context.compaction.completed")) {
+      if (preparedContext.compactionEvents.some((event) => event.type === "context.compaction.completed")) {
         reconciliationWatermark.markCompactionBoundary()
         await persistReconciliationWatermark()
-        if (!reconciliationWatermark.activeCheckpoint() && reconciliationWatermark.beginPendingCheckpoint()) {
-          reconciliationVerification.beginCheckpoint()
-          messages.push({
-            role: "developer",
-            content: buildSocratesProgressReconciliationCheckpoint(reconciliationWatermark.activeCheckpoint()!),
-          })
-          await persistReconciliationWatermark()
-          continue
-        }
       }
       if (input.abortSignal?.aborted) {
         return
-      }
-      baselineInputTokens ??= preparedContext.estimatedTokens
-      const currentTurnTokenGrowth = Math.max(0, preparedContext.estimatedTokens - baselineInputTokens)
-      if (!forceFinalNoTools && tools.length > 0 && currentTurnTokenGrowth >= 80_000 && !currentTurnTokenHardStopSent) {
-        messages.push({
-          role: "developer",
-          content:
-            "Runtime efficiency checkpoint: current-turn context growth is above 80k estimated tokens. Continue the task, but stop repeated investigation. On the next otherwise-needed tool call, release any irrelevant eligible R handles; keep only evidence needed for the current objective, then finish and verify the work.",
-        })
-        currentTurnTokenHardStopSent = true
-        continue
-      }
-      if (!forceFinalNoTools && tools.length > 0 && currentTurnTokenGrowth >= 50_000 && !currentTurnTokenSoftNudgeSent) {
-        messages.push({
-          role: "developer",
-          content:
-            "Runtime efficiency warning: current-turn context growth is above 50k estimated tokens. Stop repeating investigation, use the action ledger, and release irrelevant eligible R handles with the next otherwise-needed tool call. Do not abandon unfinished implementation or verification.",
-        })
-        currentTurnTokenSoftNudgeSent = true
-        continue
       }
       const modelCallId = input.createModelCall?.({
         providerId: currentProviderId,
@@ -570,16 +451,16 @@ Current runtime fact: bash provides run, named start, named inspect, named stop,
       const assistantParts: ModelMessagePart[] = []
       const toolCalls: NormalizedToolCall[] = []
       const repeatedToolInputsThisStep = new Set<string>()
+      const streamedToolCallIds = new Set<string>()
+      const completedToolCallIds = new Set<string>()
       const toolRunIds = new Map<string, string>()
       let stepText = ""
-      // The first no-tool answer is a proposed draft. Hold its user-visible
-      // deltas through same-Socrates reconciliation and structured finalization.
       const suppressAnswerDeltas = input.completionMode === "main_structured"
-      const suppressCheckpointReasoning = input.completionMode === "main_structured" && finalCheckpointSent
       const handoverToolExposed = tools.some((tool) => tool.name === "handover_to_frontier")
       const bufferAnswerForPotentialHandover = handoverToolExposed && !suppressAnswerDeltas
       const bufferedAnswerEvents: ModelEvent[] = []
       const bufferedCompletionEvents: ModelEvent[] = []
+      let finishReason: string | undefined
       const preferredOpenRouterProvider =
         currentProviderId === "openrouter" ? openRouterPreferredProvidersByModel.get(currentModelId) : undefined
       const toolRunIdFor = (providerToolCallId: string): string => {
@@ -604,6 +485,7 @@ Current runtime fact: bash provides run, named start, named inspect, named stop,
         messages: preparedContext.messages,
         runtimeConfig: currentRuntimeConfig,
         tools,
+        ...(input.completionMode === "main_structured" ? { structuredOutputSchema: socratesFinalAnswerSchema } : {}),
         ...(modelCallId ? { modelCallId } : {}),
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
       })) {
@@ -636,14 +518,9 @@ Current runtime fact: bash provides run, named start, named inspect, named stop,
             ...(modelEvent.providerMetadata ? { providerMetadata: modelEvent.providerMetadata } : {}),
           })
         }
-        if (
-          suppressCheckpointReasoning &&
-          (modelEvent.type === "model.reasoning.delta" || modelEvent.type === "model.reasoning.completed")
-        ) {
-          continue
-        }
 
         if (modelEvent.type === "model.tool_call.streaming") {
+          streamedToolCallIds.add(modelEvent.toolCallId)
           const tool = capabilities.get(modelEvent.toolName as ToolName)
           if (tool) {
             const preview = extractStreamingPreview(modelEvent.toolName, modelEvent.argsText)
@@ -664,6 +541,7 @@ Current runtime fact: bash provides run, named start, named inspect, named stop,
         }
 
         if (modelEvent.type === "model.tool_call.completed") {
+          completedToolCallIds.add(modelEvent.toolCall.toolCallId)
           const parsed = normalizedToolCallSchema.safeParse(modelEvent.toolCall)
           if (parsed.success) {
             if (parsed.data.toolName !== "context_disposition") {
@@ -672,6 +550,12 @@ Current runtime fact: bash provides run, named start, named inspect, named stop,
               toolInputCounts.set(inputKey, nextCount)
               if (nextCount >= 3) {
                 repeatedToolInputsThisStep.add(`${parsed.data.toolName} ${JSON.stringify(parsed.data.input)}`)
+              }
+              const targetKey = normalizedToolTargetKey(parsed.data)
+              if (targetKey) {
+                const targetCount = (toolTargetCounts.get(targetKey) ?? 0) + 1
+                toolTargetCounts.set(targetKey, targetCount)
+                if (targetCount >= 4) repeatedToolInputsThisStep.add(targetKey)
               }
             }
             toolCalls.push({
@@ -682,6 +566,8 @@ Current runtime fact: bash provides run, named start, named inspect, named stop,
           }
         }
 
+        if (modelEvent.type === "model.completed") finishReason = modelEvent.finishReason
+
         if (bufferAnswerForPotentialHandover && modelEvent.type === "model.completed") {
           bufferedCompletionEvents.push(attachModelMetadata(modelEvent, modelCallId, step))
           continue
@@ -690,9 +576,9 @@ Current runtime fact: bash provides run, named start, named inspect, named stop,
         yield attachModelMetadata(modelEvent, modelCallId, step)
       }
 
+      assertCompleteModelStep({ streamedToolCallIds, completedToolCallIds, ...(finishReason ? { finishReason } : {}) })
       const requestedHandover = toolCalls.find((toolCall) => toolCall.toolName === "handover_to_frontier")
-      if (!requestedHandover && !reconciliationWatermark.activeCheckpoint()) {
-        accumulatedAnswerText += stepText
+      if (!requestedHandover) {
         for (const event of bufferedAnswerEvents) {
           yield event
         }
@@ -723,55 +609,12 @@ Current runtime fact: bash provides run, named start, named inspect, named stop,
         })
       }
 
-      if (toolCalls.length === 0 && reconciliationWatermark.activeCheckpoint()) {
-        if (reconciliationVerification.hasPending()) {
-          if (reconciliationReminderCount >= 2) {
-            throw new SocratesError("memory_reconciliation_incomplete", `Required .socrates progress reconciliation was not verified: ${reconciliationVerification.pendingSummary()}`, { recoverable: true })
-          }
-          reconciliationReminderCount += 1
-          messages.push({
-            role: "developer",
-            content: `Progress checkpoint cannot close until the required .socrates reconciliation is verified. Pending: ${reconciliationVerification.pendingSummary()}. Read the changed target again, then continue the same task without answering.`,
-          })
-          continue
-        }
-        reconciliationWatermark.completeCheckpoint()
-        await persistReconciliationWatermark()
-        reconciliationReminderCount = 0
-        continue
-      }
-
-      if (toolCalls.length === 0 && input.completionMode === "main_structured" && !finalCheckpointSent) {
-        finalCheckpointSent = true
-        reconciliationVerification.beginCheckpoint()
-        messages.push({
-          role: "developer",
-          content: buildSocratesReconciliationCheckpoint({
-            ...(resolvedTurnContext ? { resolvedTurnContext } : {}),
-            ...(activeGoal ? { activeGoal } : {}),
-            ...((stepText || accumulatedAnswerText).trim() ? { proposedAnswer: stepText || accumulatedAnswerText } : {}),
-          }),
-        })
-        continue
-      }
-
-      if (toolCalls.length === 0 && finalCheckpointSent && reconciliationVerification.hasPending()) {
-        if (reconciliationReminderCount >= 2) {
-          throw new SocratesError("memory_reconciliation_incomplete", `Required .socrates reconciliation was not verified: ${reconciliationVerification.pendingSummary()}`, { recoverable: true })
-        }
-        reconciliationReminderCount += 1
-        messages.push({
-          role: "developer",
-          content: `Final answer is blocked until the required .socrates reconciliation is completed and verified. Pending: ${reconciliationVerification.pendingSummary()}. Read the current target, apply the exact update, then read that same section again after the mutation.`,
-        })
-        continue
-      }
-
       if (toolCalls.length === 0 && input.completionMode === "main_structured") {
+        const finalResult = parseSocratesFinalOutput(stepText)
         reconciliationWatermark.completeFinalCheckpoint()
         await persistReconciliationWatermark()
-        forceFinalNoTools = true
-        continue
+        yield { type: "agent.final_result", result: finalResult }
+        return
       }
 
       if (!input.toolExecutors || tools.length === 0 || toolCalls.length === 0) {
@@ -878,6 +721,21 @@ Current runtime fact: bash provides run, named start, named inspect, named stop,
           output: sanitizeToolExecutionResultForModel(result, result.providerToolCallId ?? result.toolCallId),
         })),
       }
+      const reconciliationReminder = reconciliationWatermark.takePendingReminder()
+      if (reconciliationReminder) {
+        appendNoticeToLastSuccessfulToolResult(toolResultMessage, {
+          kind: "socrates_reconciliation",
+          key: `evidence-${reconciliationReminder.evidenceTo}`,
+          text: buildSocratesReconciliationNotice(reconciliationReminder),
+        })
+        await persistReconciliationWatermark()
+      }
+      toolOutputDispositions.recordBatch({
+        message: toolResultMessage,
+        toolCalls: operationalToolCalls,
+        providerId: currentProviderId,
+        modelId: currentModelId,
+      })
       messages.push(toolResultMessage)
       const rejectedHandover = execution.results.find(
         (result) =>
@@ -887,12 +745,6 @@ Current runtime fact: bash provides run, named start, named inspect, named stop,
       )
       if (rejectedHandover) {
         frontierHandoverRejected = true
-        messages.push({
-          role: "developer",
-          content: `<frontier_handover status="rejected">
-The user declined the Frontier handover. The handover tool is unavailable for the rest of this turn. Do not request it again. Continue and complete the task yourself using the work and evidence already gathered.
-</frontier_handover>`,
-        })
       }
       const acceptedHandover = execution.results.find(
         (result) =>
@@ -913,12 +765,6 @@ The user declined the Frontier handover. The handover tool is unavailable for th
         currentModelId = input.frontierModelSettings.modelId
         currentRuntimeConfig = frontierRuntimeConfig(input.frontierModelSettings, currentRuntimeConfig)
         handedOverToFrontier = true
-        messages.push({
-          role: "developer",
-          content: `<frontier_handover${parsedHandover.focus ? ` focus="${escapeXmlAttribute(parsedHandover.focus)}"` : ""}>
-You are Frontier and now own this task for the rest of the current turn. Continue from the exact model-visible working context above, including its active compaction snapshot and turn-local release receipts; do not restart, re-summarize, or repeat completed work. Exact sources remain retrievable. The prior model's provisional answer was discarded. Perform any remaining work and give the sole final user answer. You cannot hand this task back.
-</frontier_handover>`,
-        })
         yield {
           type: "agent.handover",
           toolCallId: acceptedHandover.toolCallId,
@@ -932,62 +778,13 @@ You are Frontier and now own this task for the rest of the current turn. Continu
       }
       const nativeToolMessages = execution.results.flatMap((result) => nativeFollowUpMessagesForToolResult(result, input.workspacePath))
       messages.push(...nativeToolMessages)
-      reconciliationVerification.recordBatch(operationalToolCalls, operationalResults)
-      const ledgerUpdate = actionLedger.recordBatch({
-        toolCalls: operationalToolCalls,
-        results: operationalResults,
-        estimatedTokens: preparedContext.estimatedTokens,
-        currentTurnTokenGrowth,
-      })
-      messages.push({ role: "developer", content: ledgerUpdate.summary })
-      for (const warning of ledgerUpdate.warnings) {
-        messages.push({ role: "developer", content: warning })
-      }
-      memorySaveLedger.recordBatch({ toolCalls: operationalToolCalls, results: operationalResults })
-      const memoryLedgerMessage = memorySaveLedger.flushDeveloperMessage()
-      if (memoryLedgerMessage) {
-        messages.push({ role: "developer", content: memoryLedgerMessage })
-      }
       if (repeatedToolInputsThisStep.size > 0) {
-        messages.push({
-          role: "user",
-          content: `You have repeated the same exact tool call input at least 3 times this turn (${[...repeatedToolInputsThisStep].slice(0, 3).join("; ")}). Stop repeating identical calls. Either answer from the evidence already gathered, inspect a different target, or ask the user for more information.`,
-        })
-      }
-      toolOutputDispositions.recordBatch({
-        message: toolResultMessage,
-        toolCalls: operationalToolCalls,
-        providerId: currentProviderId,
-        modelId: currentModelId,
-      })
-      if (!totalToolCountNudgeSent && usedToolCalls >= 50) {
-        messages.push({
-          role: "user",
-          content:
-            "You have made 50 or more tool calls in this turn. Before using more tools, decide whether you already have enough evidence to answer. If not, ask the user to continue or state the specific missing evidence.",
-        })
-        totalToolCountNudgeSent = true
+        forceFinalNoTools = true
       }
 
       if (maxConfirmedToolErrorsPerTurn > 0 && confirmedToolErrors >= maxConfirmedToolErrorsPerTurn) {
-        const recentCodes = [...new Set(confirmedToolErrorResults.map((result) => result.error?.code).filter(Boolean))]
-        messages.push({
-          role: "user",
-          content: `There have been ${confirmedToolErrors} confirmed tool-call execution errors this turn${recentCodes.length > 0 ? ` (latest codes: ${recentCodes.join(", ")})` : ""}. Do not call more tools. Give the best final answer from the evidence already available, and mention any remaining uncertainty or the exact tool-error blocker.`,
-        })
         forceFinalNoTools = true
-      } else if (ledgerUpdate.forceFinalReason) {
-        messages.push({
-          role: "developer",
-          content: `Runtime anti-spiral guard: ${ledgerUpdate.forceFinalReason} Do not call more tools. Give a concise status/final answer from the evidence already available, mention uncertainty, and ask the user to refine or continue if more investigation is needed.`,
-        })
-        forceFinalNoTools = true
-      } else if (execution.budgetExhausted || usedToolCalls >= maxToolCallsPerTurn) {
-        messages.push({
-          role: "user",
-          content:
-            "The per-turn tool-call budget has been exhausted. Do not call more tools. Give the best final answer from the evidence already available, and mention any remaining uncertainty.",
-        })
+      } else if (usedToolCalls >= 50 || execution.budgetExhausted || usedToolCalls >= maxToolCallsPerTurn) {
         forceFinalNoTools = true
       }
     }

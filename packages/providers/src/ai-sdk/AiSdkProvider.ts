@@ -110,6 +110,9 @@ export class AiSdkProvider implements ModelProvider {
         system: request.system,
         messages: toAiModelMessages(request.messages, request.providerId),
         ...(request.tools && request.tools.length > 0 ? { tools: toAiTools(request.tools) as never } : {}),
+        ...(request.structuredOutputSchema === undefined
+          ? {}
+          : { output: Output.object({ schema: request.structuredOutputSchema as never }) }),
         providerOptions: this.createProviderOptions(request),
         ...(request.providerId === "openrouter"
           ? { experimental_transform: smoothStream({ chunking: "word", delayInMs: 20 }) }

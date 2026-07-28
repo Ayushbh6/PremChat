@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { z } from "zod"
-import { SocratesAgent, capabilityCatalog, socratesMainAgentDefinition, type SocratesAgentEvent, type ToolExecutors } from "../index"
+import { SocratesAgent, capabilityCatalog, socratesBasePrompt, socratesMainAgentDefinition, type SocratesAgentEvent, type ToolExecutors } from "../index"
 import type { ModelEvent, ModelMessage, ModelProvider } from "@socrates/providers"
 import { bashTool } from "../tools/bashTool"
 import { capabilityManagerTool } from "../tools/capabilityManagerTool"
@@ -74,6 +74,130 @@ describe("SocratesAgent", () => {
     expect(requestJson).toContain("Treat long read/search/Terminal/MCP/retrieval outputs as temporary evidence")
     expect(requestJson).toContain("release unneeded handles with context_disposition")
     expect(requestJson).toContain("Release is optional")
+    expect(Buffer.byteLength(socratesBasePrompt, "utf8")).toBeLessThanOrEqual(26_000)
+    expect(socratesBasePrompt).toContain("terminal response from this same loop must be exactly one JSON object")
+    expect(socratesBasePrompt).not.toContain("Runtime action ledger")
+    expect(socratesBasePrompt).not.toContain("socrates_final_answer_checkpoint")
+  })
+
+  it("rejects an unfinished streamed tool call without executing partial arguments", async () => {
+    let readExecutions = 0
+    const provider: ModelProvider = {
+      countTokens: fakeCountTokens,
+      async *stream() {
+        yield {
+          type: "model.tool_call.streaming",
+          toolCallId: "provider_partial_read",
+          toolName: "read",
+          argsText: '{"path":"README',
+        }
+        yield { type: "model.completed", finishReason: "length" }
+      },
+    }
+    const executors = emptyToolExecutors()
+    executors.read = async (input) => {
+      readExecutions += 1
+      return governedResourceOutput(input.path, "must not execute")
+    }
+    const run = async () => {
+      for await (const _event of new SocratesAgent(provider).streamTurn({
+        completionMode: "main_structured",
+        providerId: "openrouter",
+        modelId: "deepseek/deepseek-v4-pro",
+        runtimeConfig: {
+          providerId: "openrouter",
+          authMode: "api_key",
+          modelId: "deepseek/deepseek-v4-pro",
+          thinkingEnabled: false,
+          thinkingEffort: "none",
+          approvalMode: "manual",
+          sandboxMode: "workspace_write",
+        },
+        messages: [{ role: "user", content: "Read the repository." }],
+        workspacePath: "/tmp",
+        stableCachePreludeSnapshot: { identitySections: {} },
+        toolExecutors: executors,
+        requestApproval: async () => ({ decision: "approved" }),
+      })) {
+        // Drain until the typed truncation error is raised.
+      }
+    }
+
+    await expect(run()).rejects.toMatchObject({ code: "model_tool_call_truncated" })
+    expect(readExecutions).toBe(0)
+  })
+
+  it("rejects a cut-off final object instead of accepting a partial answer", async () => {
+    const provider: ModelProvider = {
+      countTokens: fakeCountTokens,
+      async *stream() {
+        yield { type: "model.answer.delta", text: '{"finalAnswer":"unfinished' }
+        yield { type: "model.completed", finishReason: "max_output_tokens" }
+      },
+    }
+    const run = async () => {
+      for await (const _event of new SocratesAgent(provider).streamTurn({
+        completionMode: "main_structured",
+        providerId: "openai",
+        modelId: "gpt-5.4-mini",
+        runtimeConfig: {
+          providerId: "openai",
+          modelId: "gpt-5.4-mini",
+          thinkingEnabled: false,
+          thinkingEffort: "none",
+          approvalMode: "manual",
+          sandboxMode: "read_only",
+        },
+        messages: [{ role: "user", content: "Answer exactly." }],
+        stableCachePreludeSnapshot: { identitySections: {} },
+      })) {
+        // Drain until the typed truncation error is raised.
+      }
+    }
+
+    await expect(run()).rejects.toMatchObject({ code: "model_output_truncated" })
+  })
+
+  it("completes a no-tool main turn in one foreground model call", async () => {
+    const requests: Array<Parameters<ModelProvider["stream"]>[0]> = []
+    const provider: ModelProvider = {
+      countTokens: fakeCountTokens,
+      async *stream(request) {
+        requests.push(request)
+        yield { type: "model.answer.delta", text: finalJson("Direct answer.", "Answered without tools.") }
+        yield { type: "model.completed", finishReason: "stop" }
+      },
+    }
+    const events: SocratesAgentEvent[] = []
+    for await (const event of new SocratesAgent(provider).streamTurn({
+      completionMode: "main_structured",
+      providerId: "openai",
+      modelId: "gpt-5.4-mini",
+      runtimeConfig: {
+        providerId: "openai",
+        modelId: "gpt-5.4-mini",
+        thinkingEnabled: false,
+        thinkingEffort: "none",
+        approvalMode: "manual",
+        sandboxMode: "read_only",
+      },
+      messages: [{ role: "user", content: "Answer directly." }],
+      stableCachePreludeSnapshot: { identitySections: {} },
+    })) {
+      events.push(event)
+    }
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.tools).toEqual([])
+    if (socratesMainAgentDefinition.completion.mode === "text") throw new Error("Main Socrates must have structured completion.")
+    expect(requests[0]?.structuredOutputSchema).toBe(socratesMainAgentDefinition.completion.schema)
+    expect(events).toContainEqual({
+      type: "agent.final_result",
+      result: {
+        finalAnswer: "Direct answer.",
+        goalFinalization: { state: "completed", note: "Answered without tools." },
+      },
+    })
   })
 
   it("rejects dynamic tools outside the main role manifest before model execution", async () => {
@@ -168,14 +292,6 @@ describe("SocratesAgent", () => {
     let handedOver = false
     const provider: ModelProvider = {
       countTokens: fakeCountTokens,
-      async generateStructured() {
-        return {
-          output: {
-            finalAnswer: "Frontier completed the task.",
-            goalFinalization: { state: "completed", note: "Resolved the lifecycle evidence." },
-          } as never,
-        }
-      },
       async *stream(request) {
         requests.push(request)
         const toolNames = request.tools?.map((tool) => tool.name) ?? []
@@ -193,9 +309,7 @@ describe("SocratesAgent", () => {
           yield { type: "model.completed" }
           return
         }
-        if (!JSON.stringify(request.messages).includes("socrates_reconciliation_checkpoint")) {
-          yield { type: "model.answer.delta", text: "Frontier completed the task." }
-        }
+        yield { type: "model.answer.delta", text: finalJson("Frontier completed the task.", "Resolved the lifecycle evidence.") }
         yield { type: "model.completed" }
       },
     }
@@ -242,19 +356,17 @@ describe("SocratesAgent", () => {
     expect(modelCalls).toEqual([
       { providerId: "openrouter", modelId: "deepseek/deepseek-v4-flash" },
       { providerId: "openrouter", modelId: "x-ai/grok-4.5" },
-      { providerId: "openrouter", modelId: "x-ai/grok-4.5" },
-      { providerId: "openrouter", modelId: "x-ai/grok-4.5" },
     ])
     const driverRequest = requests.find((request) => request.tools?.some((tool) => tool.name === "handover_to_frontier"))
     const frontierRequests = requests.filter((request) => request.modelId === "x-ai/grok-4.5")
     expect(driverRequest?.tools?.map((tool) => tool.name)).toContain("handover_to_frontier")
-    expect(frontierRequests).toHaveLength(2)
+    expect(frontierRequests).toHaveLength(1)
     expect(frontierRequests.every((request) => !request.tools?.some((tool) => tool.name === "handover_to_frontier"))).toBe(true)
     expect(frontierRequests[0]?.messages.slice(0, driverRequest?.messages.length)).toEqual(driverRequest?.messages)
     expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("Resolve this difficult lifecycle problem")
     expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("handover_to_frontier")
     expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("Resolve the conflicting lifecycle evidence")
-    expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("exact model-visible working context")
+    expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("exact current model-visible context")
     expect(streamed.filter((event) => event.type === "model.answer.delta")).toHaveLength(0)
     expect(streamed).toContainEqual({
       type: "agent.final_result",
@@ -303,14 +415,6 @@ describe("SocratesAgent", () => {
     let requestedHandover = false
     const provider: ModelProvider = {
       countTokens: fakeCountTokens,
-      async generateStructured() {
-        return {
-          output: {
-            finalAnswer: "Socrates completed the task after the declined handover.",
-            goalFinalization: { state: "completed", note: "Resolved without Frontier." },
-          } as never,
-        }
-      },
       async *stream(request) {
         requests.push(request)
         const toolNames = request.tools?.map((tool) => tool.name) ?? []
@@ -327,9 +431,7 @@ describe("SocratesAgent", () => {
           yield { type: "model.completed" }
           return
         }
-        if (!JSON.stringify(request.messages).includes("socrates_reconciliation_checkpoint")) {
-          yield { type: "model.answer.delta", text: "Socrates completed the task after the declined handover." }
-        }
+        yield { type: "model.answer.delta", text: finalJson("Socrates completed the task after the declined handover.", "Resolved without Frontier.") }
         yield { type: "model.completed" }
       },
     }
@@ -388,7 +490,8 @@ describe("SocratesAgent", () => {
     )
     const postRejectionRequests = requests.slice(handoverRequestIndex + 1)
     expect(postRejectionRequests.length).toBeGreaterThan(0)
-    expect(postRejectionRequests.some((request) => JSON.stringify(request.messages).includes("The user declined the Frontier handover"))).toBe(true)
+    expect(postRejectionRequests.some((request) => JSON.stringify(request.messages).includes("tool_approval_rejected"))).toBe(true)
+    expect(postRejectionRequests.some((request) => JSON.stringify(request.messages).includes("Keep this turn on Socrates."))).toBe(true)
     expect(postRejectionRequests.every((request) => !request.tools?.some((tool) => tool.name === "handover_to_frontier"))).toBe(true)
     expect(streamed.filter((event) => event.type === "model.answer.delta")).toHaveLength(0)
     expect(streamed).toContainEqual({
@@ -1205,7 +1308,7 @@ describe("SocratesAgent", () => {
     expect(completedTools).not.toContain("context_disposition")
   })
 
-  it("adds a cache-safe same-turn memory save ledger after memory_note results", async () => {
+  it("continues from the exact memory_note result without a shadow ledger", async () => {
     const streamRequests: Array<{ system: string; messages: unknown }> = []
     let calls = 0
     const provider: ModelProvider = {
@@ -1266,9 +1369,10 @@ describe("SocratesAgent", () => {
     expect(streamRequests[1]?.system).toBe(streamRequests[0]?.system)
     expect(streamRequests[0]?.system).not.toContain("socrates_memory_save_ledger")
     expect(JSON.stringify(streamRequests[0]?.messages)).not.toContain("socrates_memory_save_ledger")
-    expect(JSON.stringify(streamRequests[1]?.messages)).toContain("socrates_memory_save_ledger")
-    expect(JSON.stringify(streamRequests[1]?.messages)).toContain("#1 created status=open")
-    expect(JSON.stringify(streamRequests[1]?.messages)).toContain("implementation only after approval")
+    const followUp = JSON.stringify(streamRequests[1]?.messages)
+    expect(followUp).not.toContain("socrates_memory_save_ledger")
+    expect(followUp).toContain('"noteNumber":1')
+    expect(followUp).toContain("implementation only after approval")
   })
 
   it("loads stable always-apply context without a model-driven memory router", async () => {
@@ -1343,22 +1447,12 @@ describe("SocratesAgent", () => {
     expect(firstRequestJson).not.toContain("memory_router")
   })
 
-  it("uses the same Socrates checkpoint to reconcile and verify project memory before finalization", async () => {
+  it("reconciles and verifies project memory inside the same foreground loop", async () => {
     const streamRequests: ModelRequestLike[] = []
-    const structuredSystems: string[] = []
     const resourceInputs: Array<{ toolName: string; input: unknown }> = []
     let streamCalls = 0
     const provider: ModelProvider = {
       countTokens: fakeCountTokens,
-      async generateStructured(request) {
-        structuredSystems.push(request.system)
-        return {
-          output: {
-            finalAnswer: "Verified and saved.",
-            goalFinalization: { state: "completed", note: "Verified the memory-loop state." },
-          } as never,
-        }
-      },
       async *stream(request) {
         streamRequests.push(request)
         streamCalls += 1
@@ -1370,21 +1464,22 @@ describe("SocratesAgent", () => {
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
-        if (streamCalls === 3) {
+        if (streamCalls === 2) {
           yield { type: "model.tool_call.completed", toolCall: { toolCallId: "tcall_memory_read", toolName: "read", input: { path: "socrates://project/memory/durable_decisions", charLimit: 20_000 } } }
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
-        if (streamCalls === 4) {
+        if (streamCalls === 3) {
           yield { type: "model.tool_call.completed", toolCall: { toolCallId: "tcall_memory_patch", toolName: "edit", input: { path: "socrates://project/memory/durable_decisions", edits: [{ oldString: "- Existing durable decision.", newString: "- Verified README mentions the Socrates memory loop." }] } } }
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
-        if (streamCalls === 5) {
+        if (streamCalls === 4) {
           yield { type: "model.tool_call.completed", toolCall: { toolCallId: "tcall_memory_verify", toolName: "read", input: { path: "socrates://project/memory/durable_decisions", charLimit: 20_000 } } }
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
+        yield { type: "model.answer.delta", text: finalJson("Verified and saved.", "Verified the memory-loop state.") }
         yield { type: "model.completed" }
       },
     }
@@ -1434,17 +1529,15 @@ describe("SocratesAgent", () => {
       streamed.push(event)
     }
 
-    expect(structuredSystems).toHaveLength(1)
-    expect(structuredSystems[0]).toContain("You are Socrates")
     expect(resourceInputs).toContainEqual({ toolName: "edit", input: {
       path: "socrates://project/memory/durable_decisions",
       edits: [{ oldString: "- Existing durable decision.", newString: "- Verified README mentions the Socrates memory loop." }],
     } })
     const toolNames = streamed.filter((event) => event.type === "tool.call.started").map((event) => event.toolName)
     expect(toolNames).toEqual(["read", "read", "read", "read", "read", "read", "read", "edit", "read"])
-    expect(streamRequests).toHaveLength(6)
-    expect(JSON.stringify(streamRequests[2]?.messages)).toContain("socrates_reconciliation_checkpoint")
-    expect(JSON.stringify(streamRequests[5]?.messages)).toContain("Verified README mentions the Socrates memory loop")
+    expect(streamRequests).toHaveLength(5)
+    expect(JSON.stringify(streamRequests)).not.toContain("socrates_reconciliation_checkpoint")
+    expect(JSON.stringify(streamRequests[4]?.messages)).toContain("Verified README mentions the Socrates memory loop")
     expect(streamed.filter((event) => event.type === "model.answer.delta")).toHaveLength(0)
     expect(streamed).toContainEqual({
       type: "agent.final_result",
@@ -1461,14 +1554,6 @@ describe("SocratesAgent", () => {
     let streamCalls = 0
     const provider: ModelProvider = {
       countTokens: fakeCountTokens,
-      async generateStructured() {
-        return {
-          output: {
-            finalAnswer: "Done.",
-            goalFinalization: { state: "completed", note: "Inspection completed without durable changes." },
-          } as never,
-        }
-      },
       async *stream(request) {
         streamRequests.push(request)
         streamCalls += 1
@@ -1480,7 +1565,7 @@ describe("SocratesAgent", () => {
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
-        yield { type: "model.answer.delta", text: "Done." }
+        yield { type: "model.answer.delta", text: finalJson("Done.", "Inspection completed without durable changes.") }
         yield { type: "model.completed" }
       },
     }
@@ -1517,8 +1602,8 @@ describe("SocratesAgent", () => {
     }
 
     expect(memoryNoteInputs).toHaveLength(0)
-    expect(streamRequests).toHaveLength(3)
-    expect(JSON.stringify(streamRequests[2]?.messages)).toContain("socrates_reconciliation_checkpoint")
+    expect(streamRequests).toHaveLength(2)
+    expect(JSON.stringify(streamRequests)).not.toContain("socrates_reconciliation_checkpoint")
   })
 
   it("preserves OpenAI reasoning item metadata when continuing after tool calls", async () => {
@@ -1850,7 +1935,7 @@ describe("SocratesAgent", () => {
     expect(JSON.stringify(countRequests[1]?.messages)).toContain("tool-result")
   })
 
-  it("adds failed-tool guidance and a runtime action ledger to follow-up model context", async () => {
+  it("keeps failed-tool guidance in the actual result without a shadow action ledger", async () => {
     const countRequests: CountedRequest[] = []
     let calls = 0
     const provider: ModelProvider = {
@@ -1904,8 +1989,8 @@ describe("SocratesAgent", () => {
 
     const followUpMessages = JSON.stringify(countRequests[1]?.messages)
     expect(followUpMessages).toContain("socrates://tool-guidance")
-    expect(followUpMessages).toContain("Runtime action ledger for this turn")
-    expect(followUpMessages).toContain("failed read")
+    expect(followUpMessages).toContain("invalid_tool_input")
+    expect(followUpMessages).not.toContain("Runtime action ledger for this turn")
   })
 
   it("gives invalid mutation tool schemas a concrete recovery hint before forcing a final answer", async () => {
@@ -2022,8 +2107,8 @@ describe("SocratesAgent", () => {
       // Drain the turn.
     }
 
-    expect(JSON.stringify(countRequests[1]?.messages)).toContain("Runtime tool-schema recovery")
-    expect(JSON.stringify(countRequests[2]?.messages)).toContain("For a new file")
+    expect(JSON.stringify(countRequests[1]?.messages)).toContain("socrates://tool-guidance")
+    expect(JSON.stringify(countRequests[2]?.messages)).not.toContain("Runtime tool-schema recovery")
     expect(streamRequests[1]?.tools?.map((tool) => tool.name)).toContain("edit")
     expect(streamRequests[2]?.tools?.map((tool) => tool.name)).toContain("edit")
     expect(editInputs).toHaveLength(1)
@@ -2087,8 +2172,8 @@ describe("SocratesAgent", () => {
     expect(countRequests.at(-1)?.toolCount).toBe(0)
     expect(streamRequests.at(-1)?.tools).toHaveLength(0)
     const finalMessages = JSON.stringify(countRequests.at(-1)?.messages)
-    expect(finalMessages).toContain("same normalized tool target was repeated 4 times")
-    expect(finalMessages).toContain("Runtime anti-spiral guard")
+    expect(finalMessages).toContain("invalid_tool_input")
+    expect(finalMessages).not.toContain("Runtime anti-spiral guard")
   })
 
   it("forces a final no-tools call after repeated normalized tool targets", async () => {
@@ -2148,11 +2233,11 @@ describe("SocratesAgent", () => {
     expect(countRequests.at(-1)?.toolCount).toBe(0)
     expect(streamRequests.at(-1)?.tools).toHaveLength(0)
     const finalMessages = JSON.stringify(countRequests.at(-1)?.messages)
-    expect(finalMessages).toContain("same normalized tool target was repeated 4 times")
-    expect(finalMessages).toContain("Runtime anti-spiral guard")
+    expect(finalMessages).toContain("tool-result")
+    expect(finalMessages).not.toContain("Runtime anti-spiral guard")
   })
 
-  it("steers large current turns without disabling tools or abandoning the task", async () => {
+  it("does not inject token-growth steering messages into large current turns", async () => {
     const countRequests: CountedRequest[] = []
     const streamRequests: ModelRequestLike[] = []
     let countCalls = 0
@@ -2219,9 +2304,8 @@ describe("SocratesAgent", () => {
     expect(countRequests.at(-1)?.toolCount).toBeGreaterThan(0)
     expect(streamRequests.at(-1)?.tools?.length ?? 0).toBeGreaterThan(0)
     const finalMessages = JSON.stringify(countRequests.at(-1)?.messages)
-    expect(finalMessages).toContain("current-turn context growth is above 50k")
-    expect(finalMessages).toContain("current-turn context growth is above 80k")
-    expect(finalMessages).toContain("Do not abandon unfinished implementation or verification")
+    expect(finalMessages).not.toContain("current-turn context growth")
+    expect(finalMessages).not.toContain("Runtime action ledger")
   })
 
   it("omits tools after ten confirmed tool execution errors", async () => {
@@ -2285,8 +2369,8 @@ describe("SocratesAgent", () => {
     expect(countRequests[0]?.toolCount).toBe(12)
     expect(countRequests[10]?.toolCount).toBe(0)
     expect(streamRequests[10]?.tools).toHaveLength(0)
-    expect(JSON.stringify(countRequests[10]?.messages)).toContain("10 confirmed tool-call execution errors")
     expect(JSON.stringify(countRequests[10]?.messages)).toContain("invalid_tool_input")
+    expect(JSON.stringify(countRequests[10]?.messages)).not.toContain("confirmed tool-call execution errors")
   })
 
   it("uses an internal preview to include an edit diff in approval requests", async () => {
@@ -2820,7 +2904,6 @@ describe("SocratesAgent", () => {
     expect(request.system).not.toContain("Semantic retrieval status:")
     expect(request.system).toContain("search `socrates://capabilities`")
     expect(request.system).toContain("capability_manager handles skill create/update/delete/enable/disable")
-    expect(request.system).toContain("skill_preview_import")
     expect(request.system).toContain("Do not simulate skills or extensions")
     expect(request.system).toContain("Never claim a capability is missing before this fallback")
     expect(request.system).toContain("five operations")
@@ -2926,15 +3009,12 @@ describe("SocratesAgent", () => {
       },
     })
   })
-  it("runs one bounded same-Socrates progress checkpoint after a verified mutation milestone", async () => {
+  it("attaches one compact reconciliation notice to a real result after a verified mutation milestone", async () => {
     const streamRequests: ModelRequestLike[] = []
     const persisted: Array<import("../index").ReconciliationWatermarkState> = []
     let streamCalls = 0
     const provider: ModelProvider = {
       countTokens: fakeCountTokens,
-      async generateStructured() {
-        return { output: { finalAnswer: "Implemented and verified.", goalFinalization: { state: "completed", note: "Mutation milestone verified." } } as never }
-      },
       async *stream(request) {
         streamRequests.push(request)
         streamCalls += 1
@@ -2945,6 +3025,7 @@ describe("SocratesAgent", () => {
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
+        yield { type: "model.answer.delta", text: finalJson("Implemented and verified.", "Mutation milestone verified.") }
         yield { type: "model.completed" }
       },
     }
@@ -2983,13 +3064,15 @@ describe("SocratesAgent", () => {
         persisted.push(state)
       },
     })) {
-      // Drain the same Socrates turn through progress and final checkpoints.
+      // Drain the same foreground loop.
     }
 
-    expect(streamRequests).toHaveLength(4)
-    expect(countSubstring(JSON.stringify(streamRequests[1]?.messages), "<socrates_progress_reconciliation_checkpoint>")).toBe(1)
-    expect(JSON.stringify(streamRequests[1]?.messages)).toContain("substantial_verified_mutation")
-    expect(countSubstring(JSON.stringify(streamRequests[3]?.messages), "<socrates_reconciliation_checkpoint>")).toBe(1)
+    expect(streamRequests).toHaveLength(2)
+    const followUp = JSON.stringify(streamRequests[1]?.messages)
+    expect(countSubstring(followUp, '"kind":"socrates_reconciliation"')).toBe(1)
+    expect(followUp).toContain("substantial_verified_mutation")
+    expect(followUp).not.toContain("socrates_progress_reconciliation_checkpoint")
+    expect(followUp).not.toContain("socrates_reconciliation_checkpoint")
     expect(persisted.at(-1)).toMatchObject({
       lastReconciledEvidenceSequence: 3,
       lastObservedEvidenceSequence: 3,
@@ -3052,6 +3135,12 @@ type CountedRequest = {
 }
 
 const countSubstring = (value: string, needle: string): number => value.split(needle).length - 1
+
+const finalJson = (
+  finalAnswer: string,
+  note: string,
+  state: "active" | "completed" | "blocked" | "discarded" = "completed",
+): string => JSON.stringify({ finalAnswer, goalFinalization: { state, note } })
 
 const stringMessageContents = (messages: unknown): string[] =>
   Array.isArray(messages)

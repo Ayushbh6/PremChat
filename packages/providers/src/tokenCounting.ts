@@ -28,6 +28,7 @@ type CountableModelRequest = {
   system: string
   messages: unknown[]
   tools: CountableToolDefinition[]
+  structuredOutputSchema?: unknown
   providerOptions?: unknown
 }
 
@@ -100,6 +101,9 @@ export const buildCountableModelRequest = (request: ModelRequest, providerOption
     description: tool.description,
     inputSchema: schemaForCounting(tool.providerInputSchema),
   })),
+  ...(request.structuredOutputSchema === undefined
+    ? {}
+    : { structuredOutputSchema: schemaForCounting(request.structuredOutputSchema) }),
   ...(providerOptions === undefined ? {} : { providerOptions }),
 })
 

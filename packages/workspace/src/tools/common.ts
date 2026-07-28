@@ -1,20 +1,30 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { SocratesError } from "@socrates/shared"
+import {
+  DEFAULT_MODEL_OUTPUT_CHAR_LIMIT,
+  DEFAULT_MODEL_OUTPUT_TOKEN_LIMIT,
+  limitModelOutputText,
+  MAX_MODEL_OUTPUT_CHAR_LIMIT,
+  MAX_MODEL_OUTPUT_TOKEN_LIMIT,
+  resolveModelOutputCharLimit,
+  SocratesError,
+} from "@socrates/shared"
 import { socratesSurface, type TruncationMetadata } from "@socrates/contracts"
 
-export const DEFAULT_CHAR_LIMIT = 20_000
-export const MAX_CHAR_LIMIT = 80_000
-export const DEFAULT_TOKEN_LIMIT = 4_000
-export const MAX_TOKEN_LIMIT = 6_000
-const APPROX_CHARS_PER_TOKEN = 4
+export const DEFAULT_CHAR_LIMIT = DEFAULT_MODEL_OUTPUT_CHAR_LIMIT
+export const MAX_CHAR_LIMIT = MAX_MODEL_OUTPUT_CHAR_LIMIT
+export const DEFAULT_TOKEN_LIMIT = DEFAULT_MODEL_OUTPUT_TOKEN_LIMIT
+export const MAX_TOKEN_LIMIT = MAX_MODEL_OUTPUT_TOKEN_LIMIT
 
 export const clampCharLimit = (charLimit?: number): number => Math.min(charLimit ?? DEFAULT_CHAR_LIMIT, MAX_CHAR_LIMIT)
 
 export const clampTokenLimit = (tokenLimit?: number): number => Math.min(tokenLimit ?? DEFAULT_TOKEN_LIMIT, MAX_TOKEN_LIMIT)
 
-export const charLimitForTokenCap = (tokenLimit?: number): number => clampTokenLimit(tokenLimit) * APPROX_CHARS_PER_TOKEN
+export const charLimitForTokenCap = (tokenLimit?: number): number => resolveModelOutputCharLimit({
+  charLimit: MAX_CHAR_LIMIT,
+  ...(tokenLimit !== undefined ? { tokenLimit } : {}),
+})
 
 export const resolveWorkspacePath = (workspacePath: string, requestedPath?: string): string => {
   const workspaceRoot = path.resolve(workspacePath)
@@ -41,20 +51,12 @@ export const toWorkspaceRelativePath = (workspacePath: string, targetPath: strin
 }
 
 export const truncateText = (text: string, charLimit = DEFAULT_CHAR_LIMIT, offset = 0): { text: string; truncation: TruncationMetadata } => {
-  const limit = clampCharLimit(charLimit)
-  const start = Math.min(offset, text.length)
-  const end = Math.min(start + limit, text.length)
-  const sliced = text.slice(start, end)
-  return {
-    text: sliced,
-    truncation: {
-      truncated: end < text.length,
-      charLimit: limit,
-      originalLength: text.length,
-      returnedLength: sliced.length,
-      ...(end < text.length ? { nextOffset: end } : {}),
-    },
-  }
+  return limitModelOutputText(text, {
+    charLimit,
+    tokenLimit: MAX_TOKEN_LIMIT,
+    defaultTokenLimit: MAX_TOKEN_LIMIT,
+    offset,
+  })
 }
 
 export const emptyTruncation = (charLimit?: number): TruncationMetadata => ({

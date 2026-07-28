@@ -119,7 +119,7 @@ export type TruncationMetadata = z.infer<typeof truncationMetadataSchema>
 export const readToolInputSchema = z
   .object({
     path: z.string().min(1).describe("Workspace-relative or Socrates-known resource path to read."),
-    offset: z.number().int().nonnegative().optional().describe("Character offset into extracted output. Use with truncation.nextOffset to continue a large read."),
+    offset: z.number().int().nonnegative().optional().describe("Character offset for file/resource content, or entry offset for directories. Use truncation.nextOffset to continue."),
     charLimit: z.number().int().positive().max(80_000).optional().describe("Character cap for returned output. Effective output is also bounded by tokenLimit."),
     tokenLimit: z
       .number()
@@ -177,7 +177,7 @@ export const searchToolInputSchema = z
     caseSensitive: z.boolean().optional(),
     includeHidden: z.boolean().optional(),
     maxResults: z.number().int().positive().max(50).optional(),
-    charLimit: z.number().int().positive().max(80_000).optional(),
+    charLimit: z.number().int().positive().max(80_000).optional().describe("Character cap for serialized matches; runtime output is also hard-capped near 6,000 estimated tokens."),
   })
   .strict()
 export type SearchToolInput = z.infer<typeof searchToolInputSchema>
@@ -590,7 +590,8 @@ export const traceRetrieveMainInspectInputSchema = z
     resultNumber: z.number().int().positive().max(8).optional(),
     conversationTitle: z.string().min(1).max(240).optional(),
     turnNo: z.number().int().positive().max(10_000).optional(),
-    charLimit: z.number().int().positive().max(80_000).optional(),
+    offset: z.number().int().nonnegative().optional().describe("Character offset into the exact inspected exchange. Use truncation.nextOffset to continue."),
+    charLimit: z.number().int().positive().max(80_000).optional().describe("Character cap for this page; runtime output is also hard-capped near 6,000 estimated tokens."),
   })
   .strict()
   .superRefine((input, context) => {
@@ -626,6 +627,7 @@ export const traceRetrieveMainToolOutputSchema = z
   .object({
     results: z.array(traceRetrieveMainResultSchema).max(8),
     totalMatches: z.number().int().nonnegative(),
+    truncation: truncationMetadataSchema.optional(),
     warnings: z.array(z.string()).optional(),
   })
   .strict()
@@ -686,6 +688,7 @@ export const traceRetrieveGlobalInspectInputSchema = z
     projectTitle: z.string().min(1).max(240).optional(),
     conversationTitle: z.string().min(1).max(240).optional(),
     turnNo: z.number().int().positive().max(10_000).optional(),
+    offset: z.number().int().nonnegative().optional(),
     charLimit: z.number().int().positive().max(80_000).optional(),
   })
   .strict()
@@ -710,6 +713,7 @@ export const traceRetrieveGlobalToolOutputSchema = z
   .object({
     results: z.array(traceRetrieveGlobalResultSchema).max(8),
     totalMatches: z.number().int().nonnegative(),
+    truncation: truncationMetadataSchema.optional(),
     warnings: z.array(z.string()).optional(),
   })
   .strict()

@@ -147,6 +147,26 @@ describe("DeepSeek chat provider", () => {
     expect(body.messages[2].content).toBe("Now inspect the workspace.")
   })
 
+  it("enforces JSON output during the same streamed tool-capable request", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      sseResponse([{ id: "ds_resp_stream_json", model: "deepseek-v4-pro", choices: [{ delta: { content: "{\"answer\":\"ok\"}" }, finish_reason: "stop" }] }]),
+    )
+    globalThis.fetch = fetchMock as typeof fetch
+
+    const provider = new DeepSeekChatProvider(credentials())
+    for await (const _event of provider.stream({
+      ...modelRequest(),
+      structuredOutputSchema: z.object({ answer: z.string() }).strict(),
+    })) {
+      // Drain stream.
+    }
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    expect(body.response_format).toEqual({ type: "json_object" })
+    expect(body.messages[0].content).toContain("Return only a valid JSON object")
+    expect(body.tools).toHaveLength(1)
+  })
+
   it("passes DeepSeek reasoning_content back for thinking tool-call continuations", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(sseResponse([{ id: "ds_resp_2", model: "deepseek-v4-pro", choices: [{ delta: { content: "Done" }, finish_reason: "stop" }] }]))
     globalThis.fetch = fetchMock as typeof fetch

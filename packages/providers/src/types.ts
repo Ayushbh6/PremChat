@@ -91,6 +91,8 @@ export type ModelRequest = {
   messages: ModelMessage[]
   runtimeConfig: RuntimeConfig
   tools?: ModelToolDefinition[]
+  /** Native schema for the terminal response of this same streamed model call. */
+  structuredOutputSchema?: unknown
   modelCallId?: string
   abortSignal?: AbortSignal
   countTokens?: {
@@ -98,7 +100,7 @@ export type ModelRequest = {
   }
 }
 
-export type StructuredModelRequest<TOutput> = Omit<ModelRequest, "tools" | "countTokens"> & {
+export type StructuredModelRequest<TOutput> = Omit<ModelRequest, "tools" | "structuredOutputSchema" | "countTokens"> & {
   schema: unknown
 }
 

@@ -106,6 +106,18 @@ describe("provider token counting", () => {
     expect(withToolsAndResults.baseTokens).toBeGreaterThan(withoutTools.baseTokens)
   })
 
+  it("includes the native terminal-output schema in the model-input count", () => {
+    const withoutSchema = countModelRequestLocally(baseRequest())
+    const withSchema = countModelRequestLocally(baseRequest({
+      structuredOutputSchema: z.object({
+        finalAnswer: z.string(),
+        goalFinalization: z.object({ state: z.string(), note: z.string() }),
+      }).strict(),
+    }))
+
+    expect(withSchema.baseTokens).toBeGreaterThan(withoutSchema.baseTokens)
+  })
+
   it("does not count image bytes as text tokens", () => {
     const textOnly = countModelRequestLocally(baseRequest({ messages: [{ role: "user", content: "Describe this image." }] }))
     const withImage = countModelRequestLocally(

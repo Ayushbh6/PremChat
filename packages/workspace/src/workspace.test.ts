@@ -325,6 +325,27 @@ describe("workspace tools", () => {
     expect(hardCapped.content).toHaveLength(24_000)
   })
 
+  it("bounds directory reads and continues by entry offset", async () => {
+    const workspacePath = tempDir()
+    for (let index = 0; index < 240; index += 1) {
+      fs.writeFileSync(path.join(workspacePath, `entry-${String(index).padStart(3, "0")}.txt`), "x")
+    }
+
+    const first = await readWorkspacePath({ path: ".", charLimit: 800 }, { workspacePath })
+    const second = await readWorkspacePath({
+      path: ".",
+      charLimit: 800,
+      offset: first.truncation.nextOffset ?? 0,
+    }, { workspacePath })
+
+    expect(first.kind).toBe("directory")
+    expect(JSON.stringify(first.entries).length).toBeLessThanOrEqual(800)
+    expect(first.truncation.truncated).toBe(true)
+    expect(first.truncation.nextOffset).toBe(first.entries?.length)
+    expect(second.entries?.[0]?.name).toBe(`entry-${String(first.entries?.length ?? 0).padStart(3, "0")}.txt`)
+    expect(first.warnings?.[0]).toContain("offset=truncation.nextOffset")
+  })
+
   it("warns when reading images with a non-vision model", async () => {
     const workspacePath = tempDir()
     fs.writeFileSync(path.join(workspacePath, "screenshot.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
@@ -488,6 +509,27 @@ describe("workspace tools", () => {
     expect(defaultCapped.warnings?.some((warning) => warning.includes("capped at 20"))).toBe(true)
     expect(hardCapped.matches).toHaveLength(50)
     expect(hardCapped.warnings?.some((warning) => warning.includes("capped at 50"))).toBe(true)
+  })
+
+  it("bounds serialized search output and shortens oversized matching lines", async () => {
+    const workspacePath = tempDir()
+    fs.mkdirSync(path.join(workspacePath, "src"), { recursive: true })
+    for (let index = 0; index < 8; index += 1) {
+      fs.writeFileSync(path.join(workspacePath, "src", `large-${index}.txt`), `needle-${"x".repeat(4_000)}\n`)
+    }
+
+    const result = await searchWorkspace({
+      mode: "text",
+      query: "needle-",
+      path: "src",
+      maxResults: 50,
+      charLimit: 2_000,
+    }, { workspacePath })
+
+    expect(JSON.stringify(result.matches).length).toBeLessThanOrEqual(2_000)
+    expect(result.matches.every((match) => (match.text?.length ?? 0) <= 1_000)).toBe(true)
+    expect(result.truncation.truncated).toBe(true)
+    expect(result.warnings?.some((warning) => warning.includes("oversized matching lines"))).toBe(true)
   })
 
   it("skips generated and vendor directories in rg-backed searches", async () => {

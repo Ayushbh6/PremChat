@@ -33,6 +33,7 @@ export const retrieveUnifiedMainToolTraces = async (
   return {
     results: output.results.map(({ projectTitle: _projectTitle, turnId: _turnId, ...result }) => result),
     totalMatches: output.totalMatches,
+    ...(output.truncation ? { truncation: output.truncation } : {}),
     ...(output.warnings ? { warnings: output.warnings } : {}),
   }
 }
@@ -47,6 +48,7 @@ const toGlobalInput = (
       ...(request.resultNumber ? { resultNumber: request.resultNumber } : {}),
       ...(request.conversationTitle ? { conversationTitle: request.conversationTitle } : {}),
       ...(request.turnNo ? { turnNo: request.turnNo } : {}),
+      ...(request.offset !== undefined ? { offset: request.offset } : {}),
       ...(request.charLimit ? { charLimit: request.charLimit } : {}),
     }
   }

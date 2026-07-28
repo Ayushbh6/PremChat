@@ -21,7 +21,7 @@ import {
 } from "./socratesMemorySupport"
 import {
   toolErrorResult,
-} from "./socratesTurnLedgers"
+} from "./socratesToolGuards"
 import {
   addDuplicateTraceRetrieveWarning,
   previewJson,

@@ -12,7 +12,7 @@ index_tags: [tool_usage]
 <!-- socrates:section id="purpose" kind="purpose" tags="tools" -->
 ## Purpose
 
-- `trace_retrieve`: Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Results expose numbered human context; use inspect with resultNumber for the full Q&A parent. Internal conversation, Flow, goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.
+- `trace_retrieve`: Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Search returns at most 8 numbered results; use inspect with resultNumber for the exact Q&A parent, then continue a bounded inspection with offset=truncation.nextOffset. Internal conversation, Flow, goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.
 <!-- /socrates:section -->
 
 <!-- socrates:section id="when_to_use" kind="routing" tags="tools" -->
@@ -295,10 +295,16 @@ Canonical capability: `tool.trace_retrieve.main`. Send only fields accepted by t
           "exclusiveMinimum": 0,
           "maximum": 10000
         },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Character offset into the exact inspected exchange. Use truncation.nextOffset to continue."
+        },
         "charLimit": {
           "type": "integer",
           "exclusiveMinimum": 0,
-          "maximum": 80000
+          "maximum": 80000,
+          "description": "Character cap for this page; runtime output is also hard-capped near 6,000 estimated tokens."
         }
       },
       "required": [

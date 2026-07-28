@@ -109,6 +109,9 @@ export class OllamaChatProvider implements ModelProvider {
           stream: true,
           think: Boolean(request.runtimeConfig.thinkingEnabled),
           ...(request.tools && request.tools.length > 0 ? { tools: request.tools.map(toOllamaTool) } : {}),
+          ...(request.structuredOutputSchema === undefined
+            ? {}
+            : { format: schemaToJsonSchema(request.structuredOutputSchema) }),
         }),
         ...(request.abortSignal ? { signal: request.abortSignal } : {}),
       })

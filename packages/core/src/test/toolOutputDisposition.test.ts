@@ -70,7 +70,7 @@ describe("ToolOutputDispositionLedger", () => {
       modelId: "deepseek-v4-pro",
     })
 
-    expect(messages.filter((message) => message.role === "developer")).toHaveLength(1)
+    expect(messages.filter((message) => message.role === "developer")).toHaveLength(0)
     ledger.apply({ release: ["R1"] }, true)
     expect(ledger.pendingResults()).toEqual(["R2"])
     expect(JSON.stringify(messages)).not.toContain("Large temporary result R1:")

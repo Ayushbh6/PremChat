@@ -70,6 +70,7 @@ export type AgentRuntimeModelStepInput = {
   system: string
   messages: ModelMessage[]
   tools: ReturnType<CapabilitySet["modelDefinitions"]>
+  structuredOutputSchema?: unknown
   sessionId?: string
   cacheKey?: string
   modelCallId?: string
@@ -141,6 +142,7 @@ const runModelStep = async function* (input: AgentRuntimeModelStepInput): AsyncI
     messages: input.messages,
     runtimeConfig: input.runtimeConfig,
     tools: input.tools,
+    ...(input.structuredOutputSchema === undefined ? {} : { structuredOutputSchema: input.structuredOutputSchema }),
     ...(input.sessionId ? { sessionId: input.sessionId } : {}),
     ...(input.cacheKey ? { cacheKey: input.cacheKey } : {}),
     ...(input.modelCallId ? { modelCallId: input.modelCallId } : {}),

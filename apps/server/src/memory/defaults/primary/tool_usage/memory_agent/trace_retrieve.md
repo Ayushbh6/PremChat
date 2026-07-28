@@ -12,7 +12,7 @@ index_tags: [tool_usage]
 <!-- socrates:section id="purpose" kind="purpose" tags="tools" -->
 ## Purpose
 
-- `trace_retrieve`: Recall any prior visible conversation across Socrates projects. This uses the same retrieval behavior as the main agent: lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Search all projects by default or select projects by id/title. Results include project titles and numbered human context; use inspect with resultNumber, turnId, or project/conversation/turn coordinates for the full Q&A parent.
+- `trace_retrieve`: Recall any prior visible conversation across Socrates projects. This uses the same retrieval behavior as the main agent: lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Search all projects by default or select projects by id/title. Search returns at most 8 numbered results; use inspect with resultNumber, turnId, or project/conversation/turn coordinates for the exact Q&A parent, then continue a bounded inspection with offset=truncation.nextOffset.
 <!-- /socrates:section -->
 
 <!-- socrates:section id="when_to_use" kind="routing" tags="tools" -->
@@ -417,6 +417,10 @@ Canonical capability: `tool.trace_retrieve.global`. Send only fields accepted by
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 10000
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
         },
         "charLimit": {
           "type": "integer",

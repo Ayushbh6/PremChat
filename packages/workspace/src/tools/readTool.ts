@@ -3,7 +3,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { promisify } from "node:util"
 import type { ReadToolInput, ReadToolOutput } from "@socrates/contracts"
-import { SocratesError } from "@socrates/shared"
+import { limitModelOutputItems, SocratesError } from "@socrates/shared"
 import { charLimitForTokenCap, clampCharLimit, emptyTruncation, isProbablyBinary, isSecretMaterialPath, resolveWorkspacePath, toWorkspaceRelativePath, truncateText } from "./common"
 import type { FileFreshnessTracker } from "./fileFreshness"
 import { detectLineEnding, hashBuffer } from "./fileMetadata"
@@ -50,23 +50,27 @@ export const readWorkspacePath = async (
   }
 
   if (stat.isDirectory()) {
-    const entries = (await fs.readdir(absolutePath, { withFileTypes: true }))
+    const allEntries = (await fs.readdir(absolutePath, { withFileTypes: true }))
       .sort((left, right) => left.name.localeCompare(right.name))
-      .slice(0, 200)
       .map((entry) => ({
         name: entry.name,
         path: toWorkspaceRelativePath(context.workspacePath, path.join(absolutePath, entry.name)),
         kind: entry.isDirectory() ? ("directory" as const) : ("file" as const),
       }))
+    const limited = limitModelOutputItems(allEntries, {
+      charLimit,
+      ...(input.tokenLimit !== undefined ? { tokenLimit: input.tokenLimit } : {}),
+      ...(input.offset !== undefined ? { offset: input.offset } : {}),
+      maxItems: 200,
+    })
     return {
       path: relativePath,
       kind: "directory",
-      entries,
-      truncation: {
-        truncated: entries.length === 200,
-        charLimit,
-        returnedLength: entries.length,
-      },
+      entries: limited.items,
+      truncation: limited.truncation,
+      ...(limited.truncation.truncated
+        ? { warnings: ["Directory output was bounded. Continue with offset=truncation.nextOffset or narrow the path/search."] }
+        : {}),
     }
   }
 

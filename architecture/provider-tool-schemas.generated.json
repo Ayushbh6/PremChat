@@ -16,7 +16,7 @@
           "offset": {
             "type": "integer",
             "minimum": 0,
-            "description": "Character offset into extracted output. Use with truncation.nextOffset to continue a large read."
+            "description": "Character offset for file/resource content, or entry offset for directories. Use truncation.nextOffset to continue."
           },
           "charLimit": {
             "type": "integer",
@@ -77,7 +77,8 @@
           "charLimit": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "maximum": 80000
+            "maximum": 80000,
+            "description": "Character cap for serialized matches; runtime output is also hard-capped near 6,000 estimated tokens."
           }
         },
         "required": [
@@ -671,10 +672,16 @@
                 "exclusiveMinimum": 0,
                 "maximum": 10000
               },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Character offset into the exact inspected exchange. Use truncation.nextOffset to continue."
+              },
               "charLimit": {
                 "type": "integer",
                 "exclusiveMinimum": 0,
-                "maximum": 80000
+                "maximum": 80000,
+                "description": "Character cap for this page; runtime output is also hard-capped near 6,000 estimated tokens."
               }
             },
             "required": [
@@ -1076,6 +1083,10 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 10000
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0
               },
               "charLimit": {
                 "type": "integer",

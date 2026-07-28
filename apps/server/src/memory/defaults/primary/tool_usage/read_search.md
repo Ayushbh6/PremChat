@@ -13,7 +13,7 @@ index_tags: [tool_usage]
 ## Purpose
 
 - `read`: Read a bounded file, directory, document, structured data file, or image from the active project workspace. Call this for exact file evidence and before editing existing files so freshness can be verified. Output is capped to an estimated 4k tokens by default and 6k tokens max; use charLimit, tokenLimit, and offset for large files.
-- `search`: Find files by name/path or search file contents in the active project workspace. Call this for targeted discovery before reading exact files. Use mode='files' for file discovery and mode='text' for grep-style content search. Set regex=true when using regex syntax such as |, .*, or word boundaries; otherwise prefer simple literal terms.
+- `search`: Find files by name/path or search file contents in the active project workspace. Call this for targeted discovery before reading exact files. Use mode='files' for file discovery and mode='text' for grep-style content search. Set regex=true when using regex syntax such as |, .*, or word boundaries; otherwise prefer simple literal terms. Results default to 20 and are capped at 50, oversized lines are shortened, and serialized output cannot exceed an estimated 6k tokens; narrow path/query and then read the exact file for more.
 <!-- /socrates:section -->
 
 <!-- socrates:section id="when_to_use" kind="routing" tags="tools" -->
@@ -43,7 +43,7 @@ Canonical capability: `tool.read`. Send only fields accepted by this generated p
     "offset": {
       "type": "integer",
       "minimum": 0,
-      "description": "Character offset into extracted output. Use with truncation.nextOffset to continue a large read."
+      "description": "Character offset for file/resource content, or entry offset for directories. Use truncation.nextOffset to continue."
     },
     "charLimit": {
       "type": "integer",
@@ -106,7 +106,8 @@ Canonical capability: `tool.search`. Send only fields accepted by this generated
     "charLimit": {
       "type": "integer",
       "exclusiveMinimum": 0,
-      "maximum": 80000
+      "maximum": 80000,
+      "description": "Character cap for serialized matches; runtime output is also hard-capped near 6,000 estimated tokens."
     }
   },
   "required": [

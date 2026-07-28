@@ -49,7 +49,12 @@ export class DeepSeekChatProvider implements ModelProvider {
       const response = await fetch(`${this.baseUrl()}/chat/completions`, {
         method: "POST",
         headers: this.headers(request),
-        body: JSON.stringify(createDeepSeekChatRequest(request, { stream: true })),
+        body: JSON.stringify(createDeepSeekChatRequest(request, {
+          stream: true,
+          ...(request.structuredOutputSchema === undefined
+            ? {}
+            : { jsonObject: true, schema: request.structuredOutputSchema }),
+        })),
         signal: streamTimeout.signal,
       })
       await assertOk(response)

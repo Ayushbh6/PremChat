@@ -30,7 +30,7 @@ import type {
 import { clientCommandSchema, memoryDocRequiredSections, serverEventSchema } from "@socrates/contracts"
 import { MAX_IMAGE_ATTACHMENT_BYTES, MAX_MESSAGE_ATTACHMENT_BYTES, MAX_MESSAGE_ATTACHMENTS } from "@socrates/contracts"
 import { SocratesAgent } from "@socrates/core"
-import type { EmbeddingProvider, ModelProvider, StructuredModelRequest, StructuredModelResult } from "@socrates/providers"
+import type { EmbeddingProvider, ModelEvent, ModelProvider, StructuredModelRequest, StructuredModelResult } from "@socrates/providers"
 import { createId, nowIso, SocratesError } from "@socrates/shared"
 import { buildServer } from "../app"
 import { openDatabase, runMigrations } from "../db/client"
@@ -394,18 +394,40 @@ const latestUserContent = (messages: Array<{ role?: string; content?: unknown }>
 }
 
 const createStructuredFinalAwareTestAgent = (provider: ModelProvider): SocratesAgent => {
-  const latestAnswerBySession = new Map<string, string>()
   const finalAwareProvider: ModelProvider = {
     countTokens: provider.countTokens.bind(provider),
     async *stream(request) {
+      const isMainLoop = request.system.startsWith("You are Socrates,")
       let currentAnswer = ""
+      let emittedToolCall = false
+      let completion: Extract<ModelEvent, { type: "model.completed" }> | undefined
       for await (const event of provider.stream(request)) {
-        if (event.type === "model.answer.delta") currentAnswer += event.text
+        if (!isMainLoop) {
+          yield event
+          continue
+        }
+        if (event.type === "model.answer.delta") {
+          currentAnswer += event.text
+          continue
+        }
+        if (event.type === "model.tool_call.streaming" || event.type === "model.tool_call.completed") {
+          emittedToolCall = true
+          yield event
+          continue
+        }
+        if (event.type === "model.completed") {
+          completion = event
+          continue
+        }
         yield event
       }
-      if (request.system.startsWith("You are Socrates,") && currentAnswer.trim()) {
-        latestAnswerBySession.set(request.sessionId ?? "default", currentAnswer)
+      if (isMainLoop && !emittedToolCall && currentAnswer.trim()) {
+        yield {
+          type: "model.answer.delta",
+          text: asMainFinalJson(currentAnswer),
+        }
       }
+      if (completion) yield completion
     },
     async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
       if (request.system.includes("<socrates_goal_resolution_phase>")) {
@@ -414,20 +436,6 @@ const createStructuredFinalAwareTestAgent = (provider: ModelProvider): SocratesA
           output: (content.includes('"currentGoal":null')
             ? { decision: "new", candidate: null, title: "Test goal", question: null }
             : { decision: "current", candidate: null, title: null, question: null }) as TOutput,
-        }
-      }
-      const isMainFinal = request.messages.some(
-        (message) => typeof message.content === "string" && message.content.includes("<socrates_final_answer_checkpoint>"),
-      )
-      if (isMainFinal) {
-        const sessionKey = request.sessionId ?? "default"
-        const finalAnswer = latestAnswerBySession.get(sessionKey) ?? ""
-        latestAnswerBySession.delete(sessionKey)
-        return {
-          output: {
-            finalAnswer,
-            goalFinalization: { state: "active", note: "The test focus remains active." },
-          } as TOutput,
         }
       }
       if (request.system.includes("Soul Confirmation Agent") && !provider.generateStructured) {
@@ -442,17 +450,28 @@ const createStructuredFinalAwareTestAgent = (provider: ModelProvider): SocratesA
   return new SocratesAgent(finalAwareProvider)
 }
 
+const asMainFinalJson = (answer: string): string => {
+  try {
+    const parsed = JSON.parse(answer) as { finalAnswer?: unknown; goalFinalization?: unknown }
+    if (typeof parsed.finalAnswer === "string" && parsed.goalFinalization && typeof parsed.goalFinalization === "object") {
+      return answer
+    }
+  } catch {
+    // Plain test-provider answers are wrapped into the real foreground terminal contract.
+  }
+  return JSON.stringify({
+    finalAnswer: answer,
+    goalFinalization: { state: "active", note: "The test focus remains active." },
+  })
+}
+
 const createTestAgent = (): SocratesAgent => {
-  const latestAnswerBySession = new Map<string, string>()
   const provider: ConstructorParameters<typeof SocratesAgent>[0] = {
     countTokens: fakeCountTokens,
     async *stream(request) {
       const answer = `Echo: ${latestUserContent(request.messages) ?? ""}`
       yield { type: "model.reasoning.delta", text: "Testing." }
       yield { type: "model.answer.delta", text: answer }
-      if (request.system.startsWith("You are Socrates,")) {
-        latestAnswerBySession.set(request.sessionId ?? "default", answer)
-      }
       await delay(100)
       yield {
         type: "model.completed",
@@ -462,17 +481,6 @@ const createTestAgent = (): SocratesAgent => {
           reasoningTokens: 2,
           totalTokens: 9,
         },
-      }
-    },
-    async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
-      const sessionKey = request.sessionId ?? "default"
-      const finalAnswer = latestAnswerBySession.get(sessionKey) ?? "Test answer."
-      latestAnswerBySession.delete(sessionKey)
-      return {
-        output: {
-          finalAnswer,
-          goalFinalization: { state: "active", note: "The test focus remains active." },
-        } as TOutput,
       }
     },
   }
@@ -3808,11 +3816,11 @@ describe("WebSocket API", () => {
       const driverRequest = requests.find((request) => request.tools?.some((tool) => tool.name === "handover_to_frontier"))
       const frontierRequests = requests.filter((request) => (request as { modelId?: string }).modelId === "x-ai/grok-4.5")
       expect(driverRequest?.tools?.map((tool) => tool.name)).toContain("handover_to_frontier")
-      expect(frontierRequests).toHaveLength(2)
+      expect(frontierRequests).toHaveLength(1)
       expect(frontierRequests.every((request) => !request.tools?.some((tool) => tool.name === "handover_to_frontier"))).toBe(true)
       expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("Solve the difficult concurrency problem")
       expect(JSON.stringify(frontierRequests[0]?.messages)).toContain("Resolve the final concurrency invariant")
-      expect(JSON.stringify(frontierRequests[1]?.messages)).toContain("socrates_reconciliation_checkpoint")
+      expect(JSON.stringify(frontierRequests[0]?.messages)).not.toContain("socrates_reconciliation_checkpoint")
 
       const sqlite = new Database(dbPath)
       try {
@@ -3822,8 +3830,6 @@ describe("WebSocket API", () => {
         expect(calls).toEqual([
           { providerId: "openrouter", modelId: "deepseek/deepseek-v4-flash", status: "completed" },
           { providerId: "openrouter", modelId: "deepseek/deepseek-v4-flash", status: "completed" },
-          { providerId: "openrouter", modelId: "x-ai/grok-4.5", status: "completed" },
-          { providerId: "openrouter", modelId: "x-ai/grok-4.5", status: "completed" },
           { providerId: "openrouter", modelId: "x-ai/grok-4.5", status: "completed" },
         ])
         const handoverEvents = sqlite.prepare("SELECT COUNT(*) AS count FROM events WHERE type = 'agent.model.handover'").get() as { count: number }
@@ -3910,7 +3916,7 @@ describe("WebSocket API", () => {
       )
       const continuedRequests = requests.slice(handoverRequestIndex + 1)
       expect(continuedRequests.length).toBeGreaterThan(0)
-      expect(continuedRequests.some((request) => JSON.stringify(request.messages).includes("The user declined the Frontier handover"))).toBe(true)
+      expect(continuedRequests.some((request) => JSON.stringify(request.messages).includes("tool_approval_rejected"))).toBe(true)
       expect(continuedRequests.every((request) => !request.tools?.some((tool) => tool.name === "handover_to_frontier"))).toBe(true)
 
       const sqlite = new Database(dbPath)
@@ -3943,19 +3949,20 @@ describe("WebSocket API", () => {
       }),
       async *stream() {
         mainCalls += 1
-        yield { type: "model.answer.delta", text: "The ordinary task still completed." }
+        yield {
+          type: "model.answer.delta",
+          text: JSON.stringify({
+            finalAnswer: "The ordinary task still completed.",
+            goalFinalization: { state: "active", note: "The ordinary test task remains active." },
+          }),
+        }
         yield { type: "model.completed" }
       },
       async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>): Promise<StructuredModelResult<TOutput>> {
         if (request.system.includes("<socrates_goal_resolution_phase>")) {
           return { output: { invalid: true } as TOutput }
         }
-        return {
-          output: {
-            finalAnswer: "The ordinary task still completed.",
-            goalFinalization: { state: "active", note: "The ordinary test task remains active." },
-          } as TOutput,
-        }
+        throw new Error("No detached main-agent structured call is expected.")
       },
     }
     const app = await buildTestServer(dbPath, new SocratesAgent(provider))
@@ -4380,7 +4387,7 @@ describe("WebSocket API", () => {
 
       expect(body.ok).toBe(true)
       if (body.ok) {
-        expect(body.data.tokenUsage.totalTokens).toBe(12)
+        expect(body.data.tokenUsage.totalTokens).toBe(6)
         expect(body.data.contextUsage?.contextUsedTokens).toBe(12_345)
         expect(body.data.contextUsage?.contextUsedTokens).not.toBe(body.data.tokenUsage.totalTokens)
         expect(body.data.lastRuntimeConfig).toEqual({
@@ -7394,7 +7401,7 @@ describe("WebSocket API", () => {
       await waitForEvent(socket, "message.completed")
       await waitForEvent(socket, "turn.completed")
 
-      const nextTurnRequest = requests[3] as { messages: Array<{ role: string; content: unknown }> }
+      const nextTurnRequest = requests[2] as { messages: Array<{ role: string; content: unknown }> }
       expect(JSON.stringify(nextTurnRequest.messages)).toContain("Resources listed.")
       expect(JSON.stringify(nextTurnRequest.messages)).toContain("Continue without replaying tools")
       expect(JSON.stringify(nextTurnRequest.messages)).not.toContain("tool-result")
@@ -8854,7 +8861,7 @@ describe("WebSocket API", () => {
         }
         expect(row.assistant_count).toBe(0)
         expect(row.failed_turn_count).toBe(1)
-        expect(row.failed_model_call_count).toBe(4)
+        expect(row.failed_model_call_count).toBe(1)
       } finally {
         sqlite.close()
       }

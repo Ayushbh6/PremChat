@@ -110,7 +110,7 @@ import {
   type ModelMessage,
   type ProviderCredentialResolver,
 } from "@socrates/providers"
-import { SocratesError } from "@socrates/shared"
+import { limitModelOutputText, MAX_MODEL_OUTPUT_TOKEN_LIMIT, SocratesError } from "@socrates/shared"
 import os from "node:os"
 import fs from "node:fs"
 import path from "node:path"
@@ -1264,21 +1264,22 @@ export class SocratesStore {
         throw new SocratesError("trace_result_not_found", "The requested trace result could not be resolved to a visible project.", { recoverable: true })
       }
       if (turnId) {
-        const v2Result = this.retrieveV2GlobalTraceTurn(projectId, turnId, input.charLimit ?? 80_000)
+        const v2Result = this.retrieveV2GlobalTraceTurn(projectId, turnId)
         if (v2Result) {
           this.globalTraceRefs = [{ projectId, turnId }]
-          return { results: [{ ...v2Result, resultNumber: 1 }], totalMatches: 1 }
+          return limitGlobalTraceInspectOutput([{ ...v2Result, resultNumber: 1 }], input)
         }
       }
       const inspected = await this.retrieval.retrieveMainTrace(projectId, "", {
         operation: "inspect",
         ...(input.conversationTitle ? { conversationTitle: input.conversationTitle } : {}),
         ...(input.turnNo ? { turnNo: input.turnNo } : {}),
+        ...(input.offset !== undefined ? { offset: input.offset } : {}),
         ...(input.charLimit ? { charLimit: input.charLimit } : {}),
       }, undefined, undefined, turnId)
       const results = inspected.results.map((result, index) => ({ ...result, resultNumber: index + 1, projectTitle: this.projectTitle(projectId) }))
       this.globalTraceRefs = results.flatMap((result) => result.turnId ? [{ projectId, turnId: result.turnId }] : [])
-      return { results, totalMatches: results.length }
+      return limitGlobalTraceInspectOutput(results, input)
     }
 
     const projectIds = this.resolveGlobalRetrievalProjectIds(input)
@@ -1603,7 +1604,7 @@ export class SocratesStore {
 
     const candidates: Array<{ result: Omit<TraceRetrieveGlobalResult, "resultNumber">; rawScore: number }> = []
     for (const row of rows) {
-      const inspected = this.retrieveV2GlobalTraceTurn(projectId, row.turnId, 80_000)
+      const inspected = this.retrieveV2GlobalTraceTurn(projectId, row.turnId)
       if (!inspected) continue
       const searchable = inspected.content.toLowerCase()
       const auditInput = input.mode === "audit" ? input : undefined
@@ -1638,7 +1639,6 @@ export class SocratesStore {
   private retrieveV2GlobalTraceTurn(
     projectId: string,
     turnId: string,
-    charLimit: number,
   ): Omit<TraceRetrieveGlobalResult, "resultNumber"> | undefined {
     const turn = this.handle.sqlite.prepare(
       `SELECT t.id, t.ordinal, t.status, t.started_at AS startedAt,
@@ -1751,7 +1751,7 @@ export class SocratesStore {
       ? cancelled ? "cancelled_partial" : "complete"
       : cancelled ? "cancelled_user_only" : "failed_user_only"
     return {
-      content: raw.slice(0, Math.max(1, Math.min(80_000, charLimit))),
+      content: raw,
       turnId,
       conversationTitle: turn.goalTitle ? `Seamless Flow · ${turn.goalTitle}` : "Seamless Flow",
       turnNumber: Math.max(1, turn.ordinal),
@@ -1859,5 +1859,28 @@ const toMainTraceSearchInput = (
     mode: "lexical",
     ...(input.query ? { query: input.query } : {}),
     ...("turnNo" in input && input.turnNo ? { turnNo: input.turnNo } : {}),
+  }
+}
+
+const limitGlobalTraceInspectOutput = (
+  results: TraceRetrieveGlobalResult[],
+  input: Extract<TraceRetrieveGlobalToolInput, { operation: "inspect" }>,
+): TraceRetrieveGlobalToolOutput => {
+  const first = results[0]
+  if (!first) return { results: [], totalMatches: 0 }
+  const limited = limitModelOutputText(first.content, {
+    ...(input.charLimit !== undefined ? { charLimit: input.charLimit } : {}),
+    tokenLimit: MAX_MODEL_OUTPUT_TOKEN_LIMIT,
+    defaultCharLimit: 16_000,
+    defaultTokenLimit: MAX_MODEL_OUTPUT_TOKEN_LIMIT,
+    ...(input.offset !== undefined ? { offset: input.offset } : {}),
+  })
+  return {
+    results: [{ ...first, content: limited.text }],
+    totalMatches: results.length,
+    truncation: limited.truncation,
+    ...(limited.truncation.truncated
+      ? { warnings: [`Trace inspection was paged. Continue with offset=${limited.truncation.nextOffset}.`] }
+      : {}),
   }
 }

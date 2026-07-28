@@ -17,6 +17,7 @@ export type ReconciliationWatermarkState = Readonly<{
   lastCheckpointAt: string
   lastVerifiedMutationBoundary: number
   pendingCheckpointReason?: ReconciliationCheckpointReason
+  reminderDeliveredAtEvidenceSequence?: number
 }>
 
 export type ReconciliationCheckpoint = Readonly<{
@@ -110,9 +111,27 @@ export class ReconciliationWatermarkController {
       evidenceFrom: this.stateValue.lastReconciledEvidenceSequence + 1,
       evidenceTo: this.stateValue.lastObservedEvidenceSequence,
       lastVerifiedMutationBoundary: this.stateValue.lastVerifiedMutationBoundary,
-      evidence: this.evidence.slice(-8),
+      evidence: this.evidence.slice(-4),
     }
     return this.checkpoint
+  }
+
+  takePendingReminder(): ReconciliationCheckpoint | undefined {
+    if (
+      this.stateValue.reminderDeliveredAtEvidenceSequence !== undefined
+      && this.stateValue.reminderDeliveredAtEvidenceSequence > this.stateValue.lastReconciledEvidenceSequence
+    ) {
+      return undefined
+    }
+    const checkpoint = this.beginPendingCheckpoint()
+    if (!checkpoint) return undefined
+    const { pendingCheckpointReason: _pendingCheckpointReason, ...state } = this.stateValue
+    this.stateValue = {
+      ...state,
+      reminderDeliveredAtEvidenceSequence: checkpoint.evidenceTo,
+    }
+    this.checkpoint = undefined
+    return checkpoint
   }
 
   completeCheckpoint(): void {
@@ -151,22 +170,12 @@ export class ReconciliationWatermarkController {
 
   private pushEvidence(summary: string): void {
     this.evidence.push(summary.slice(0, 240))
-    if (this.evidence.length > 12) this.evidence.splice(0, this.evidence.length - 12)
+    if (this.evidence.length > 8) this.evidence.splice(0, this.evidence.length - 8)
   }
 }
 
-export const buildSocratesProgressReconciliationCheckpoint = (checkpoint: ReconciliationCheckpoint): string => [
-  "<socrates_progress_reconciliation_checkpoint>",
-  "This is a meaningful progress checkpoint inside the current task. Do not answer the user in this response.",
-  `Trigger: ${checkpoint.reason}. Review only verified task evidence ${checkpoint.evidenceFrom}-${checkpoint.evidenceTo}; the previous watermark is already reconciled.`,
-  `Last verified mutation boundary: ${checkpoint.lastVerifiedMutationBoundary}.`,
-  "Decide whether durable state changed: a material goal or scope change, a future-dependent decision, a verified build or test milestone, a blocker or incomplete handoff, or the restart state. Tool volume and lines changed are signals only; they never prove a docs write is needed.",
-  "If reconciliation is needed, read the exact socrates://project/memory, socrates://project/notes, or socrates://project/repo-docs section, use governed edit for the smallest canonical replacement, and re-read it to verify the stale claim is gone. Never append a parallel authority path.",
-  "If nothing durable changed, make no docs mutation. A genuine semantic instruction not to remember, save, or store the covered content remains authoritative.",
-  "Use only normal main Socrates tools. There is no router, summarizer, or writer for this checkpoint. When finished, return no user-facing answer; continue the same task.",
-  ...(checkpoint.evidence.length ? ["Checkpoint evidence index:", ...checkpoint.evidence] : []),
-  "</socrates_progress_reconciliation_checkpoint>",
-].join("\n")
+export const buildSocratesReconciliationNotice = (checkpoint: ReconciliationCheckpoint): string =>
+  `Substantial work reached a durable-state boundary (${checkpoint.reason}, evidence ${checkpoint.evidenceFrom}-${checkpoint.evidenceTo}). Before the final answer, reconcile inside this same loop only important goal/scope changes, future-dependent decisions, verified milestones, blockers, handoff/restart state, or proven stale doctrine in the appropriate .socrates resource; skip ceremonial reads or writes.`
 
 const toolPath = (call: NormalizedToolCall): string | undefined => {
   if (!call.input || typeof call.input !== "object" || Array.isArray(call.input)) return undefined

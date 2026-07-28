@@ -161,6 +161,7 @@ export type PrepareContextInput = {
   system: string
   messages: ModelMessage[]
   tools?: ModelToolDefinition[]
+  structuredOutputSchema?: unknown
   compression?: ContextCompressionRuntime
   onCompactionStarted?: (event: ContextCompactionStartedEvent) => Promise<void> | void
 }
@@ -525,6 +526,7 @@ export const estimateModelContextTokens = async (
     messages: input.messages,
     runtimeConfig: input.runtimeConfig,
     ...(input.tools ? { tools: input.tools } : {}),
+    ...(input.structuredOutputSchema === undefined ? {} : { structuredOutputSchema: input.structuredOutputSchema }),
     countTokens: { exactThresholds: [thresholds.triggerTokens] },
   })
 
@@ -543,6 +545,7 @@ const countPreparedContext = (
       system: input.system,
       messages: input.messages,
       ...(input.tools ? { tools: input.tools } : {}),
+      ...(input.structuredOutputSchema === undefined ? {} : { structuredOutputSchema: input.structuredOutputSchema }),
     },
     thresholds,
   )
@@ -649,7 +652,11 @@ const compactionSizeClass = (
 }
 
 const estimateCompactionFixedTokens = (input: PrepareContextInput): number =>
-  estimateTextTokens([input.system, input.tools ? safeStringify(input.tools) : ""].join("\n")).inputTokens +
+  estimateTextTokens([
+    input.system,
+    input.tools ? safeStringify(input.tools) : "",
+    input.structuredOutputSchema === undefined ? "" : safeStringify(input.structuredOutputSchema),
+  ].join("\n")).inputTokens +
   Math.ceil(MAX_COMPACTION_SUMMARY_CHARS / 4)
 
 const messageForTokenEstimate = (message: ModelMessage): ModelMessage => {

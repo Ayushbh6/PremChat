@@ -28,7 +28,7 @@
           "offset": {
             "type": "integer",
             "minimum": 0,
-            "description": "Character offset into extracted output. Use with truncation.nextOffset to continue a large read."
+            "description": "Character offset for file/resource content, or entry offset for directories. Use truncation.nextOffset to continue."
           },
           "charLimit": {
             "type": "integer",
@@ -94,7 +94,7 @@
     },
     {
       "id": "tool.search",
-      "description": "Find files by name/path or search file contents in the active project workspace. Call this for targeted discovery before reading exact files. Use mode='files' for file discovery and mode='text' for grep-style content search. Set regex=true when using regex syntax such as |, .*, or word boundaries; otherwise prefer simple literal terms.",
+      "description": "Find files by name/path or search file contents in the active project workspace. Call this for targeted discovery before reading exact files. Use mode='files' for file discovery and mode='text' for grep-style content search. Set regex=true when using regex syntax such as |, .*, or word boundaries; otherwise prefer simple literal terms. Results default to 20 and are capped at 50, oversized lines are shortened, and serialized output cannot exceed an estimated 6k tokens; narrow path/query and then read the exact file for more.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates",
@@ -143,7 +143,8 @@
           "charLimit": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "maximum": 80000
+            "maximum": 80000,
+            "description": "Character cap for serialized matches; runtime output is also hard-capped near 6,000 estimated tokens."
           }
         },
         "required": [
@@ -171,7 +172,7 @@
       },
       "documentationTitle": "search",
       "documentationGuidance": [
-        "Find files by name/path or search file contents in the active project workspace. Call this for targeted discovery before reading exact files. Use mode='files' for file discovery and mode='text' for grep-style content search. Set regex=true when using regex syntax such as |, .*, or word boundaries; otherwise prefer simple literal terms."
+        "Find files by name/path or search file contents in the active project workspace. Call this for targeted discovery before reading exact files. Use mode='files' for file discovery and mode='text' for grep-style content search. Set regex=true when using regex syntax such as |, .*, or word boundaries; otherwise prefer simple literal terms. Results default to 20 and are capped at 50, oversized lines are shortened, and serialized output cannot exceed an estimated 6k tokens; narrow path/query and then read the exact file for more."
       ],
       "documentationPaths": [
         "read_search.md",
@@ -853,7 +854,7 @@
     },
     {
       "id": "tool.trace_retrieve.main",
-      "description": "Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Results expose numbered human context; use inspect with resultNumber for the full Q&A parent. Internal conversation, Flow, goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.",
+      "description": "Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Search returns at most 8 numbered results; use inspect with resultNumber for the exact Q&A parent, then continue a bounded inspection with offset=truncation.nextOffset. Internal conversation, Flow, goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates"
@@ -1127,10 +1128,16 @@
                 "exclusiveMinimum": 0,
                 "maximum": 10000
               },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Character offset into the exact inspected exchange. Use truncation.nextOffset to continue."
+              },
               "charLimit": {
                 "type": "integer",
                 "exclusiveMinimum": 0,
-                "maximum": 80000
+                "maximum": 80000,
+                "description": "Character cap for this page; runtime output is also hard-capped near 6,000 estimated tokens."
               }
             },
             "required": [
@@ -1160,7 +1167,7 @@
       },
       "documentationTitle": "trace_retrieve",
       "documentationGuidance": [
-        "Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Results expose numbered human context; use inspect with resultNumber for the full Q&A parent. Internal conversation, Flow, goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.",
+        "Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Search returns at most 8 numbered results; use inspect with resultNumber for the exact Q&A parent, then continue a bounded inspection with offset=truncation.nextOffset. Internal conversation, Flow, goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.",
         "Use this capability for prior conversation and evidence investigation when earlier visible work can affect the current answer.",
         "Use `mode: \"lexical\"` for concise literal retrieval, semantic for conceptual recall, combined for both, and audit only for runtime evidence.",
         "Main Socrates searches the active project only; cross-project selectors are unavailable."
@@ -1185,7 +1192,7 @@
     },
     {
       "id": "tool.trace_retrieve.global",
-      "description": "Recall any prior visible conversation across Socrates projects. This uses the same retrieval behavior as the main agent: lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Search all projects by default or select projects by id/title. Results include project titles and numbered human context; use inspect with resultNumber, turnId, or project/conversation/turn coordinates for the full Q&A parent.",
+      "description": "Recall any prior visible conversation across Socrates projects. This uses the same retrieval behavior as the main agent: lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Search all projects by default or select projects by id/title. Search returns at most 8 numbered results; use inspect with resultNumber, turnId, or project/conversation/turn coordinates for the exact Q&A parent, then continue a bounded inspection with offset=truncation.nextOffset.",
       "kind": "model_tool",
       "allowedRoles": [
         "global_memory",
@@ -1584,6 +1591,10 @@
                 "exclusiveMinimum": 0,
                 "maximum": 10000
               },
+              "offset": {
+                "type": "integer",
+                "minimum": 0
+              },
               "charLimit": {
                 "type": "integer",
                 "exclusiveMinimum": 0,
@@ -1617,7 +1628,7 @@
       },
       "documentationTitle": "trace_retrieve",
       "documentationGuidance": [
-        "Recall any prior visible conversation across Socrates projects. This uses the same retrieval behavior as the main agent: lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Search all projects by default or select projects by id/title. Results include project titles and numbered human context; use inspect with resultNumber, turnId, or project/conversation/turn coordinates for the full Q&A parent.",
+        "Recall any prior visible conversation across Socrates projects. This uses the same retrieval behavior as the main agent: lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Search all projects by default or select projects by id/title. Search returns at most 8 numbered results; use inspect with resultNumber, turnId, or project/conversation/turn coordinates for the exact Q&A parent, then continue a bounded inspection with offset=truncation.nextOffset.",
         "The Global Memory Agent has cross-project scope, while retaining the same canonical Q&A, inspect, and audit evidence contracts.",
         "Legacy `exact`, trace handles, entry-type selectors, and hidden query normalization are not part of this contract."
       ],
@@ -2735,7 +2746,7 @@
     },
     {
       "id": "tool.context_disposition",
-      "description": "Release unneeded large temporary result handles from the current model-visible turn. Call only alongside at least one normal tool call, never alone and never before a final answer. Pass release with one or more exact R handles from the latest hidden reminder. Omit handles that are still needed. Release never deletes exact audit evidence.",
+      "description": "Release unneeded large temporary result handles from the current model-visible turn. Call only alongside at least one normal tool call, never alone and never before a final answer. Pass release with one or more exact R handles from result-local notices. Omit handles that are still needed. Release never deletes exact audit evidence.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates"
@@ -2783,7 +2794,7 @@
       },
       "documentationTitle": "Context disposition",
       "documentationGuidance": [
-        "Release unneeded large temporary result handles from the current model-visible turn. Call only alongside at least one normal tool call, never alone and never before a final answer. Pass release with one or more exact R handles from the latest hidden reminder. Omit handles that are still needed. Release never deletes exact audit evidence."
+        "Release unneeded large temporary result handles from the current model-visible turn. Call only alongside at least one normal tool call, never alone and never before a final answer. Pass release with one or more exact R handles from result-local notices. Omit handles that are still needed. Release never deletes exact audit evidence."
       ],
       "documentationPaths": [
         "context_disposition.md"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { ModelProvider, StructuredModelRequest } from "@socrates/providers"
+import type { ModelProvider } from "@socrates/providers"
 import { SocratesAgent, type SocratesAgentEvent } from "../agent/SocratesAgent"
 
 const runtimeConfig = {
@@ -13,19 +13,9 @@ const runtimeConfig = {
 }
 
 describe("Socrates structured final answer", () => {
-  it("withholds plaintext until persistence can publish the validated repaired result", async () => {
+  it("withholds plaintext until persistence can publish the validated same-loop result", async () => {
     const validFinalAnswer = "The Flow and Classic connection shares the main runtime, but finalization was committing before answer integrity was established."
-    const structuredRequests: StructuredModelRequest<unknown>[] = []
-    const outputs: unknown[] = [
-      {
-        finalAnswer: '<DSML><tool_calls><invoke name="search" /></tool_calls></DSML>',
-        goalFinalization: { state: "completed", note: "Reviewed the architecture." },
-      },
-      {
-        finalAnswer: validFinalAnswer,
-        goalFinalization: { state: "active", note: "Review found a finalization ordering defect to correct." },
-      },
-    ]
+    let streamCalls = 0
     const provider: ModelProvider = {
       countTokens: async (request) => ({
         providerId: request.providerId,
@@ -36,12 +26,15 @@ describe("Socrates structured final answer", () => {
         safetyMarginPercent: 0,
       }),
       async *stream() {
-        yield { type: "model.answer.delta", text: '<DSML><tool_calls><invoke name="search" /></tool_calls></DSML>' }
+        streamCalls += 1
+        yield {
+          type: "model.answer.delta",
+          text: JSON.stringify({
+            finalAnswer: validFinalAnswer,
+            goalFinalization: { state: "active", note: "Review found a finalization ordering defect to correct." },
+          }),
+        }
         yield { type: "model.completed", finishReason: "stop" }
-      },
-      async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
-        structuredRequests.push(request as StructuredModelRequest<unknown>)
-        return { output: outputs.shift() as TOutput }
       },
     }
 
@@ -70,10 +63,8 @@ describe("Socrates structured final answer", () => {
       (event): event is Extract<SocratesAgentEvent, { type: "agent.final_result" }> => event.type === "agent.final_result",
     )
 
-    expect(structuredRequests).toHaveLength(2)
-    expect(JSON.stringify(structuredRequests[1]?.messages)).toContain("failed validation")
+    expect(streamCalls).toBe(1)
     expect(visibleAnswer).toBe("")
-    expect(visibleAnswer).not.toContain("DSML")
     expect(finalResult?.result).toEqual({
       finalAnswer: validFinalAnswer,
       goalFinalization: { state: "active", note: "Review found a finalization ordering defect to correct." },

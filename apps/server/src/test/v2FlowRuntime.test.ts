@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { WebSocket } from "ws"
 import { type V2ClientCommand, type V2RuntimeConfig, type V2ServerEvent } from "@socrates/contracts"
 import { capabilityCatalog, DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS, SocratesAgent, socratesMainAgentDefinition, type SocratesGoalResolutionResult } from "@socrates/core"
-import type { EmbeddingProvider, ModelProvider, StructuredModelRequest, StructuredModelResult } from "@socrates/providers"
+import type { EmbeddingProvider, ModelEvent, ModelProvider, StructuredModelRequest, StructuredModelResult } from "@socrates/providers"
 import { createId, nowIso } from "@socrates/shared"
 import { openDatabase, runMigrations, type DatabaseHandle } from "../db/client"
 import { SocratesStore } from "../services/store"
@@ -224,34 +224,45 @@ const setup = (provider: ModelProvider, projectId = "proj_one"): TestRuntime => 
   const sharedStore = new SocratesStore(handle, fakeEmbeddings(), undefined, { socratesHome: path.join(root, "home") })
   vi.spyOn(sharedStore, "resolveRuntimeConfig").mockImplementation((config) => config)
   const flowStore = new V2FlowStore(handle)
-  const latestMainAnswerBySession = new Map<string, string>()
   const finalAwareProvider: ModelProvider = {
     countTokens: provider.countTokens.bind(provider),
     async *stream(request) {
+      const isMainLoop = request.system.startsWith("You are Socrates,")
       let currentAnswer = ""
+      let emittedToolCall = false
+      let completion: Extract<ModelEvent, { type: "model.completed" }> | undefined
       for await (const event of provider.stream(request)) {
-        if (event.type === "model.answer.delta") currentAnswer += event.text
+        if (!isMainLoop) {
+          yield event
+          continue
+        }
+        if (event.type === "model.answer.delta") {
+          currentAnswer += event.text
+          continue
+        }
+        if (event.type === "model.tool_call.streaming" || event.type === "model.tool_call.completed") {
+          emittedToolCall = true
+          yield event
+          continue
+        }
+        if (event.type === "model.completed") {
+          completion = event
+          continue
+        }
         yield event
       }
-      if (request.system.startsWith("You are Socrates,") && currentAnswer.trim()) {
-        latestMainAnswerBySession.set(request.sessionId ?? "default", currentAnswer)
-      }
-    },
-    async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
-      const isMainFinal = request.messages.some(
-        (message) => typeof message.content === "string" && message.content.includes("<socrates_final_answer_checkpoint>"),
-      )
-      if (isMainFinal) {
-        const sessionKey = request.sessionId ?? "default"
-        const finalAnswer = latestMainAnswerBySession.get(sessionKey) ?? ""
-        latestMainAnswerBySession.delete(sessionKey)
-        return {
-          output: {
-            finalAnswer,
+      if (isMainLoop && !emittedToolCall && currentAnswer.trim()) {
+        yield {
+          type: "model.answer.delta",
+          text: JSON.stringify({
+            finalAnswer: currentAnswer,
             goalFinalization: { state: "active", note: "The test focus remains active." },
-          } as TOutput,
+          }),
         }
       }
+      if (completion) yield completion
+    },
+    async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
       if (request.system.includes("<socrates_goal_resolution_phase>") && !provider.generateStructured) {
         const content = String(request.messages.at(-1)?.content ?? "")
         return {
@@ -338,6 +349,13 @@ describe("V2ExecutionRuntime", () => {
     expect(input?.contextCompression.thresholds).toEqual(DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS)
     expect(JSON.stringify(input?.messages)).toContain("Keep the shared Socrates compactor invariant")
     expect(JSON.stringify(input?.messages)).toContain("Read V2 evidence successfully.")
+    const modelCalls = testRuntime.handle.sqlite.prepare(
+      "SELECT role, status FROM v2_model_calls ORDER BY started_at, id",
+    ).all() as Array<{ role: string; status: string }>
+    expect(modelCalls).toEqual([
+      { role: "main_agent", status: "failed" },
+      { role: "main_agent", status: "completed" },
+    ])
   })
 
   it("provides an executor for every shared Socrates tool that is not core-internal", async () => {
@@ -679,6 +697,24 @@ describe("V2ExecutionRuntime", () => {
     const inspectResult = mainInspect.results[0]
     expect(inspectResult && "content" in inspectResult ? inspectResult.content : "").toContain("V2ERROR-MEMORY-TRACE-99")
     expect(inspectResult).not.toHaveProperty("turnId")
+    const fullInspectContent = inspectResult && "content" in inspectResult ? inspectResult.content : ""
+    const firstInspectPage = await mainTraceTools.trace_retrieve({
+      operation: "inspect",
+      resultNumber: 1,
+      charLimit: 80,
+    }, toolContext)
+    const firstPageResult = firstInspectPage.results[0]
+    const firstPageContent = firstPageResult && "content" in firstPageResult ? firstPageResult.content : ""
+    expect(firstPageContent).toBe(fullInspectContent.slice(0, 80))
+    expect(firstInspectPage.truncation).toMatchObject({ truncated: true, charLimit: 80, nextOffset: 80 })
+    const secondInspectPage = await mainTraceTools.trace_retrieve({
+      operation: "inspect",
+      resultNumber: 1,
+      charLimit: 80,
+      offset: firstInspectPage.truncation?.nextOffset ?? 0,
+    }, toolContext)
+    const secondPageResult = secondInspectPage.results[0]
+    expect(secondPageResult && "content" in secondPageResult ? secondPageResult.content : "").toBe(fullInspectContent.slice(80, 160))
 
     for (const mode of ["lexical", "semantic", "combined"] as const) {
       const request = { mode, scope: "current_goal" as const, query: "exact restart evidence" }
