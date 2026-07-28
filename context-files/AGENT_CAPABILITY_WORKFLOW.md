@@ -41,6 +41,7 @@ The refactor must converge on these ownership boundaries:
 | Embeddings | Existing provider abstraction plus one shared embedding service | Direct embedding calls from routers or stores |
 | Vector storage and similarity retrieval | One server retrieval service and disposable index adapter | Per-agent vector databases or search pipelines |
 | Context preparation | One shared `ContextPipeline` with typed stages | Classic-, Flow-, or worker-owned hidden context assembly |
+| Model-visible message assembly | One documented allowlist owned by the shared context/runtime boundary | Per-batch action ledgers, synthetic user messages, detached checkpoints, or caller-owned prompt fragments |
 | Goal/task lifecycle | Canonical backend work store and typed transactions | Main-agent `focus_ledger` tool or `.socrates/FOCUS_LEDGER.md` |
 | Tool usage documentation | Generated from canonical capability definitions | Hand-maintained tool contract copies |
 | Provider tool schemas | Generated from canonical input schemas | Tool-name special cases or handwritten provider schemas |
@@ -190,13 +191,13 @@ The ordered lifecycle is:
 
 ```text
 persist exact user message immediately
-  -> retrieve goal and memory candidates in parallel
+  -> retrieve goal, memory, and capability candidates in parallel
   -> same-Socrates goal resolution: current, retrieved older goal, new, or clarify
   -> bind goal/task and deterministically select exact memory
   -> ContextPipeline assembles typed exact context
-  -> main Socrates works through the shared runtime
-  -> same-Socrates milestone/final `.socrates` reconciliation
-  -> strict final answer plus bound-goal outcome
+  -> main Socrates works through one shared runtime loop
+  -> inside that loop, normal tools and useful `.socrates`/memory reconciliation happen when needed
+  -> the loop's last continuation returns answer + goal state + goal note
   -> atomic answer/task/goal/capsule persistence
   -> publication to the global seamless UI
   -> asynchronous memory enrichment
@@ -209,6 +210,10 @@ Goal resolution is a minimal phase of the same main Socrates definition and prom
 Goal and memory candidates are retrieved concurrently, and the first memory query includes the current capsule when available. Retrieval ranks candidates but never makes semantic decisions. After goal binding, the same retrieval service may perform one targeted query when the goal changed or the first pass has no eligible memory; deterministic selection then filters and reranks exact memory by authorization, resource scope, goal/task ownership, provenance, relevance, and duplication. There is no model-driven Memory Router in the critical path.
 
 Main Socrates then receives the bound capsule, latest exact exchange, exact selected memory/evidence, authorized resource state, and active Terminal/approval/wait state. It does not receive a bulk goal ledger. Goal capsules are structured live state with exact source anchors; they do not replace canonical goal history.
+
+After binding, there is one foreground working loop. Provider continuations needed to consume real tool results remain inside that loop. Do not add a draft call, detached reconciliation call, or final-formatting call. Reconciliation before answering is a stable-prompt responsibility of the same Socrates: update and verify `.socrates` only when important state changed, otherwise answer without ceremonial reads or writes.
+
+The model-visible input allowlist is part of the architecture contract. The runtime must reject uncatalogued prompt fragments and must never inject an action ledger after a tool batch, a synthetic user warning, or separate progress/final checkpoint messages. Backend counters and guards stay silent; real errors are returned in their tool results. Approved `R<n>` or `.socrates` notices are concise metadata appended to an existing result, never separate messages. A new model-visible content category requires explicit user approval and synchronized authority/CI changes.
 
 Exact goal-history selection, stable standing context, Terminal continuation state, turn-local large-result release, automatic 170k compaction, finalization, and asynchronous enrichment are separate declared stages. Changing one requires tests proving the others retain their ordering and protected information.
 
@@ -276,6 +281,7 @@ It must run generation in verification mode plus static and test checks that rej
 - Ad hoc role tool arrays.
 - Provider-specific tool schemas or tool-name special cases.
 - Ungoverned automatic retrieval or context mutation.
+- Unallowlisted model-visible messages, synthetic user turns, per-batch action ledgers, or detached reconciliation/final calls.
 - Dynamic MCP injection outside the catalog.
 - Different global/compatibility main-agent definitions, manifests, goal policies, or memory-selection policies.
 - Stale generated tool guides or inventories.
@@ -296,6 +302,7 @@ Every change selects and records the applicable rows:
 | Agent definition | Prompt, context, tool, structured-output, repair/failure tests |
 | Retrieval | Source, chunking, ranking, filtering, fallback, inspect, and rebuild tests |
 | Context stage | Ordering, token bounds, protected anchors, recovery, and evidence retention |
+| Model-input assembly | Exact allowlist, stable-prefix order, no synthetic user messages, no per-batch ledger, and expected provider-call count |
 | Main Socrates | Global UI plus compatibility integration using the same definition and manifest |
 | Terminal/wait | Run, start, input, output, wait, stop, cancel, restart, and cleanup |
 | Dynamic MCP | Discovery, schema, role, execution, credential, removal, and telemetry |
@@ -314,6 +321,7 @@ A change is complete only when all answers are yes:
 - Do role manifests expose exactly the intended capabilities?
 - Are schemas, provider projections, tool guides, and inventories synchronized from one source?
 - Did prompts change only where behavioral guidance truly changed?
+- Is every model-visible message category explicitly allowlisted, with no synthetic user turn, per-batch action ledger, or detached reconciliation/final call?
 - Were all affected old paths deleted rather than left dormant?
 - Do the global seamless UI and every released compatibility adapter share the main definition, tools, utilities, exact-history policy, and runtime?
 - Does the critical path contain only parallel candidate retrieval, same-Socrates goal resolution, deterministic memory selection, and the main Socrates loop—with no router-agent shadow path?

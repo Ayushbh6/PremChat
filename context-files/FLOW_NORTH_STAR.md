@@ -157,8 +157,9 @@ persist the exact user message immediately
   -> retrieve goal, memory, and capability candidates in parallel
   -> same-Socrates semantic goal resolution
   -> deterministic exact memory selection for the resolved goal
-  -> one shared Socrates agent loop
-  -> validated final result
+  -> one shared Socrates working loop
+  -> normal tools, useful notes/memory, and in-loop reconciliation as needed
+  -> the last continuation returns the validated structured final result
   -> atomic answer, task, goal capsule, and current-goal commit
   -> publish the answer
   -> asynchronous memory enrichment
@@ -173,6 +174,8 @@ The semantic goal decision belongs to Socrates itself through the shared runtime
 Memory selection is deterministic after goal resolution. The parallel first-pass memory query includes the current capsule when available. If Socrates binds a different goal, or the first pass contains no eligible exact memory, the same retrieval service may run one targeted bound-goal query before deterministic reranking. There is no model-driven Memory Router in the critical path. The main Socrates may use the shared retrieval capability when deeper exact inspection is needed.
 
 Asynchronous enrichment may index exact sources, refresh lossless derived goal and memory links, and curate durable memory through the shared agent architecture. It cannot update authoritative task/goal/capsule state, delay the visible turn, rewrite canonical messages, or become a second semantic authority over the completed work.
+
+After goal binding there is no draft phase, detached reconciliation phase, or separate final-formatting phase. Socrates works normally and reconciles important knowledge inside the same tool loop. If nothing worth preserving changed, it answers without ceremonial document work. If something important changed, it updates the correct working or durable surface with normal tools and then the last continuation of that same loop returns `answer + goal state + goal note`.
 
 ## Goal Switching And Restoration
 
@@ -202,7 +205,9 @@ The ordinary model request includes:
 
 Exact goal history remains canonical even when it is not all attached to one provider request. Selection and exact pagination are lossless. At 170k estimated model-visible tokens, one shared automatic compactor replaces only the oldest completed-turn head with a provenance-linked hidden summary, preserves approximately 70k of the newest complete Q/A plus the active turn, targets a rebuilt request around 100k, and rejects a result above 120k. It never changes canonical history, and the main model is not dispatched above the trigger if safe compaction fails.
 
-Within a turn, each successful individual tool result over 3,000 estimated tokens receives the next `R<n>` handle and one compact hidden reminder. Socrates may release an unneeded handle alongside its next normal tool call without another model round trip. Release affects only the current model-visible copy; exact evidence remains immutable and retrievable.
+Within a turn, each successful individual tool result over 3,000 estimated tokens receives the next `R<n>` handle and one compact reminder appended to that existing tool result. It is never a separate hidden message. Socrates may release an unneeded handle alongside its next normal tool call without another model round trip. Release affects only the current model-visible copy; exact evidence remains immutable and retrievable.
+
+No runtime action ledger, synthetic user warning, memory-note ledger, Terminal-capability message, progress checkpoint, or final checkpoint may be injected into the model conversation. Backend mechanics remain silent unless a real tool result must report its own error or approved result-local notice. Every model-visible input category is declared, reviewable, and protected by an allowlist; new categories require explicit user approval.
 
 Goal capsules and lossless indexes may guide retrieval, but they may not be presented as exact quotes or silently substitute for relevant exact source text.
 
@@ -255,6 +260,8 @@ The product reaches this North Star only when all of the following are true:
 - Goal capsules restore working state without replacing exact goal history.
 - The sidebar groups exact Q&A pairs by goal and contains no required project hierarchy.
 - One agent runtime, capability catalog, tool contract, retrieval foundation, and finalization path serve every turn.
+- A normal no-tool request uses one goal-decision call and one foreground final call; tool-using work adds only the provider continuations genuinely required to consume tool results.
+- No shadow steering message, per-batch action ledger, detached reconciliation call, or detached final-formatting call reaches Socrates.
 - The answer, task outcome, capsule update, and current-goal state commit atomically before publication.
 
 ## Migration Principle

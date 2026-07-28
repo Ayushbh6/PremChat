@@ -304,7 +304,7 @@ Classic and Flow use the same two mechanisms. Neither view owns a context classi
 
 ### Turn-Local Large-Result Release
 
-Each successful individual tool output above 3,000 estimated tokens receives the next qualifying-only turn-local handle (`R1`, `R2`, and so on). After the tool batch, the runtime appends one compact hidden reminder listing the new handles. When Socrates has extracted what it needs and is already requesting another normal tool, it may piggyback:
+Each successful individual tool output above 3,000 estimated tokens receives the next qualifying-only turn-local handle (`R1`, `R2`, and so on). The runtime appends one compact handle/release reminder to that existing tool result; it never sends a separate hidden message after the batch. When Socrates has extracted what it needs and is already requesting another normal tool, it may piggyback:
 
 ```text
 context_disposition({ release: ["R1"] })
@@ -316,7 +316,7 @@ Release is the only action. Omitting it never blocks normal tools, it requires n
 
 Before every provider call, the shared runtime counts the exact assembled request. At or above 170k estimated tokens, it automatically compacts only the oldest completed-turn head. It preserves recent completed Q/A by whole-turn boundary toward an approximately 70k exact suffix plus the active turn, targets a rebuilt request around 100k, and rejects a result above 120k. If safe compaction fails, the main model is not dispatched at or above 170k. Canonical history and exact evidence are never rewritten.
 
-The active turn is not automatically summarized. The release-only `R<n>` mechanism is the sole way to remove bulky current-turn results from live context. Non-blocking efficiency steering may remind Socrates to release irrelevant eligible handles, but it must not abandon unfinished implementation or verification.
+The active turn is not automatically summarized. The release-only `R<n>` mechanism is the sole way to remove bulky current-turn results from live context. Its result-local notice may remind Socrates to release irrelevant eligible handles, but no separate efficiency-steering message is allowed and release must not abandon unfinished implementation or verification.
 
 ### Goal-Aware Assembly
 

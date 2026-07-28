@@ -20,7 +20,7 @@ The Goal Router, both Memory Router phases, Title Generator, Compressor, Global 
 
 ## Final Answer And Goal State
 
-After all tool work and required `.socrates` reconciliation, the main Socrates model receives a hard final checkpoint and must return the strict shared `SocratesFinalAnswer` contract:
+At this historical checkpoint, after tool work and `.socrates` reconciliation, the runtime sent the main Socrates model a separate hard final checkpoint for the strict shared `SocratesFinalAnswer` contract. That detached call is retained here only as implementation history; the current lifecycle authority forbids it and requires the last continuation of the normal working loop to return the same contract:
 
 ```text
 finalAnswer
@@ -30,7 +30,7 @@ goalFinalization.note
 
 The integrity schema rejects empty answers and plaintext internal/tool envelopes such as DSML tool-call markup. One bounded repair is allowed. Provisional answer deltas are withheld in structured-final mode, so rejected drafts never stream to the UI.
 
-The post-evidence Memory Router remains the bounded reconciliation planner but always returns `goalFinalization: null`. It is no longer an answer-state authority. Classic and Flow capture the validated `agent.final_result`, persist its visible answer, and apply its goal finalization in the same SQLite transaction. If answer validation or goal finalization fails, the answer/goal commit does not partially succeed.
+The post-evidence Memory Router described below likewise remains historical implementation evidence, not current authority. Classic and Flow capture the validated `agent.final_result`, persist its visible answer, and apply its goal finalization in the same SQLite transaction. If answer validation or goal finalization fails, the answer/goal commit does not partially succeed.
 
 The existing Phase 2 behavior that changes selection to General Conversation after completing the foreground goal is intentionally unchanged here. Phase 2 owns separation of goal status from selected focus, continuation/reopen routing, and transition context.
 

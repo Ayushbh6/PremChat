@@ -2,7 +2,7 @@
 
 Status: normative architecture authority for the agent-core refactor.
 
-Implementation checkpoint: the shared `AgentDefinition`/`AgentInstance`/`AgentRuntime`/`ContextPipeline` foundation, shared `CapabilityCatalog`, and Classic/Flow goal-memory lifecycle convergence are implemented. The next cutover converges the model-facing resource and capability surface: parallel goal/memory/capability retrieval, at most three older goal candidates, shared `read`/`search` resource access, one always-visible skill/MCP `capability_manager`, and simplified edit/Terminal grammars. The catalog remains the sole owner of static tools, role attachment, provider projections, runtime MCP child registration, declared retrieval/workers/context/authorities, typed commands, generated inventories/guides, and CI drift enforcement. The global seamless UI remains a later phase; catalogued migration entries are not permission to create parallel paths.
+Implementation checkpoint: the shared `AgentDefinition`/`AgentInstance`/`AgentRuntime`/`ContextPipeline` foundation, shared `CapabilityCatalog`, Classic/Flow goal-memory-capability lifecycle, governed model-facing resource surface, and single foreground working/final loop are implemented. The catalog remains the sole owner of static tools, role attachment, provider projections, runtime MCP child registration, declared retrieval/workers/context/authorities, typed commands, generated inventories/guides, and CI drift enforcement. Read/search/trace projections share explicit output caps and offsets; detached draft/reconciliation/final calls and shadow per-batch steering are deleted and guarded against return. The global seamless UI remains a later phase; catalogued migration entries are not permission to create parallel paths.
 
 This manifesto governs every change to Socrates agent orchestration, model-facing capabilities, tools, routing, retrieval, context management, provider execution, and worker-agent construction. Read it and `AGENT_CAPABILITY_WORKFLOW.md` completely before planning, reviewing, or implementing work in those areas. The workflow is the mandatory operational checklist for this manifesto. If an implementation or historical document conflicts with either authority, stop and resolve the conflict in the authority documents before continuing.
 
@@ -42,7 +42,7 @@ Socrates must never silently trade user meaning for context efficiency.
 - When model-visible input reaches 170k estimated tokens, automatically compact only the oldest completed-turn head. Preserve approximately 70k of the newest completed Q/A by whole-turn boundary plus the current active turn, target a rebuilt request around 100k, and reject a rebuilt request above 120k.
 - If safe automatic compaction fails, do not dispatch the main model above the 170k trigger. Report the runtime limit without changing canonical history.
 - Treat a compaction as a derived representation with source provenance. It never overwrites or replaces exact canonical content, and exact retrieval remains available.
-- For successful individual tool results over 3,000 estimated tokens, give the model a turn-local `R<n>` handle and one compact release reminder. A piggybacked release changes only the current model-visible copy, never requires a separate model round trip, never blocks omitted functional calls, and never deletes the exact result.
+- For successful individual tool results over 3,000 estimated tokens, give the model a turn-local `R<n>` handle and append one compact release reminder to that existing tool result. Do not inject a separate hidden message. A piggybacked release changes only the current model-visible copy, never requires a separate model round trip, never blocks omitted functional calls, and never deletes the exact result.
 
 Automatic retrieval may rank and paginate candidates because it does not alter canonical content. Exact inspection returns complete source items. Automatic compaction and turn-local release are model-projection controls with exact recovery; neither creates a second durable memory authority.
 
@@ -52,17 +52,39 @@ The target entry experience is one global Socrates. The user opens the landing p
 
 Paths, connected accounts, apps, and credentials are authorized resource scopes. Goals are coherent user outcomes. Tasks are individual user-request lifecycles inside goals. Released projects may remain migration metadata or internal scope coordinates, but they are not the target user mental model.
 
-Every turn follows one shared sequence:
+The following is the non-negotiable foreground flow. It is the crux of Socrates:
 
 ```text
-persist exact user message immediately
-  -> retrieve goal, memory, and capability candidates in parallel
-  -> same-Socrates semantic goal resolution
-  -> deterministic exact memory selection
-  -> one shared Socrates agent loop
-  -> validated atomic answer/task/goal/capsule commit
-  -> asynchronous memory enrichment
+User message arrives
+        ↓
+Save the exact message immediately
+        ↓
+Run goal retrieval, memory retrieval, and capability retrieval together
+        ↓
+One Socrates goal decision:
+current goal / retrieved older goal / new goal / clarify
+        ↓
+Bind the selected goal and exact relevant memory
+        ↓
+Socrates starts working normally
+        ↓
+Tool calls ↔ tool results, as many as genuinely needed
+        ↓
+Socrates checks whether important knowledge or progress needs saving
+        ↓
+Final structured response:
+answer + goal state + goal note
+        ↓
+Save the answer, task, goal, capsule, usage, and evidence together
+        ↓
+Run asynchronous memory enrichment
 ```
+
+Goal resolution is the one model decision before foreground work. After the goal is bound, Socrates enters one ordinary working loop. The loop investigates, plans, calls tools, receives results, updates useful working or durable state when needed, and returns the final structured result. A provider continuation needed to consume a real tool result is part of that same loop. A separate draft call, reconciliation call, or final-formatting call is forbidden.
+
+The shared provider request enforces the terminal result schema natively on that same streamed loop, including tool-capable continuations. Prompt text alone is not sufficient. Native enforcement must not become a repair prompt, hidden message, or detached structured-output call, and its stable schema must be included in model-input token accounting.
+
+Reconciliation before the answer remains mandatory as Socrates' judgment, but it happens inside the normal working loop. If nothing important changed, Socrates answers without ceremonial reads or writes. If an important decision, verified milestone, blocker, repository fact, or restart state changed, Socrates uses its normal tools to update and verify the correct durable surface, then continues the same loop and gives the final structured response. Reconciliation is never a separate agent, model phase, provider call, or hidden checkpoint message.
 
 Goal resolution is not a separate agent role. The same Socrates runtime and prompt core receives the exact latest message, current goal capsule, latest exact exchange, and a small numbered set of retrieved older capsules. It chooses only current, retrieved older goal, new, or clarify. There is no model-facing continue/resume distinction, no goal-search tool loop, and no independently configurable Goal Router.
 
@@ -75,6 +97,32 @@ There is no model-driven Memory Router in the critical path. Hybrid retrieval di
 Every user message creates a task. A new goal is created only for a genuinely independent outcome. Acting on something found in the current goal, implementing after inspection, replying after reading, testing after building, or changing the named entity while following the same outcome remains inside the current goal.
 
 Each goal owns exact canonical exchanges and evidence plus a versioned structured capsule containing its live objective, verified progress, current task, important decisions, blockers, open items, and exact source anchors. The capsule is not conversation compaction and never replaces exact history. The compact backend goal ledger stores the current-goal pointer and latest capsule references, not transcripts or evidence bodies.
+
+## How Socrates Uses Its Working Space
+
+Socrates uses its working space naturally, like a capable human assistant keeping useful notes while doing the work:
+
+- `.socrates/notes`: free-working space for plans, tasks, experiments, temporary scripts, and progress notes.
+- `.socrates/memory`: important project knowledge and decisions that future work needs.
+- `.socrates/repo_docs`: verified facts about how the repository works.
+- `memory_note`: something Socrates wants the asynchronous Global Memory Agent to consider for identity, user profile, cross-project memory, or a future skill.
+
+These surfaces support the work; they are not ceremonies. Socrates does not read or update every surface before or after every tool call. It records what a human assistant would need to continue correctly, uses the smallest correct surface, and leaves it alone when nothing worth preserving changed. Plans and task records may be free-form; fixed filenames are forbidden as a requirement.
+
+## No Hidden Or Shadow Model Messages
+
+The runtime must not inject behavioral steering after every tool batch or create synthetic user/developer messages that silently change how Socrates behaves. In particular, the following are forbidden:
+
+- an action-ledger message listing recent calls after each tool batch;
+- repeated-call, tool-count, context-growth, memory-note, Terminal-capability, progress-checkpoint, or final-checkpoint messages injected as user or developer turns;
+- a hidden draft-to-reconciliation-to-final sequence;
+- any uncatalogued prompt fragment, reminder, summary, or control message.
+
+Backend counters, deduplication, budgets, stale-edit checks, truncated-call rejection, approvals, and other mechanical guards stay in backend code. A relevant failure is returned inside the matching tool result. The stable prompt owns enduring behavior. Exact retrieved context owns current facts. Tool results own their own output.
+
+The only automatic result-local notices allowed by this manifesto are concise, declared metadata attached to an existing tool result, such as the `R<n>` release reminder and at most one approved `.socrates` reminder during substantial work. They never become separate messages, never impersonate the user, never force a read or write, and never create another model call. Any new category of model-visible injected content requires explicit user approval plus an authority-document and CI-allowlist update before implementation.
+
+The stable cache prefix remains byte-stable: canonical base prompt, standing identity/profile/project rules, generated stable surface guidance, and the unchanged exact history prefix. Current goal context, selected memory/capabilities, the latest user message, tool exchanges, and approved result-local notices append afterward. Volatile ids, timestamps, counters, and runtime steering never enter the stable prefix.
 
 ## Refactor Strategy
 
@@ -147,7 +195,7 @@ Prefer a small number of capable, coherent tools. Do not create a narrow tool fo
 
 ### 4. Instantiate Roles From The Shared Architecture
 
-Main Socrates, asynchronous Global Memory Agent work, Skill Writer, automatic provenance-linked context compactors, confirmation workers, and final structured validation must be declared as agent definitions or explicitly catalogued deterministic authorities. Goal candidate retrieval, memory candidate retrieval, deterministic memory selection, goal-ledger transactions, and access-scope enforcement are catalogued deterministic services. The same-Socrates goal-resolution step is a declared phase of the main Socrates definition, not another independently configurable agent.
+Main Socrates, asynchronous Global Memory Agent work, Skill Writer, automatic provenance-linked context compactors, and confirmation workers must be declared as agent definitions or explicitly catalogued deterministic authorities. Final structured validation is deterministic validation of the last response from the same foreground loop; it is not another model worker or provider call. Goal candidate retrieval, memory candidate retrieval, deterministic memory selection, goal-ledger transactions, and access-scope enforcement are catalogued deterministic services. The same-Socrates goal-resolution step is a declared phase of the main Socrates definition, not another independently configurable agent.
 
 Roles may differ only through declared configuration:
 
@@ -208,13 +256,14 @@ Required gates are:
 2. Generated provider-schema parity tests for every supported provider.
 3. Role-manifest and forbidden-capability tests.
 4. Agent-loop tests for valid calls, invalid calls, retries, budgets, cancellation, and finalization.
-5. Retrieval tests for parallel goal/memory candidates, current-goal inclusion, exact inspection, audit, filtering, and index lifecycle.
-6. Context tests for exact scoped selection, release-only `R<n>` handling, automatic 170k oldest-head compaction, an approximately 70k exact whole-turn suffix, evidence preservation, and continuation recovery.
-7. Terminal tests for foreground execution, persistent start, input, output, stop, wait, cancellation, and restart cleanup.
-8. Goal/task lifecycle tests proving current, retrieved older goal, new, and clarify decisions without goal fragmentation.
-9. Global UI and compatibility-adapter tests proving one main runtime, goal-centric sidebar, Paths/access enforcement, and no required project entry.
-10. Packaged-runtime tests proving the supported launcher executes the just-built source revision.
-11. Real-provider acceptance runs only after deterministic gates pass.
+5. Model-input allowlist tests proving no shadow message, synthetic user turn, per-batch action ledger, or detached reconciliation/final call can reach the provider.
+6. Retrieval tests for parallel goal/memory candidates, current-goal inclusion, exact inspection, audit, filtering, and index lifecycle.
+7. Context tests for exact scoped selection, result-local release-only `R<n>` handling, automatic 170k oldest-head compaction, an approximately 70k exact whole-turn suffix, evidence preservation, and continuation recovery.
+8. Terminal tests for foreground execution, persistent start, input, output, stop, wait, cancellation, and restart cleanup.
+9. Goal/task lifecycle tests proving current, retrieved older goal, new, and clarify decisions without goal fragmentation.
+10. Global UI and compatibility-adapter tests proving one main runtime, goal-centric sidebar, Paths/access enforcement, and no required project entry.
+11. Packaged-runtime tests proving the supported launcher executes the just-built source revision.
+12. Real-provider acceptance runs only after deterministic gates pass and must prove the normal no-tool path is one goal-decision call plus one foreground final call.
 
 Real-provider testing must include malformed-call diagnostics with exact raw arguments, exposed schema identity, provider/model identity, retry history, selected runtime revision, and final task outcome. A successful HTTP response is not sufficient; the requested work must complete correctly.
 
@@ -230,4 +279,4 @@ Real-provider testing must include malformed-call diagnostics with exact raw arg
 
 ## Definition Of Done
 
-The agent-core refactor is complete only when a maintainer can begin with one global Socrates definition, follow the exact message through parallel candidate retrieval, same-Socrates goal resolution, deterministic memory selection, one catalogued tool/runtime path, atomic goal-capsule finalization, and asynchronous enrichment without encountering a second schema, runner, registry, router agent, retrieval authority, context authority, generated runtime, or fallback workflow.
+The agent-core refactor is complete only when a maintainer can begin with one global Socrates definition, follow the exact message through parallel candidate retrieval, same-Socrates goal resolution, deterministic memory selection, one normal catalogued working loop whose last continuation is the structured final response, atomic goal-capsule finalization, and asynchronous enrichment without encountering a second schema, runner, registry, router agent, retrieval authority, context authority, generated runtime, fallback workflow, hidden steering message, detached reconciliation call, or detached final-formatting call.

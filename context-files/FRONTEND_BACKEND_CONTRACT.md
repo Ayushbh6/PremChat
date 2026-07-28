@@ -2685,7 +2685,7 @@ Rules:
 - `runtime_context` is system-owned. `project_docs` rejects attempts to patch or change it. It may contain compact workspace scan facts, but must not persist terminal output, live terminal state, dependency dumps, package lists, or root-script inventories.
 - Successful `project_docs` edits stamp YAML frontmatter with backend-owned `updated_at`, `updated_by`, and `last_edited_section`.
 - Generic `edit` and `apply_patch` writes to these files are rejected; use `project_docs`.
-- After meaningful workspace work, the runtime may inject a docs checkpoint requiring a `project_docs` memory update before final when no durable memory update happened.
+- The runtime never injects a docs checkpoint. Socrates decides inside its normal working loop whether important project knowledge or progress merits a governed update, verifies any edit with normal tools, and otherwise answers without ceremonial document work.
 
 ### `soul`
 

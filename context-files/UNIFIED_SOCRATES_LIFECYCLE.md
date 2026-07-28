@@ -4,7 +4,7 @@ Status: detailed technical target for the global goal-centric Socrates lifecycle
 
 FLOW_NORTH_STAR.md defines the product experience. AGENT_REFACTOR_MANIFESTO.md defines the replacement agent architecture. AGENT_CAPABILITY_WORKFLOW.md defines the mandatory change procedure. Current Classic, project, V2, router, and compaction implementations are migration evidence when they conflict with this target.
 
-Implementation checkpoint (2026-07-28): the released Classic and Flow paths now converge through concurrent typed goal/memory retrieval, current-capsule-aware memory selection, same-main-Socrates no-tool four-way resolution, one view-neutral exact prepared context, process-over-ceremony durable-state steering, release-only turn-local large-result control, automatic 170k oldest-head compaction with an approximately 70k exact whole-turn suffix, exact-current-context Frontier transfer, and one shared atomic validated finalization authority. The former Goal Router, Memory Router, active context-disposition policy, sliced goal-history helper, view-specific context policy, and duplicate finalization authority are deleted. Legacy context tables remain read-compatible only so existing user data is not destructively migrated. The global no-project UI remains later migration work.
+Implementation checkpoint (2026-07-29): the released Classic and Flow paths converge through concurrent typed goal/memory/capability retrieval, current-capsule-aware exact memory selection, same-main-Socrates no-tool four-way resolution, one view-neutral prepared context, and one foreground working loop whose last continuation returns the validated answer plus goal state/note. Reconciliation is conditional work inside that loop; there is no detached draft, reconciliation, or final-formatting call and no per-batch model-visible action/memory steering. Qualifying large results carry result-local `R<n>` notices, read/search/trace projections use shared output limits and offsets, automatic 170k oldest-head compaction preserves an approximately 70k exact whole-turn suffix, and Frontier receives exact current context after approval. The former Goal Router, Memory Router, active context-disposition policy, sliced goal-history helper, view-specific context policy, duplicate finalization authority, and shadow steering paths are deleted. Legacy context tables remain read-compatible only so existing user data is not destructively migrated. The global no-project UI remains later migration work.
 
 ## One Product Model
 
@@ -34,7 +34,7 @@ The phrase bounded context is forbidden as a standalone description because it h
 
 At 170k estimated model-visible input tokens, the runtime automatically compacts only the oldest completed-turn head. It preserves approximately 70k of the newest completed Q/A by whole-turn boundary plus the active turn, targets a rebuilt request around 100k, accepts no result above 120k, and does not dispatch the main model above the trigger if safe compaction fails. The derivative retains provenance and never overwrites canonical content.
 
-Each successful individual tool result above 3,000 estimated tokens receives the next turn-local `R<n>` handle and one compact hidden reminder after its tool batch. Socrates may release unneeded handles alongside its next normal tool call. There is no keep, distill, or unresolved state; omission never blocks normal tools; no separate model inference is added; and exact results remain retrievable.
+Each successful individual tool result above 3,000 estimated tokens receives the next turn-local `R<n>` handle and one compact reminder appended to that existing tool result. It is not a separate hidden message. Socrates may release unneeded handles alongside its next normal tool call. There is no keep, distill, or unresolved state; omission never blocks normal tools; no separate model inference is added; and exact results remain retrievable.
 
 A goal capsule is not automatic conversation compaction. It is structured live state derived from validated goal outcomes and source anchors. It may guide selection but cannot replace relevant exact wording or evidence.
 
@@ -53,9 +53,9 @@ Every user-authored message follows this order:
     3. same-Socrates semantic goal resolution
     4. bind the canonical goal and create the task
     5. deterministically select exact memory for that goal
-    6. run the shared Socrates agent loop
-    7. perform required same-Socrates reconciliation
-    8. produce and validate the structured final result
+    6. run one shared Socrates working loop
+    7. inside that loop, use normal tools and reconcile important working/durable state when needed
+    8. return and validate answer + goal state + goal note in the loop's last continuation
     9. atomically save answer, task outcome, goal capsule, and current-goal state
     10. publish the answer
     11. run asynchronous memory enrichment
@@ -207,17 +207,28 @@ The model receives no view-specific persona, project-first prompt, mutable focus
 
 Main Socrates reads identity, user profile, generated tool guidance, installed skills, project resources, and `.socrates` documents through the shared `read`/`search` resource protocol. Identity and user profile are read-only and may be changed only by asynchronous Memory Agent curation originating from `memory_note` evidence. Generic `edit` may update authorized `.socrates` working/project-doc resources through the governed resource adapter, but never identity, user profile, generated tool guidance, runtime-owned sections, or skill files. Skill mutations use `capability_manager` and the Skill Writer.
 
+The working-space meanings are fixed:
+
+- `.socrates/notes` is free-working space for plans, tasks, experiments, temporary scripts, and progress notes.
+- `.socrates/memory` stores important project knowledge and decisions future work needs.
+- `.socrates/repo_docs` stores verified facts about how the repository works.
+- `memory_note` sends a candidate to the asynchronous Global Memory Agent for identity, user profile, cross-project memory, or a future skill.
+
+Socrates uses these naturally while working. It does not open or update them ceremonially or require fixed plan/task filenames.
+
 ## Main Socrates Loop
 
 One AgentDefinition, one AgentRuntime, one capability manifest, and one provider/tool lifecycle execute every foreground task. Paths, connections, current access mode, and the bound goal are typed runtime inputs rather than different agents.
 
-The same loop owns investigation, planning, tool calls, recovery, approvals, credentials, Terminal/wait continuation, long-task progress reconciliation, pre-final reconciliation when durable state changed, and the substantive final answer. `.socrates/` is a flexible working space: Socrates records useful plans, tasks, probes, scripts, and temporary artifacts without mandatory filenames. The process is plan, track, reconcile at meaningful milestones, and verify—not document reads before and after every operation.
+The same loop owns investigation, planning, tool calls, recovery, approvals, credentials, Terminal/wait continuation, reconciliation when important state changed, and the substantive structured final answer. Reconciliation is Socrates' judgment inside this loop, not another agent, model phase, provider call, or hidden checkpoint. The process is plan, track, reconcile at meaningful moments, and verify—not document reads before and after every operation.
+
+The runtime may not inject an action ledger after tool batches or add synthetic user/developer messages for repeated calls, tool counts, context growth, memory-note bookkeeping, Terminal capabilities, progress reconciliation, or final reconciliation. Backend counters and guards remain mechanical and silent. Real failures stay inside their matching tool result. The stable prompt owns enduring behavior, and a small approved notice may appear only as metadata attached to an existing tool result. Any new model-visible injected-content category requires explicit user approval and an authority/CI allowlist update.
 
 The goal resolver cannot perform task tools. The main loop cannot rebind the task to another goal after work begins.
 
 ## Finalization And Atomic Commit
 
-The normal final call returns one strict result containing the visible answer plus the already-bound task/goal outcome required by the backend. It does not choose a goal again.
+The last continuation of the normal working loop returns one strict result containing the visible answer plus the already-bound goal state and goal note required by the backend. It does not choose a goal again. The same streamed provider request carries the native terminal schema, including when tools are available; the schema is counted as model input and is not enforced through a repair call. There is no earlier draft answer, detached reconciliation call, or separate final-formatting call. A no-tool foreground request therefore has one goal-decision call and one main final call; tool-using requests add only continuations required to consume real tool results.
 
 One transaction:
 
@@ -286,6 +297,8 @@ The replacement is incomplete while any production path still depends on:
 - character/token slicing of selected user or assistant messages;
 - a mutable model-facing focus ledger;
 - duplicate semantic Q&A mirrors or hidden conversation shims;
+- a per-tool-batch action ledger, synthetic user warning, or uncatalogued model-visible steering message;
+- a detached draft, reconciliation, or final-formatting provider call after the main work loop;
 - a second goal/title/finalization authority; or
 - uncatalogued retrieval, provider, or lifecycle entrypoints.
 
@@ -312,6 +325,8 @@ Required scenarios include:
 13. The goal sidebar shows exact Q&A grouped by goal with no required project hierarchy.
 14. Capability-manifest and absence tests prove old routers and shadow paths are unreachable.
 15. Large qualifying tool outputs receive monotonic turn-local `R<n>` handles, release only piggybacks with normal work, omission never blocks functional calls, and the next user turn does not reload intermediate results.
+16. Provider-input inspection proves every model-visible message category is allowlisted and no per-batch action ledger, synthetic user warning, detached reconciliation call, or detached final-formatting call exists.
+17. A no-tool request uses exactly one same-Socrates goal-decision call plus one foreground structured-final call.
 
 ## Documentation Authority And Change Discipline
 
