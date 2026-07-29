@@ -10,7 +10,7 @@ import {
   resolveModelOutputCharLimit,
   SocratesError,
 } from "@socrates/shared"
-import { socratesSurface, type TruncationMetadata } from "@socrates/contracts"
+import { socratesSurface, type FilesystemAuthorizationSnapshot, type TruncationMetadata } from "@socrates/contracts"
 
 export const DEFAULT_CHAR_LIMIT = DEFAULT_MODEL_OUTPUT_CHAR_LIMIT
 export const MAX_CHAR_LIMIT = MAX_MODEL_OUTPUT_CHAR_LIMIT
@@ -36,6 +36,89 @@ export const resolveWorkspacePath = (workspacePath: string, requestedPath?: stri
     })
   }
   return target
+}
+
+export type AuthorizedPathContext = {
+  workspacePath: string
+  filesystemAuthorization?: FilesystemAuthorizationSnapshot
+}
+
+export const resolveAuthorizedPath = (context: AuthorizedPathContext, requestedPath?: string): string => {
+  const authorization = context.filesystemAuthorization
+  if (!authorization) return resolveWorkspacePath(context.workspacePath, requestedPath)
+
+  const roots = authorization.roots.map((root) => canonicalTargetPath(root.path))
+  const fallbackRoot = roots[0]
+  const requestedWorkingRoot = authorization.workingRootPath ?? context.workspacePath
+  const workingRoot = authorization.mode === "full" || roots.some((root) => isWithinRoot(canonicalTargetPath(requestedWorkingRoot), root))
+    ? canonicalTargetPath(requestedWorkingRoot)
+    : fallbackRoot
+  if (!workingRoot) {
+    throw new SocratesError("filesystem_path_unavailable", "No selected path is available for this turn.", {
+      recoverable: true,
+    })
+  }
+
+  const normalizedRequest = normalizeWorkspaceRequestPath(requestedPath)
+  const lexicalTarget = normalizedRequest && path.isAbsolute(normalizedRequest)
+    ? path.resolve(normalizedRequest)
+    : path.resolve(workingRoot, normalizedRequest ?? ".")
+  const target = canonicalTargetPath(lexicalTarget)
+  if (authorization.mode !== "full" && !roots.some((root) => isWithinRoot(target, root))) {
+    throw new SocratesError("filesystem_path_outside_selected", "Tool paths must stay inside the paths selected in the header.", {
+      recoverable: true,
+      details: { requestedPath, selectedPaths: authorization.roots.map((root) => root.path) },
+    })
+  }
+  return target
+}
+
+export const toAuthorizedDisplayPath = (
+  context: AuthorizedPathContext,
+  targetPath: string,
+): string => {
+  const workspaceRoot = canonicalTargetPath(context.filesystemAuthorization?.workingRootPath ?? context.workspacePath)
+  const target = canonicalTargetPath(targetPath)
+  return isWithinRoot(target, workspaceRoot)
+    ? toWorkspaceRelativePath(workspaceRoot, target)
+    : target
+}
+
+const canonicalTargetPath = (targetPath: string): string => {
+  const normalized = path.resolve(targetPath)
+  try {
+    return fs.realpathSync.native(normalized)
+  } catch {
+    let ancestor = normalized
+    const remainder: string[] = []
+    while (path.dirname(ancestor) !== ancestor) {
+      try {
+        const stat = fs.lstatSync(ancestor)
+        if (stat.isSymbolicLink()) {
+          throw new SocratesError("filesystem_broken_symlink", "Tool paths cannot traverse an unresolved symbolic link.", {
+            recoverable: true,
+            details: { path: normalized },
+          })
+        }
+      } catch (error) {
+        if (error instanceof SocratesError) throw error
+      }
+      remainder.unshift(path.basename(ancestor))
+      ancestor = path.dirname(ancestor)
+      try {
+        return path.join(fs.realpathSync.native(ancestor), ...remainder)
+      } catch {
+        // Keep walking to the nearest existing ancestor.
+      }
+    }
+    return normalized
+  }
+}
+
+const isWithinRoot = (targetPath: string, rootPath: string): boolean => {
+  const target = path.resolve(targetPath)
+  const root = path.resolve(rootPath)
+  return target === root || target.startsWith(`${root}${path.sep}`)
 }
 
 const normalizeWorkspaceRequestPath = (requestedPath?: string): string | undefined => {

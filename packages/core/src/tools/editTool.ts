@@ -12,7 +12,10 @@ const decideEditPolicy: SocratesTool<typeof editToolInputSchema._type, typeof ed
   input,
   context,
 ) => {
-  if (context.runtimeConfig.sandboxMode === "read_only" || context.runtimeConfig.approvalMode === "read_only_auto") {
+  const readOnly = context.filesystemAuthorization
+    ? context.filesystemAuthorization.mode === "read_only"
+    : context.runtimeConfig.sandboxMode === "read_only" || context.runtimeConfig.approvalMode === "read_only_auto"
+  if (readOnly) {
     return { type: "denied", reason: "File edits are not allowed in read-only mode." }
   }
 
@@ -20,7 +23,7 @@ const decideEditPolicy: SocratesTool<typeof editToolInputSchema._type, typeof ed
     return { type: "auto" }
   }
 
-  if (context.runtimeConfig.sandboxMode === "danger_full_access" || context.runtimeConfig.approvalMode === "approve_all") {
+  if (context.runtimeConfig.approvalMode === "approve_all") {
     return { type: "auto" }
   }
 
@@ -31,7 +34,7 @@ const decideEditPolicy: SocratesTool<typeof editToolInputSchema._type, typeof ed
     request: {
       actionKind: "file_write",
       title: "Approve file edit",
-      description: "Socrates wants to modify files in the active project workspace.",
+      description: "Socrates wants to modify a file inside the current filesystem access scope.",
       actionPreview: preview.diff.trim().length > 0 ? preview.diff : previewEdit(input),
       risk: "medium",
     },
@@ -46,7 +49,7 @@ const isSocratesOwnedWorkingPath = (path: string): boolean =>
 export const editTool: SocratesTool<typeof editToolInputSchema._type, typeof editToolOutputSchema._type> = {
   name: "edit",
   description:
-    "Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. Durable Socrates memory, notes, and repo docs require an exact section URI; their base document URIs are read/search only. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
+    "Create or modify one governed resource or file inside the current filesystem access scope. Relative paths use the working path; authorized absolute paths are supported. Read an existing target in the current turn before editing it. Durable Socrates memory, notes, and repo docs require an exact section URI; their base document URIs are read/search only. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
   inputSchema: editToolInputSchema,
   resultSchema: editToolOutputSchema,
   permission: "mutate",

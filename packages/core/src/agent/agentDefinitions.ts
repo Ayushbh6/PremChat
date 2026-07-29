@@ -51,6 +51,18 @@ const interactiveAgentContext = {
   ],
 } as const
 
+const socratesInteractiveContext = {
+  id: "socrates-interactive-context-v1",
+  stages: [
+    "stable_prompt",
+    "exact_messages",
+    "runtime_context",
+    "filesystem_access",
+    "tool_definitions",
+    "automatic_compaction",
+  ],
+} as const
+
 const structuredContextCapabilities = [
   "context.stable_prompt",
   "context.exact_messages",
@@ -62,6 +74,15 @@ const interactiveContextCapabilities = [
   "context.stable_prompt",
   "context.exact_messages",
   "context.runtime_state",
+  "context.tool_definitions",
+  "context.automatic_compaction",
+] as const
+
+const socratesInteractiveContextCapabilities = [
+  "context.stable_prompt",
+  "context.exact_messages",
+  "context.runtime_state",
+  "context.filesystem_access",
   "context.tool_definitions",
   "context.automatic_compaction",
 ] as const
@@ -129,13 +150,14 @@ export const socratesMainAgentDefinition = defineAgent<DynamicSystemPromptContex
       "authority.memory_selection",
       "authority.goal_ledger",
       "authority.finalization",
-      ...interactiveContextCapabilities,
+      "authority.filesystem_access",
+      ...socratesInteractiveContextCapabilities,
       "runtime.structured_repair",
       "runtime.frontier_handover",
     ],
     dynamicCapabilityPrefixes: ["dynamic.mcp."],
   },
-  contextProfile: interactiveAgentContext,
+  contextProfile: socratesInteractiveContext,
   limits: { maxToolCalls: 80, maxOutputRepairAttempts: 1 },
   persistenceScope: "goal",
 })

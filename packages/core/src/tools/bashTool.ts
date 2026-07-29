@@ -9,6 +9,12 @@ const decideBashPolicy: SocratesTool<typeof bashToolInputSchema._type, typeof ba
   context,
 ): ToolPolicyDecision => {
   const operation = input.operation
+  const readOnly = context.filesystemAuthorization
+    ? context.filesystemAuthorization.mode === "read_only"
+    : context.runtimeConfig.sandboxMode === "read_only" || context.runtimeConfig.approvalMode === "read_only_auto"
+  if (readOnly) {
+    return { type: "denied", reason: "Terminal is not available while Access is set to Read only. Use read or search for structured inspection." }
+  }
   if (operation === "inspect" || operation === "stop" || operation === "list") {
     return { type: "auto" }
   }
@@ -25,11 +31,7 @@ const decideBashPolicy: SocratesTool<typeof bashToolInputSchema._type, typeof ba
   }
 
   const preview = command ?? "Terminal command"
-  if (context.runtimeConfig.sandboxMode === "read_only" || context.runtimeConfig.approvalMode === "read_only_auto") {
-    return { type: "denied", reason: "Terminal commands are not allowed in read-only mode. Use read or search for structured inspection." }
-  }
-
-  if (context.runtimeConfig.sandboxMode === "danger_full_access" || context.runtimeConfig.approvalMode === "approve_all") {
+  if (context.runtimeConfig.approvalMode === "approve_all" && !highRiskCommandPattern.test(preview)) {
     return { type: "auto" }
   }
 
@@ -63,7 +65,7 @@ const isNoopTerminalCommand = (command: string): boolean => {
 export const bashTool: SocratesTool<typeof bashToolInputSchema._type, typeof bashToolOutputSchema._type> = {
   name: "bash",
   description:
-    "Run commands or manage named persistent Terminals in the active workspace. Use run for a bounded foreground command, start with a unique name for a server or interactive process, inspect with that name to receive status plus new output, stop with that name, and list to discover existing names. Prefer read, search, edit, and apply_patch for structured file work. Use inputMode=user when the visible Terminal must accept user input.",
+    "Run commands or manage named persistent Terminals from an authorized working directory. Terminal runs as the local user and is not OS-sandboxed; path selection checks cwd but cannot promise process containment. Use run for a bounded foreground command, start with a unique name for a server or interactive process, inspect with that name to receive status plus new output, stop with that name, and list to discover existing names. Prefer read, search, edit, and apply_patch for structured file work. Use inputMode=user when the visible Terminal must accept user input.",
   inputSchema: bashToolInputSchema,
   resultSchema: bashToolOutputSchema,
   permission: "execute",

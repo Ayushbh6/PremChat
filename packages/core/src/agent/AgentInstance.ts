@@ -1,4 +1,4 @@
-import type { RuntimeConfig } from "@socrates/contracts"
+import type { FilesystemAuthorizationSnapshot, RuntimeConfig } from "@socrates/contracts"
 import type {
   ModelMessage,
   ModelMessageContent,
@@ -32,6 +32,7 @@ export type AgentInstanceInput<TPromptContext> = {
   sessionId: string
   turnId: string
   workspacePath: string
+  filesystemAuthorization?: FilesystemAuthorizationSnapshot
   cacheKey?: string
   providerRouting?: ModelRequest["providerRouting"]
   abortSignal?: AbortSignal
@@ -84,6 +85,7 @@ export class AgentInstance<TPromptContext, TOutput> {
       sessionId: input.sessionId,
       turnId: input.turnId,
       workspacePath: input.workspacePath,
+      ...(input.filesystemAuthorization ? { filesystemAuthorization: input.filesystemAuthorization } : {}),
       ...(input.cacheKey ? { cacheKey: input.cacheKey } : {}),
       ...(input.providerRouting ? { providerRouting: input.providerRouting } : {}),
       ...(input.contextCompression ? { contextCompression: input.contextCompression } : {}),
@@ -135,6 +137,7 @@ const CONTEXT_STAGE_CAPABILITY_IDS = {
   stable_prompt: "context.stable_prompt",
   exact_messages: "context.exact_messages",
   runtime_context: "context.runtime_state",
+  filesystem_access: "context.filesystem_access",
   tool_definitions: "context.tool_definitions",
   automatic_compaction: "context.automatic_compaction",
 } as const

@@ -4,6 +4,8 @@ export type IdPrefix =
   | "user"
   | "proj"
   | "pws"
+  | "fsroot"
+  | "fsauth"
   | "pres"
   | "pins"
   | "conv"

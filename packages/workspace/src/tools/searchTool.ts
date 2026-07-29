@@ -2,9 +2,9 @@ import { execFile, spawn } from "node:child_process"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { promisify } from "node:util"
-import type { SearchToolInput, SearchToolOutput } from "@socrates/contracts"
+import type { FilesystemAuthorizationSnapshot, SearchToolInput, SearchToolOutput } from "@socrates/contracts"
 import { MAX_MODEL_OUTPUT_TOKEN_LIMIT, resolveModelOutputCharLimit, SocratesError } from "@socrates/shared"
-import { isSecretMaterialPath, resolveWorkspacePath, toWorkspaceRelativePath } from "./common"
+import { isSecretMaterialPath, resolveAuthorizedPath, toAuthorizedDisplayPath } from "./common"
 
 const execFileAsync = promisify(execFile)
 const defaultMaxResults = 20
@@ -12,8 +12,10 @@ const hardMaxResults = 50
 const maxMatchTextCharacters = 1_000
 const skippedDirectories = new Set([".git", "node_modules", "dist", "build", ".next", ".turbo", "coverage"])
 
-export const searchWorkspace = async (input: SearchToolInput, context: { workspacePath: string }): Promise<SearchToolOutput> => {
-  const root = resolveWorkspacePath(context.workspacePath, input.path)
+type WorkspaceSearchContext = { workspacePath: string; filesystemAuthorization?: FilesystemAuthorizationSnapshot }
+
+export const searchWorkspace = async (input: SearchToolInput, context: WorkspaceSearchContext): Promise<SearchToolOutput> => {
+  const root = resolveAuthorizedPath(context, input.path)
   if (isSecretMaterialPath(root)) {
     throw new SocratesError("sensitive_path_denied", "Searching real environment, private-key, or credential material is denied.", {
       recoverable: true,
@@ -32,8 +34,8 @@ export const searchWorkspace = async (input: SearchToolInput, context: { workspa
 
   const matches =
     input.mode === "files"
-      ? await searchFiles(root, context.workspacePath, input.query, maxResults, Boolean(input.includeHidden), warnings)
-      : await searchText(root, context.workspacePath, input, maxResults, warnings)
+      ? await searchFiles(root, context, input.query, maxResults, Boolean(input.includeHidden), warnings)
+      : await searchText(root, context, input, maxResults, warnings)
 
   addResultCapWarning(matches.length, maxResults, warnings)
   const cappedMatches = shortenMatchText(matches.slice(0, maxResults), warnings)
@@ -86,13 +88,13 @@ const boundMatches = (matches: SearchToolOutput["matches"], charLimit: number): 
 
 const searchFiles = async (
   root: string,
-  workspacePath: string,
+  context: WorkspaceSearchContext,
   query: string,
   maxResults: number,
   includeHidden: boolean,
   warnings: string[],
 ): Promise<SearchToolOutput["matches"]> => {
-  const skipGenerated = shouldSkipGeneratedDirectories(root, workspacePath)
+  const skipGenerated = shouldSkipGeneratedDirectories(root, context.workspacePath)
   const rgFiles = await tryRgFiles(root, includeHidden, skipGenerated)
   const candidates = rgFiles ?? (await walkFiles(root, includeHidden))
   const loweredQuery = normalizePathForSearch(query)
@@ -106,19 +108,19 @@ const searchFiles = async (
   })
   addGeneratedDirectoryWarning(skipGenerated, warnings)
   addResultCapWarning(filtered.length, maxResults, warnings)
-  return filtered.map((candidate) => ({ path: toWorkspaceRelativePath(workspacePath, candidateAbsolutePath(root, candidate)) }))
+  return filtered.map((candidate) => ({ path: toAuthorizedDisplayPath(context, candidateAbsolutePath(root, candidate)) }))
 }
 
 const searchText = async (
   root: string,
-  workspacePath: string,
+  context: WorkspaceSearchContext,
   input: SearchToolInput,
   maxResults: number,
   warnings: string[],
 ): Promise<SearchToolOutput["matches"]> => {
   const regexLike = looksLikeRegexQuery(input.query)
   const useRegex = input.regex ?? regexLike
-  const skipGenerated = shouldSkipGeneratedDirectories(root, workspacePath)
+  const skipGenerated = shouldSkipGeneratedDirectories(root, context.workspacePath)
   if (input.regex === undefined && regexLike) {
     warnings.push("Query looked like regex syntax, so search interpreted it as regex. Set regex=false to search it literally.")
   }
@@ -139,7 +141,7 @@ const searchText = async (
   ]
   try {
     const rgOutput = await runRgWithLineLimit(args, maxResults + 1)
-    const allMatches = parseRgOutput(rgOutput.stdout, workspacePath).filter((match) => !isSecretMaterialPath(match.path))
+    const allMatches = parseRgOutput(rgOutput.stdout, context).filter((match) => !isSecretMaterialPath(match.path))
     addResultCapWarning(rgOutput.maybeMore ? maxResults + 1 : allMatches.length, maxResults, warnings)
     addGeneratedDirectoryWarning(skipGenerated, warnings)
     addZeroMatchWarning(allMatches, input, useRegex, regexLike, warnings)
@@ -147,7 +149,7 @@ const searchText = async (
   } catch (error) {
     const nodeError = error as NodeJS.ErrnoException & { stdout?: string; code?: number }
     if (nodeError.stdout) {
-      const allMatches = parseRgOutput(nodeError.stdout, workspacePath).filter((match) => !isSecretMaterialPath(match.path))
+      const allMatches = parseRgOutput(nodeError.stdout, context).filter((match) => !isSecretMaterialPath(match.path))
       addResultCapWarning(allMatches.length, maxResults, warnings)
       addGeneratedDirectoryWarning(skipGenerated, warnings)
       addZeroMatchWarning(allMatches, input, useRegex, regexLike, warnings)
@@ -159,11 +161,11 @@ const searchText = async (
     }
     if (useRegex && isInvalidRegexError(nodeError)) {
       warnings.push("Regex search failed to parse; retried as a literal fixed-string search.")
-      const matches = await searchTextFallback(root, workspacePath, { ...input, regex: false }, maxResults, warnings)
+      const matches = await searchTextFallback(root, context, { ...input, regex: false }, maxResults, warnings)
       addZeroMatchWarning(matches, input, false, regexLike, warnings)
       return matches
     }
-    const matches = await searchTextFallback(root, workspacePath, { ...input, regex: useRegex }, maxResults, warnings)
+    const matches = await searchTextFallback(root, context, { ...input, regex: useRegex }, maxResults, warnings)
     addZeroMatchWarning(matches, input, useRegex, regexLike, warnings)
     return matches
   }
@@ -253,7 +255,7 @@ const runRgWithLineLimit = async (args: string[], maxLines: number): Promise<{ s
     }, 20_000)
   })
 
-const parseRgOutput = (stdout: string, workspacePath: string): SearchToolOutput["matches"] =>
+const parseRgOutput = (stdout: string, context: WorkspaceSearchContext): SearchToolOutput["matches"] =>
   stdout
     .split("\n")
     .filter(Boolean)
@@ -263,7 +265,7 @@ const parseRgOutput = (stdout: string, workspacePath: string): SearchToolOutput[
         return { path: line }
       }
       return {
-        path: toWorkspaceRelativePath(workspacePath, match[1] ?? ""),
+        path: toAuthorizedDisplayPath(context, match[1] ?? ""),
         line: Number(match[2]),
         column: Number(match[3]),
         text: match[4],
@@ -321,7 +323,7 @@ const walkFiles = async (root: string, includeHidden: boolean): Promise<string[]
 
 const searchTextFallback = async (
   root: string,
-  workspacePath: string,
+  context: WorkspaceSearchContext,
   input: SearchToolInput,
   maxResults: number,
   warnings: string[],
@@ -343,12 +345,12 @@ const searchTextFallback = async (
       const line = lines[index] ?? ""
       const haystack = input.caseSensitive ? line : line.toLowerCase()
       if (regex ? regex.test(line) : haystack.includes(needle)) {
-        matches.push({ path: toWorkspaceRelativePath(workspacePath, file), line: index + 1, text: line })
+        matches.push({ path: toAuthorizedDisplayPath(context, file), line: index + 1, text: line })
       }
     }
   }
   addResultCapWarning(matches.length, maxResults, warnings)
-  addGeneratedDirectoryWarning(shouldSkipGeneratedDirectories(root, workspacePath), warnings)
+  addGeneratedDirectoryWarning(shouldSkipGeneratedDirectories(root, context.workspacePath), warnings)
   return matches
 }
 

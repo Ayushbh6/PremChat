@@ -21,6 +21,7 @@ import {
 } from "./ToolTimelineTypes";
 import { ActivityCenter } from "./ActivityCenter";
 import { WorkspaceTopbar } from "./WorkspaceTopbar";
+import { AccessControls } from "./AccessControls";
 import { ContinueInSeamlessButton } from "@/components/v2/ContinueInSeamlessButton";
 import {
   consumeViewHandoff,
@@ -1302,6 +1303,7 @@ export function ChatWorkspace({ projectId, conversationId }: ChatWorkspaceProps)
             approvingSkillActionId={approvingSkillActionId}
             rejectingSkillActionId={rejectingSkillActionId}
           />
+          <AccessControls />
           <ContinueInSeamlessButton
             projectId={projectId}
             conversationId={conversationId}

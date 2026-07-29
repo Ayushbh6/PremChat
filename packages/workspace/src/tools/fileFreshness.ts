@@ -1,5 +1,21 @@
+import fs from "node:fs"
+import path from "node:path"
 import { SocratesError } from "@socrates/shared"
 import { toWorkspaceRelativePath } from "./common"
+
+const displayPath = (workspacePath: string, targetPath: string): string => {
+  const relative = toWorkspaceRelativePath(workspacePath, targetPath)
+  return relative === ".." || relative.startsWith(`..${path.sep}`) ? targetPath : relative
+}
+
+const freshnessKey = (targetPath: string): string => {
+  const resolved = path.resolve(targetPath)
+  try {
+    return fs.realpathSync.native(resolved)
+  } catch {
+    return resolved
+  }
+}
 
 export class FileFreshnessTracker {
   private readonly hashes = new Map<string, string>()
@@ -8,12 +24,12 @@ export class FileFreshnessTracker {
     if (!contentHash) {
       return
     }
-    this.hashes.set(toWorkspaceRelativePath(workspacePath, path), contentHash)
+    this.hashes.set(freshnessKey(path), contentHash)
   }
 
   validate(path: string, actualHash: string | undefined, workspacePath: string): void {
-    const relativePath = toWorkspaceRelativePath(workspacePath, path)
-    const expected = this.hashes.get(relativePath)
+    const relativePath = displayPath(workspacePath, path)
+    const expected = this.hashes.get(freshnessKey(path))
     if (!expected) {
       throw new SocratesError("edit_stale_content", `read() has not been called on ${relativePath} in this turn. Call read("${relativePath}") first, then retry the edit.`, {
         details: { path: relativePath, actualHash },

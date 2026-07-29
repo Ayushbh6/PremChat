@@ -8,11 +8,14 @@ const previewPatch = (input: typeof applyPatchToolInputSchema._type): string => 
 
 const decidePatchPolicy: SocratesTool<typeof applyPatchToolInputSchema._type, typeof applyPatchToolOutputSchema._type>["decidePolicy"] =
   async (input, context) => {
-    if (context.runtimeConfig.sandboxMode === "read_only" || context.runtimeConfig.approvalMode === "read_only_auto") {
+    const readOnly = context.filesystemAuthorization
+      ? context.filesystemAuthorization.mode === "read_only"
+      : context.runtimeConfig.sandboxMode === "read_only" || context.runtimeConfig.approvalMode === "read_only_auto"
+    if (readOnly) {
       return { type: "denied", reason: "Patch application is not allowed in read-only mode." }
     }
 
-    if (context.runtimeConfig.sandboxMode === "danger_full_access" || context.runtimeConfig.approvalMode === "approve_all") {
+    if (context.runtimeConfig.approvalMode === "approve_all") {
       return { type: "auto" }
     }
 
@@ -23,7 +26,7 @@ const decidePatchPolicy: SocratesTool<typeof applyPatchToolInputSchema._type, ty
       request: {
         actionKind: "patch_apply",
         title: "Approve patch",
-        description: "Socrates wants to apply a patch in the active project workspace.",
+      description: "Socrates wants to apply a patch in the turn's working path.",
         actionPreview: preview.diff.trim().length > 0 ? preview.diff : previewPatch(input),
         risk: "medium",
       },
@@ -33,7 +36,7 @@ const decidePatchPolicy: SocratesTool<typeof applyPatchToolInputSchema._type, ty
 export const applyPatchTool: SocratesTool<typeof applyPatchToolInputSchema._type, typeof applyPatchToolOutputSchema._type> = {
   name: "apply_patch",
   description:
-    "Apply a patch to one or more files in the active project workspace. Call this only after reading existing target files in the current turn. Use patchText with the structured *** Begin Patch format by default: *** Update File, @@ hunks, *** Add File, *** Delete File, and *** Move to. This format does not require unified-diff line counts. Read existing files before patching, deleting, or renaming them, and read a file again before another mutation after a successful edit or patch. Standard unified diffs with ---/+++/@@ headers are accepted only when you already have a valid diff. Use for multi-hunk or multi-file changes.",
+    "Apply a patch to one or more files in the turn's working path. Call this only after reading existing target files in the current turn. Use patchText with the structured *** Begin Patch format by default: *** Update File, @@ hunks, *** Add File, *** Delete File, and *** Move to. This format does not require unified-diff line counts. Read existing files before patching, deleting, or renaming them, and read a file again before another mutation after a successful edit or patch. Standard unified diffs with ---/+++/@@ headers are accepted only when you already have a valid diff. Use for multi-hunk or multi-file changes.",
   inputSchema: applyPatchToolInputSchema,
   resultSchema: applyPatchToolOutputSchema,
   permission: "mutate",

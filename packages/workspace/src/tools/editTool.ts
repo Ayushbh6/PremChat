@@ -1,6 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
-import type { EditToolInput, EditToolOutput } from "@socrates/contracts"
+import type { EditToolInput, EditToolOutput, FilesystemAuthorizationSnapshot } from "@socrates/contracts"
 import { SocratesError } from "@socrates/shared"
 import {
   assertNotProjectNotesMutation,
@@ -9,8 +9,8 @@ import {
   clampCharLimit,
   ensureParentDirectory,
   isSensitivePath,
-  resolveWorkspacePath,
-  toWorkspaceRelativePath,
+  resolveAuthorizedPath,
+  toAuthorizedDisplayPath,
   truncateText,
 } from "./common"
 import type { FileFreshnessTracker } from "./fileFreshness"
@@ -36,15 +36,15 @@ const editTestHooks: {
 
 export const editWorkspace = async (
   input: EditToolInput,
-  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker; previewOnly?: boolean },
+  context: { workspacePath: string; filesystemAuthorization?: FilesystemAuthorizationSnapshot; fileFreshness?: FileFreshnessTracker; previewOnly?: boolean },
 ): Promise<EditToolOutput> => withWorkspaceMutationLock(context.workspacePath, () => editWorkspaceLocked(input, context))
 
 const editWorkspaceLocked = async (
   input: EditToolInput,
-  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker; previewOnly?: boolean },
+  context: { workspacePath: string; filesystemAuthorization?: FilesystemAuthorizationSnapshot; fileFreshness?: FileFreshnessTracker; previewOnly?: boolean },
 ): Promise<EditToolOutput> => {
   const dryRun = context.previewOnly ?? false
-  const absolutePath = resolveWorkspacePath(context.workspacePath, input.path)
+  const absolutePath = resolveAuthorizedPath(context, input.path)
   assertNotProjectNotesMutation(context.workspacePath, absolutePath, input.path)
   assertNotRepoDocsMutation(context.workspacePath, absolutePath, input.path)
   assertNotProjectSkillsMutation(context.workspacePath, absolutePath, input.path)
@@ -54,7 +54,7 @@ const editWorkspaceLocked = async (
     })
   }
 
-  const relativePath = toWorkspaceRelativePath(context.workspacePath, absolutePath)
+  const relativePath = toAuthorizedDisplayPath(context, absolutePath)
   const before = readFileSnapshot(absolutePath, { includeText: true })
   if ("edits" in input) {
     if (!before.exists) {
@@ -101,12 +101,12 @@ const editWorkspaceLocked = async (
 }
 
 const validateFreshness = (
-  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker; previewOnly?: boolean },
+  context: { workspacePath: string; filesystemAuthorization?: FilesystemAuthorizationSnapshot; fileFreshness?: FileFreshnessTracker; previewOnly?: boolean },
   absolutePath: string,
   actualHash: string | undefined,
 ): void => {
   if (!context.fileFreshness) {
-    const relativePath = toWorkspaceRelativePath(context.workspacePath, absolutePath)
+    const relativePath = toAuthorizedDisplayPath(context, absolutePath)
     throw new SocratesError("edit_stale_content", `read() has not been called on ${relativePath} in this turn. Call read("${relativePath}") first, then retry the edit.`, {
       details: { path: relativePath, actualHash },
       recoverable: true,
@@ -117,7 +117,7 @@ const validateFreshness = (
 
 const writeSingleFile = async (params: {
   input: EditToolInput
-  context: { workspacePath: string; fileFreshness?: FileFreshnessTracker; previewOnly?: boolean }
+  context: { workspacePath: string; filesystemAuthorization?: FilesystemAuthorizationSnapshot; fileFreshness?: FileFreshnessTracker; previewOnly?: boolean }
   dryRun: boolean
   absolutePath: string
   relativePath: string

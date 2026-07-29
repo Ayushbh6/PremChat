@@ -161,6 +161,7 @@ export class SocratesTurnLifecycle {
         sessionId: input.sessionId ?? "",
         turnId: input.turnId ?? "",
         workspacePath: input.workspacePath,
+        ...(input.filesystemAuthorization ? { filesystemAuthorization: input.filesystemAuthorization } : {}),
         runtimeConfig: input.runtimeConfig,
         executors: input.toolExecutors,
         requestApproval: input.requestApproval,
@@ -261,7 +262,9 @@ export class SocratesTurnLifecycle {
     }
 
     try {
-      const policy = await tool.decidePolicy(parsed.data, context)
+      const policy = context.filesystemAuthorization?.mode === "read_only" && tool.permission !== "read"
+        ? { type: "denied" as const, code: "filesystem_read_only", recoverable: true, reason: "Only read-only tools are available while Access is set to Read only." }
+        : await tool.decidePolicy(parsed.data, context)
       queue.push({
         type: "tool.call.started",
         toolCallId: toolCall.toolCallId,

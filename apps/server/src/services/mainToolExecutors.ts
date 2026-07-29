@@ -1,3 +1,4 @@
+import path from "node:path"
 import type { CapabilityManagerToolInput, SkillsToolInput, SkillsToolOutput, TraceRetrieveMainToolInput } from "@socrates/contracts"
 import type { ToolExecutors } from "@socrates/core"
 import type { McpRuntime } from "@socrates/mcp"
@@ -6,6 +7,7 @@ import {
   applyPatchWorkspace,
   editWorkspace,
   readWorkspacePath,
+  resolveAuthorizedPath,
   searchWorkspace,
   withWorkspaceMutationLock,
 } from "@socrates/workspace"
@@ -62,8 +64,17 @@ export const createMainToolExecutors = (input: MainToolExecutorsInput): ToolExec
     edit: (toolInput, context) => isSocratesResourcePath(toolInput.path)
       ? withWorkspaceMutationLock(context.workspacePath, () => editSocratesResource(toolInput, { ...withFreshness(context), store: input.store }))
       : editWorkspace(toolInput, withFreshness(context)),
-    apply_patch: (toolInput, context) => applyPatchWorkspace(toolInput, withFreshness(context)),
-    bash: input.runtime.bash,
+    apply_patch: (toolInput, context) => applyPatchWorkspace(toolInput, withFreshness({
+      ...context,
+      workspacePath: resolveAuthorizedPath(context),
+    })),
+    bash: (toolInput, context) => {
+      const cwd = resolveAuthorizedPath(context, toolInput.cwd)
+      return input.runtime.bash(
+        { ...toolInput, ...(toolInput.cwd ? { cwd: "." } : {}) },
+        { ...context, workspacePath: cwd },
+      )
+    },
     ...(input.runtime.wait ? { wait: input.runtime.wait } : {}),
     current_time: async () => currentRuntimeTime(),
     trace_retrieve: async (toolInput, context) => {
@@ -81,12 +92,39 @@ export const createMainToolExecutors = (input: MainToolExecutorsInput): ToolExec
     memory_note: input.runtime.createMemoryNote,
     mcp_dynamic: (toolInput, context) => {
       if (!input.mcpRuntime) throw new SocratesError("mcp_runtime_unavailable", "MCP runtime is not available.", { recoverable: true })
+      preflightMcpFilesystemInputs(toolInput.input, context)
       return input.mcpRuntime.callDynamicTool(toolInput.dynamicName, toolInput.input, {
-        cwd: context.workspacePath,
+        cwd: resolveAuthorizedPath(context),
         sessionKey: input.runtime.mcpSessionKey(context),
-        workspacePath: context.workspacePath,
+        workspacePath: resolveAuthorizedPath(context),
       })
     },
+  }
+}
+
+const mcpFilesystemKey = /^(?:path|paths|cwd|root|roots|directory|directories|file_path|file_paths)$/i
+
+const preflightMcpFilesystemInputs = (
+  value: unknown,
+  context: Parameters<NonNullable<ToolExecutors["mcp_dynamic"]>>[1],
+  key = "",
+  depth = 0,
+): void => {
+  if (depth > 8 || value === null || value === undefined) return
+  if (typeof value === "string") {
+    const isAbsoluteLocalPath = path.isAbsolute(value) || path.win32.isAbsolute(value)
+    if (mcpFilesystemKey.test(key) && isAbsoluteLocalPath) {
+      resolveAuthorizedPath(context, value)
+    }
+    return
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) preflightMcpFilesystemInputs(item, context, key, depth + 1)
+    return
+  }
+  if (typeof value !== "object") return
+  for (const [childKey, child] of Object.entries(value as Record<string, unknown>)) {
+    preflightMcpFilesystemInputs(child, context, childKey, depth + 1)
   }
 }
 

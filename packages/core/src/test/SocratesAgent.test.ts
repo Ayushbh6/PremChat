@@ -3108,7 +3108,22 @@ describe("bash tool policy", () => {
 
     expect(await bashTool.decidePolicy({ operation: "run", command: "git diff --stat" }, context)).toMatchObject({ type: "denied" })
     expect(await bashTool.decidePolicy({ operation: "run", command: "pnpm test" }, context)).toMatchObject({ type: "denied" })
-    expect(await bashTool.decidePolicy({ operation: "inspect", name: "dev" }, context)).toEqual({ type: "auto" })
+    expect(await bashTool.decidePolicy({ operation: "inspect", name: "dev" }, context)).toMatchObject({ type: "denied" })
+  })
+
+  it("keeps filesystem scope separate from approvals and never auto-approves high-risk commands", async () => {
+    const fullManual = {
+      filesystemAuthorization: { mode: "full" },
+      runtimeConfig: { sandboxMode: "danger_full_access", approvalMode: "manual" },
+    } as Parameters<typeof bashTool.decidePolicy>[1]
+    expect(await bashTool.decidePolicy({ operation: "run", command: "git status --short" }, fullManual)).toMatchObject({ type: "approval_required" })
+
+    const fullApproveAll = {
+      filesystemAuthorization: { mode: "full" },
+      runtimeConfig: { sandboxMode: "danger_full_access", approvalMode: "approve_all" },
+    } as Parameters<typeof bashTool.decidePolicy>[1]
+    expect(await bashTool.decidePolicy({ operation: "run", command: "pwd" }, fullApproveAll)).toEqual({ type: "auto" })
+    expect(await bashTool.decidePolicy({ operation: "run", command: "rm -rf ./generated" }, fullApproveAll)).toMatchObject({ type: "approval_required" })
   })
 
   it("rejects empty or comment-only Terminal commands before approval", async () => {

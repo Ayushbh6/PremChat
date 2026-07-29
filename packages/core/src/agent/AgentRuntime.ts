@@ -1,4 +1,4 @@
-import type { RuntimeConfig } from "@socrates/contracts"
+import type { FilesystemAuthorizationSnapshot, RuntimeConfig } from "@socrates/contracts"
 import type {
   ModelEvent,
   ModelMessage,
@@ -31,6 +31,7 @@ type AgentRuntimeBaseInput = {
   sessionId: string
   turnId: string
   workspacePath: string
+  filesystemAuthorization?: FilesystemAuthorizationSnapshot
   cacheKey?: string
   providerRouting?: ModelRequest["providerRouting"]
   abortSignal?: AbortSignal
@@ -420,6 +421,7 @@ const executeScopedTool = async <TOutput>(
       sessionId: input.sessionId,
       turnId: input.turnId,
       workspacePath: input.workspacePath,
+      ...(input.filesystemAuthorization ? { filesystemAuthorization: input.filesystemAuthorization } : {}),
       runtimeConfig: input.runtimeConfig,
       executors: input.toolExecutors as ToolExecutors,
       requestApproval: async () => ({

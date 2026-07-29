@@ -58,7 +58,7 @@ export const runtimeConfigSchema = z
     thinkingEnabled: z.boolean(),
     thinkingEffort: thinkingEffortSchema.optional(),
     approvalMode: z.enum(["manual", "approve_all", "read_only_auto"]),
-    sandboxMode: z.enum(["read_only", "workspace_write", "danger_full_access"]),
+    sandboxMode: z.enum(["read_only", "workspace_write", "danger_full_access"]).describe("Legacy runtime compatibility only; main Socrates filesystem scope comes from the immutable turn authorization snapshot."),
   })
   .strict()
 

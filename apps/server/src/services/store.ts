@@ -69,6 +69,8 @@ import type {
   BuildProjectSkillResponse,
   BuildGlobalSkillRequest,
   BuildGlobalSkillResponse,
+  AddFilesystemRootRequest,
+  AddFilesystemRootResponse,
   DeleteSkillResponse,
   SkillImportPreview,
   CommitSkillImportResponse,
@@ -92,6 +94,12 @@ import type {
   UpdateConversationRequest,
   UpsertProjectInstructionsRequest,
   User,
+  FilesystemAccessMode,
+  FilesystemAccessState,
+  FilesystemAuthorizationSnapshot,
+  RemoveFilesystemRootResponse,
+  UpdateFilesystemRootRequest,
+  UpdateFilesystemRootResponse,
   ServerEvent,
   ModelOption,
   ModelSettingsResolution,
@@ -116,6 +124,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { DatabaseHandle } from "../db/client"
 import { ApprovalStore } from "./store/approvalStore"
+import { AccessStore } from "./store/accessStore"
 import { AttachmentStore } from "./store/attachmentStore"
 import { AgentTaskStore, type ContinuedTerminalTask, type ReadyTerminalTask } from "./store/agentTaskStore"
 import { ContextCompactionStore } from "./store/contextCompactionStore"
@@ -172,6 +181,7 @@ export type {
 const messageRoleOrder = (role: string): number => role === "user" ? 0 : role === "assistant" ? 1 : 2
 
 export class SocratesStore {
+  private readonly access: AccessStore
   private readonly events: EventStore
   private readonly users: UserStore
   private readonly instructions: InstructionStore
@@ -214,6 +224,7 @@ export class SocratesStore {
     }
 
     this.users = new UserStore(context)
+    this.access = new AccessStore(context)
     this.instructions = new InstructionStore(context)
     this.projects = new ProjectStore(context, this.instructions)
     this.resources = new ResourceStore(context)
@@ -296,6 +307,34 @@ export class SocratesStore {
 
   completeOnboarding(input: CompleteOnboardingRequest): User {
     return this.users.completeOnboarding(input)
+  }
+
+  getFilesystemAccess(): FilesystemAccessState {
+    return this.access.getState()
+  }
+
+  setFilesystemAccessMode(mode: FilesystemAccessMode): FilesystemAccessState {
+    return this.access.setMode(mode)
+  }
+
+  addFilesystemRoot(input: AddFilesystemRootRequest): AddFilesystemRootResponse {
+    return this.access.addRoot(input)
+  }
+
+  updateFilesystemRoot(rootId: string, input: UpdateFilesystemRootRequest): UpdateFilesystemRootResponse {
+    return this.access.updateRoot(rootId, input)
+  }
+
+  removeFilesystemRoot(rootId: string): RemoveFilesystemRootResponse {
+    return this.access.removeRoot(rootId)
+  }
+
+  createTurnFilesystemAuthorization(turnId: string, workspacePath?: string): FilesystemAuthorizationSnapshot {
+    return this.access.createTurnSnapshot(turnId, workspacePath)
+  }
+
+  getTurnFilesystemAuthorization(turnId: string): FilesystemAuthorizationSnapshot | null {
+    return this.access.getTurnSnapshot(turnId)
   }
 
   pickWorkspaceFolder(input: PickWorkspaceFolderRequest): Promise<PickWorkspaceFolderResponse> {

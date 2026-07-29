@@ -4,7 +4,7 @@ import type { SocratesTool } from "./types"
 export const searchTool: SocratesTool<typeof searchToolInputSchema._type, typeof searchToolOutputSchema._type> = {
   name: "search",
   description:
-    "Find files by name/path or search file contents in the active project workspace. Call this for targeted discovery before reading exact files. Use mode='files' for file discovery and mode='text' for grep-style content search. Set regex=true when using regex syntax such as |, .*, or word boundaries; otherwise prefer simple literal terms. Results default to 20 and are capped at 50, oversized lines are shortened, and serialized output cannot exceed an estimated 6k tokens; narrow path/query and then read the exact file for more.",
+    "Find files by name/path or search file contents inside the current filesystem access scope. Relative paths use the working path; authorized absolute paths are supported. Call this for targeted discovery before reading exact files. Use mode='files' for file discovery and mode='text' for grep-style content search. Set regex=true when using regex syntax such as |, .*, or word boundaries; otherwise prefer simple literal terms. Results default to 20 and are capped at 50, oversized lines are shortened, and serialized output cannot exceed an estimated 6k tokens; narrow path/query and then read the exact file for more.",
   inputSchema: searchToolInputSchema,
   resultSchema: searchToolOutputSchema,
   permission: "read",

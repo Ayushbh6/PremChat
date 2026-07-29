@@ -64,6 +64,24 @@ V2 also renders the same shared web `ChatComposer` used by Classic. The componen
 
 The web shell follows the same rule: Classic and Flow both render the `ProjectChatSidebar` shell and `WorkspaceTopbar`. The shared sidebar has a fixed viewport height/width and an overflow-hidden outer shell; its heading and controls are non-scrolling, and only the active bounded names list may scroll. The target Flow navigation contract has three typed levels: Projects, Goals in the selected project, and Queries/tasks in the selected goal. Flow opens on the current goal's Queries level, backs into Goals, then Projects. The levels never share one scroll surface. Selecting a completed goal changes presentation/composer scope without mutating goal state; the next send still passes through semantic routing. V2 keeps overlay mode so its drawer covers the Flow canvas without changing canvas/composer coordinates and must not implement a parallel project rail or separate header geometry.
 
+### Global filesystem access contract
+
+Classic and Flow render the same header-owned `Paths | Access | Settings` controls and call one global HTTP contract:
+
+```text
+GET    /api/access
+PATCH  /api/access                 { mode: "read_only" | "selected" | "full" }
+POST   /api/access/paths           { path, label?, isDefault? }
+PATCH  /api/access/paths/:rootId   { label?, isDefault? }
+DELETE /api/access/paths/:rootId
+```
+
+`GET /api/access` returns the current mode, monotonic revision, and canonical absolute roots with `active`, `missing`, or `revoked` lifecycle state. Adding a root accepts only an existing absolute directory and stores its real path. Legacy primary project workspaces are imported lazily and non-destructively as path grants; they are not deleted or rewritten.
+
+At turn creation, the backend persists one immutable authorization snapshot containing the mode, revision, active roots, and working root. Classic and Flow pass that same snapshot through the shared main-agent runtime. Later header changes apply only to later turns. Read only denies every non-read main tool. Selected confines structured file tools to canonical selected roots and rejects symlink escapes. Full permits structured file tools at any path available to the local user, but does not waive destructive, sensitive-path, credential, publishing, external-action, or approval policy.
+
+Terminal is deliberately honest: it runs as an ordinary local process under the user's account. The backend validates its requested `cwd` against the turn snapshot and keeps its normal risk/approval checks, but does not claim that Selected paths contain everything a shell process can access. This contract adds no container, VM, native sandbox helper, or OS-specific process sandbox.
+
 The V2 center workspace renders one selected/current exchange through the shared transcript primitives. During an active turn, the living sphere becomes the prominent anchor and exactly one fixed-height `activityLabel` appears beneath it; every later routing/thinking/tool/finalizing state replaces that value in place. The frontend must never accumulate these values into rows or tags. The backend owns the bounded human-facing label from typed execution state, including deterministic safe formatting/grouping for tools; the frontend does not render raw tool syntax, opaque ids, secrets, `undefined`, or unbounded provider reasoning in that slot. User-action states such as approvals, credentials, and Terminal input keep their full components.
 
 After the structured final answer passes schema/integrity validation and is saved, the answer becomes the foreground reading layer, the sphere recedes behind it, and the live label clears. Persisted reasoning/tool activity is available through one collapsed disclosure and the normal detailed trace components. Historical exchanges never receive a live label. Long user requests may be presentation-collapsed without changing message content. Two single movable notes summarize Live Context and Current Focus/Task; their drag/open state remains presentation-only.
@@ -1396,6 +1414,8 @@ type ChatMessageSendPayload = {
 
 Runtime settings are per turn. A user may switch provider, model, or thinking mode inside one conversation; the next `chat.message.send` uses the selected runtime config while earlier turns keep their persisted settings.
 
+`runtimeConfig.sandboxMode` is retained only for released-client and persisted-row compatibility. It is not the main Socrates filesystem authority. The immutable global filesystem-authorization snapshot described above owns Read only, Selected paths, and Full access for both views.
+
 ### `chat.turn.cancel`
 
 Cancels a running turn.
@@ -2078,7 +2098,7 @@ type EditToolOutput = {
 
 Rules:
 
-- Requires approval unless the user explicitly runs a full-access mode.
+- Requires approval according to the independent approval/risk policy. Full filesystem access does not auto-approve a mutation.
 - Must show a diff or equivalent preview before applying.
 - For requests to write code, create scripts, build small programs, implement files, or build a small app/tool, the agent should treat the request as a workspace file creation/edit request. It should use `edit` by default, write generated code into the attached workspace/repo rather than `.socrates/`, choose a sensible path when obvious, ask one concise question only when destination/language/intent is genuinely ambiguous, and avoid pasting a full runnable file into chat. If the work is based on files in a subfolder, generated outputs should stay in that subfolder or the nearest relevant existing folder unless the user says otherwise. If the user lets Socrates decide, use that nearest relevant folder when one is known; use the repo root only for genuinely project-level or standalone workspace-level work, or a small well-named folder when natural. Inline code is appropriate only when the user explicitly asks for a snippet or when no write-capable workspace is available.
 - Targeted replacements must fail with helpful errors when `oldString` matches zero times or more than once unless `replaceAll` is true.
@@ -2086,7 +2106,7 @@ Rules:
 	- Non-dry-run edits must read/stat/hash before writing, write through a same-directory temp file, immediately read/stat/hash after writing, and return verified metadata. If disk does not match the planned result, the tool must fail loudly with recoverable errors such as `edit_write_failed` or `edit_verification_failed`.
 	- After a successful edit, another mutation to the same existing file must re-read first rather than relying on the previous read snapshot.
 - File mutations are serialized: only one mutation tool call may execute at a time per project workspace.
-- Writes outside the active project workspace are denied by default.
+- Writes must stay inside the turn's selected roots unless the global access mode is Full.
 - Sensitive paths such as `.env`, private keys, credentials, and secrets require explicit high-risk approval or are denied by policy.
 - Generic `edit` writes to `<workspace>/.socrates/MEMORY.md` or `<workspace>/.socrates/PROJECT_NOTES.md` are rejected with recoverable dedicated-tool errors; those files remain readable through normal read/search, but mutations must use `project_docs`.
 - Generic `edit` writes to `<workspace>/.socrates/repo_docs/*.md` are rejected with recoverable dedicated-tool errors; those files remain readable through normal read/search, but mutations must use `repo_docs`.
@@ -2110,7 +2130,7 @@ Output reuses `EditToolOutput`. `changedFiles` may report `patched`, `created`, 
 
 Rules:
 
-- Requires approval unless the user explicitly runs a full-access mode.
+- Requires approval according to the independent approval/risk policy. Full filesystem access does not auto-approve a mutation.
 - Must show a diff or equivalent preview before applying.
 - Structured patches are normalized before preview/apply. `@@` labels are optional hints; old lines inside each hunk are the real match target. Standard unified diffs use git apply context matching against current disk; model-facing inputs do not carry content hashes.
 - Existing-file update, delete, and rename operations require a prior active-turn `read` of the source path. New-file creation does not require a prior read. After a successful patch, another mutation to the same existing path must re-read first.
@@ -2231,8 +2251,8 @@ type BashToolOutput = {
 Rules:
 
 - Raw PTY `run` lifetime is task-aware rather than governed by the old blocking-run timeout: after the foreground window it remains a Terminal until normal task/lifecycle cleanup. The restricted direct `argv` diagnostic lane remains bounded by its executor timeout.
-- `argv` is a foreground `run`-only direct-exec lane: its first item is the executable and the remaining items are literal arguments. It does not invoke a shell, so redirects, pipes, substitutions, environment assignment, and other shell syntax are unavailable. A deliberately small diagnostic allowlist—such as `pwd`, tightly constrained Git inspection, ripgrep discovery, and version checks—can be auto-allowed. Any other argv command remains approval-gated outside full-access mode.
-- Raw `command` remains the full Terminal capability for shell syntax, scripts, tests, builds, package commands, servers, REPLs, and TUI work. It is approval-gated outside full-access mode rather than classified as read-only by a prefix regex. Package scripts and builds are never assumed read-only.
+- `argv` is a foreground `run`-only direct-exec lane: its first item is the executable and the remaining items are literal arguments. It does not invoke a shell, so redirects, pipes, substitutions, environment assignment, and other shell syntax are unavailable. A deliberately small diagnostic allowlist—such as `pwd`, tightly constrained Git inspection, ripgrep discovery, and version checks—can be auto-allowed. Any other argv command follows the independent approval/risk policy.
+- Raw `command` remains the full Terminal capability for shell syntax, scripts, tests, builds, package commands, servers, REPLs, and TUI work. It follows the independent approval/risk policy rather than being classified as read-only by a prefix regex. Full filesystem access never auto-approves high-risk commands. Package scripts and builds are never assumed read-only.
 - The model-visible compatibility tool id remains `bash`, but execution is PTY-backed and platform-native: POSIX on macOS/Linux; on Windows, ConPTY uses `powershell.exe` first, then `pwsh`, then `cmd.exe` as fallback. User-facing copy should say Terminal.
 - `run` executes a fresh PTY command and returns a lightly normalized terminal transcript in `stdout` plus exit/status metadata. Separate `run` calls do not preserve exported environment or cwd; combine dependent shell state into one command or use `start` for durable interactive state.
 - `start` launches a conversation-scoped PTY Terminal and returns quickly with shell metadata, status, and any early persisted output such as dev-server URLs. The backend first persists `starting`, then commits `running` only after supervisor ownership and process metadata are recorded; the UI treats `starting` as active. If a matching human Terminal name is already active, `start` reuses that Terminal and returns its status/output with `reusedTerminal: true` instead of spawning a duplicate. `status`, `output`, and `stop` inspect or terminate a Terminal without rerunning the command. `status` and `output` return recent DB-backed Terminal output after draining supervisor output internally, so model-visible output is not tied to process cursors. Terminals are scoped by `projectId + conversationId + workspacePath` and can be accessed by later turns in the same conversation. If more than one active Terminal exists and no natural target is supplied, the backend returns `terminal_ambiguous` with readable candidate names, statuses, commands, and cwd values.
@@ -2252,8 +2272,8 @@ Rules:
 - Long-running Terminal output streams through `terminal.data` so the xterm-backed Terminal shell updates even when the chat turn is idle or another turn is active. `terminal.output` is legacy-compatible event language.
 - Terminal lifecycle snapshots carry a monotonic `stateVersion`. Creation commits `starting` before launching and a later `running` only after supervisor/process ownership is durable. Input first commits `running`, then writes to the PTY; any newly detected prompt commits a later `awaiting_input` version. Prompt timers are tied to that exact input/output generation, unchanged polling does not emit duplicate lifecycle events, and the frontend ignores any late snapshot older than its current version.
 - Returned stdout/stderr must be truncated when large, with full output persisted for later retrieval.
-- `cwd` must stay inside the active project workspace unless explicitly approved.
-- Only structured allowlisted argv diagnostics can be auto-allowed by policy; raw shell text is approval-gated outside full-access mode.
+- `cwd` must stay inside the turn's selected roots unless global access mode is Full. This is a launch-directory check, not process containment.
+- Only structured allowlisted argv diagnostics can be auto-allowed by policy; raw shell text follows the independent approval/risk policy.
 - Windows read-only diagnostics such as `Get-Location`, `Get-ChildItem`, `Get-Content`, `Select-String`, `Get-Command`, `where`, Python version checks, and safe git inspection can be auto-allowed by policy. Package installation, dev servers, Docker, network commands, git mutations, deletes, migrations, and commands with side effects require approval by default.
 - Destructive or credential-exfiltration patterns are denied by default.
 - Safe env template filenames such as `.env.example`, `.env.sample`, `.env.template`, and `.env.local.example` are allowed by sensitive-path policy; real `.env`, private keys, credentials, and secret-like paths remain blocked or high-risk approval-gated.

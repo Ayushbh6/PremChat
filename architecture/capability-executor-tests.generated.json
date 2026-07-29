@@ -364,6 +364,19 @@
       "status": "canonical"
     },
     {
+      "id": "authority.filesystem_access",
+      "kind": "deterministic_authority",
+      "executorBinding": "filesystem_access.snapshot",
+      "implementationPath": "apps/server/src/services/store/accessStore.ts",
+      "callers": [
+        "apps/server/src/services/store/accessStore.ts"
+      ],
+      "tests": [
+        "apps/server/src/test/v2FlowRuntime.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
       "id": "context.stable_prompt",
       "kind": "context_stage",
       "executorBinding": "context.stable_prompt",
@@ -398,6 +411,20 @@
       "implementationPath": "packages/core/src/agent/ContextPipeline.ts",
       "callers": [
         "packages/core/src/agent/ContextPipeline.ts"
+      ],
+      "tests": [
+        "packages/core/src/test/prepareTurnContext.test.ts",
+        "packages/core/src/test/contextCompression.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "context.filesystem_access",
+      "kind": "context_stage",
+      "executorBinding": "context.filesystem_access",
+      "implementationPath": "packages/core/src/agent/SocratesAgent.ts",
+      "callers": [
+        "packages/core/src/agent/SocratesAgent.ts"
       ],
       "tests": [
         "packages/core/src/test/prepareTurnContext.test.ts",
@@ -526,6 +553,66 @@
       ],
       "tests": [
         "apps/server/src/test/v2FlowRuntime.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.access.mode.update",
+      "kind": "typed_user_command",
+      "executorBinding": "access.mode.update",
+      "implementationPath": "apps/server/src/routes/httpRoutes.ts",
+      "callers": [
+        "apps/web/src/lib/api.ts",
+        "apps/server/src/routes/httpRoutes.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/accessStore.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.access.path.add",
+      "kind": "typed_user_command",
+      "executorBinding": "access.path.add",
+      "implementationPath": "apps/server/src/routes/httpRoutes.ts",
+      "callers": [
+        "apps/web/src/lib/api.ts",
+        "apps/server/src/routes/httpRoutes.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/accessStore.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.access.path.update",
+      "kind": "typed_user_command",
+      "executorBinding": "access.path.update",
+      "implementationPath": "apps/server/src/routes/httpRoutes.ts",
+      "callers": [
+        "apps/web/src/lib/api.ts",
+        "apps/server/src/routes/httpRoutes.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/accessStore.test.ts",
+        "packages/contracts/src/contracts.test.ts"
+      ],
+      "status": "canonical"
+    },
+    {
+      "id": "command.access.path.remove",
+      "kind": "typed_user_command",
+      "executorBinding": "access.path.remove",
+      "implementationPath": "apps/server/src/routes/httpRoutes.ts",
+      "callers": [
+        "apps/web/src/lib/api.ts",
+        "apps/server/src/routes/httpRoutes.ts"
+      ],
+      "tests": [
+        "apps/server/src/services/store/accessStore.test.ts",
+        "packages/contracts/src/contracts.test.ts"
       ],
       "status": "canonical"
     },

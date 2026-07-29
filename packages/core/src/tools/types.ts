@@ -11,6 +11,7 @@ import type {
   ContextDispositionToolOutput,
   EditToolInput,
   EditToolOutput,
+  FilesystemAuthorizationSnapshot,
   MemoryNoteToolInput,
   MemoryNoteToolOutput,
   MemoryNotesToolInput,
@@ -56,6 +57,7 @@ export type ToolExecutorContext = {
   turnId: string
   toolCallId?: string
   workspacePath: string
+  filesystemAuthorization?: FilesystemAuthorizationSnapshot
   runtimeConfig: RuntimeConfig
   fileFreshness?: FileFreshnessTracker
   /** Internal approval preview flag. Never part of a model-facing tool schema. */

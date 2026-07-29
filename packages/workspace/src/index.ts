@@ -21,6 +21,7 @@ export { isWorkspaceMutationLocked, shouldSerializeBashInput, withWorkspaceMutat
 export { listWorkspaceEnvKeyCandidates, readWorkspaceEnvValue, type WorkspaceEnvKeyCandidate } from "./envFiles"
 export { readWorkspacePath } from "./tools/readTool"
 export { searchWorkspace } from "./tools/searchTool"
+export { resolveAuthorizedPath, toAuthorizedDisplayPath, type AuthorizedPathContext } from "./tools/common"
 export { formatPythonEnvironmentHints, inspectPythonEnvironment, type PythonEnvironmentHints } from "./pythonEnvironment"
 export { inspectWorkspaceEnvironment, type JavaScriptWorkspaceHints, type RustWorkspaceHints, type WorkspaceEnvironmentHints } from "./workspaceEnvironment"
 

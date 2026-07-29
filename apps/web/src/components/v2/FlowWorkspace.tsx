@@ -21,6 +21,7 @@ import { TerminalDockPanel } from "@/components/chat/TerminalPanel";
 import type { PendingApproval, PendingCredentialInput } from "@/components/chat/ToolTimelineTypes";
 import { toolRunToTimelineItem } from "@/components/chat/ToolTimelineTypes";
 import { WorkspaceTopbar } from "@/components/chat/WorkspaceTopbar";
+import { AccessControls } from "@/components/chat/AccessControls";
 import { flowQueriesForGoal, flowQueryCountsByGoal } from "@/lib/v2/flowNavigation";
 import { LivingSphere } from "./LivingSphere";
 import { V2ViewLink } from "./V2ViewLink";
@@ -354,6 +355,7 @@ export function FlowWorkspace({
           </V2ViewLink>
           <h1 className="min-w-0 truncate text-sm font-medium text-brand-text-dark">{projectName}</h1>
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            <AccessControls />
             <button
               type="button"
               className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-gray-200 bg-white px-3 text-xs font-medium text-brand-text-light shadow-sm hover:bg-gray-50 hover:text-brand-text-dark"

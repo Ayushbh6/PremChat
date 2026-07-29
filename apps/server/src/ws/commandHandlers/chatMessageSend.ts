@@ -191,6 +191,7 @@ export const handleChatMessageSend = async (
   const includeImageParts = selectedModel?.capabilities?.vision === true
   const history = store.getConversationModelMessages(projectId, conversationId, { includeImageParts })
   const workspacePath = store.getPrimaryWorkspacePath(projectId)
+  const filesystemAuthorization = store.createTurnFilesystemAuthorization(created.turnId, workspacePath)
   const terminalContext = store.terminalContextBrief(conversationId)
   let modelHistory: ModelMessage[] = withLateDeveloperContext(history, terminalContext, continuation?.wakeContext)
   const stableCachePreludeSnapshot = store.loadStableCachePreludeSnapshot(projectId, workspacePath)
@@ -313,6 +314,7 @@ export const handleChatMessageSend = async (
       messages: modelHistory,
       promptContext,
       workspacePath,
+      filesystemAuthorization,
       stableCachePreludeSnapshot,
       completionMode: "main_structured",
       ...(reconciliationWatermark ? {

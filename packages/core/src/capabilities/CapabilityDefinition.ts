@@ -21,7 +21,7 @@ export type CapabilityRuntimeScope =
 
 export type CapabilityPolicy = Readonly<{
   approval: "automatic" | "runtime_policy" | "always_approval" | "not_applicable"
-  sandbox: "none" | "workspace" | "selected_resources" | "backend_authority"
+  access: "none" | "selected_paths" | "backend_authority"
   concurrency: "parallel" | "serialized" | "single_flight" | "not_applicable"
   retry: "none" | "model_correction" | "bounded_once" | "runtime_owned"
   timeout: "runtime_default" | "provider_default" | "none"

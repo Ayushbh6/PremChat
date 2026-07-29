@@ -417,6 +417,7 @@ export class V2ExecutionRuntime {
     }
     try {
       const workspacePath = this.deps.sharedStore.getPrimaryWorkspacePath(command.projectId)
+      const filesystemAuthorization = this.deps.sharedStore.createTurnFilesystemAuthorization(created.turn.id, workspacePath)
       let activeGoalId: string
       if (continuation) {
         activeGoalId = continuation.goalId
@@ -537,6 +538,7 @@ export class V2ExecutionRuntime {
         messages,
         promptContext,
         workspacePath,
+        filesystemAuthorization,
         stableCachePreludeSnapshot,
         completionMode: "main_structured",
         ...(reconciliationWatermark ? {

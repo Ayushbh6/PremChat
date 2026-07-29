@@ -82,8 +82,12 @@ describe("CapabilityCatalog", () => {
       (capability): capability is ServiceCapabilityDefinition => capability.kind === "typed_user_command",
     )
 
-    expect(commands).toHaveLength(24)
+    expect(commands).toHaveLength(28)
     expect(commands.map((command) => command.executorBinding)).toEqual(expect.arrayContaining([
+      "access.mode.update",
+      "access.path.add",
+      "access.path.update",
+      "access.path.remove",
       "chat.message.send",
       "terminal.input",
       "v2.message.send",

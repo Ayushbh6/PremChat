@@ -6,6 +6,7 @@ import type {
 } from "@socrates/contracts"
 import {
   approvalDecideCommandSchema,
+  addFilesystemRootRequestSchema,
   chatConversationSubscribeCommandSchema,
   chatConversationUnsubscribeCommandSchema,
   chatMessageSendCommandSchema,
@@ -16,6 +17,9 @@ import {
   terminalRenameCommandSchema,
   terminalResizeCommandSchema,
   terminalStopCommandSchema,
+  removeFilesystemRootCommandSchema,
+  updateFilesystemAccessRequestSchema,
+  updateFilesystemRootCommandSchema,
   v2ApprovalDecideCommandSchema,
   v2CredentialInputSubmitCommandSchema,
   v2FeedbackSubmitCommandSchema,
@@ -119,7 +123,7 @@ const staticToolSpecs: readonly StaticToolSpec[] = [
 
 const toolDocumentationGuidance: Readonly<Record<string, readonly string[]>> = Object.freeze({
   "tool.read": [
-    "Use read/search for workspace files and governed socrates:// resources. Search socrates://capabilities before claiming a skill or MCP capability is unavailable.",
+    "Use read/search for files inside the current Read only, Selected paths, or Full access scope and for governed socrates:// resources. Search socrates://capabilities before claiming a skill or MCP capability is unavailable.",
   ],
   "tool.edit": [
     "Read an existing target first. Targeted edits use one edits array; every match is resolved against the same original content, overlaps fail, and the write is atomic.",
@@ -131,6 +135,7 @@ const toolDocumentationGuidance: Readonly<Record<string, readonly string[]>> = O
   ],
   "tool.bash": [
     "The model-facing operations are exactly run, start, inspect, stop, and list. Use human-readable Terminal names; runtime ids and output cursors are internal.",
+    "Terminal runs as the local OS user. Selected paths checks the requested cwd but is not process containment; Full access never removes destructive, sensitive, credential, external-action, or approval safeguards.",
   ],
   "tool.capability_manager": [
     "Automatic retrieval and socrates://capabilities search handle discovery. Use this manager only to check or mutate skills and MCP configuration; mutations require approval.",
@@ -177,9 +182,11 @@ const serviceCapabilities: CapabilityDefinition[] = [
   serviceCapability("authority.memory_selection", "deterministic_authority", "Select exact authorized memory after goal binding without a model router.", "memory.select_exact", [MAIN], ["goal", "runtime"], "packages/core/src/retrieval/deterministicMemorySelection.ts", "canonical"),
   serviceCapability("authority.goal_ledger", "deterministic_authority", "Own canonical goal pointers, lifecycle state, task counts, and capsule references.", "goal_ledger.transaction", [MAIN], ["goal", "project"], "apps/server/src/services/v2/flowStore.ts", "migration_compatibility"),
   serviceCapability("authority.finalization", "deterministic_authority", "Validate and atomically persist the answer, task, bound goal, capsule, usage, and audit state before publication.", "finalization.atomic_commit", [MAIN], ["turn", "goal"], "apps/server/src/services/turn/validatedTurnFinalization.ts", "canonical"),
+  serviceCapability("authority.filesystem_access", "deterministic_authority", "Own global Read only, Selected paths, and Full access state plus immutable per-turn authorization snapshots.", "filesystem_access.snapshot", [MAIN], ["turn", "global", "runtime"], "apps/server/src/services/store/accessStore.ts", "canonical"),
   serviceCapability("context.stable_prompt", "context_stage", "Attach stable prompt and standing rules before dynamic turn context.", "context.stable_prompt", ALL_AGENT_ROLES, ["turn"], "packages/core/src/agent/ContextPipeline.ts", "canonical"),
   serviceCapability("context.exact_messages", "context_stage", "Attach selected canonical user and assistant messages without clipping or rewriting them.", "context.exact_messages", ALL_AGENT_ROLES, ["turn", "goal"], "packages/core/src/agent/ContextPipeline.ts", "canonical"),
   serviceCapability("context.runtime_state", "context_stage", "Attach typed runtime, approval, Terminal, wait, and continuation state.", "context.runtime_state", [MAIN, SKILL_WRITER], ["turn", "runtime"], "packages/core/src/agent/ContextPipeline.ts", "canonical"),
+  serviceCapability("context.filesystem_access", "context_stage", "Attach the exact filesystem authorization snapshot used by structured tools and Terminal cwd preflight for this turn.", "context.filesystem_access", [MAIN], ["turn", "runtime"], "packages/core/src/agent/SocratesAgent.ts", "canonical"),
   serviceCapability("context.tool_definitions", "context_stage", "Attach only the model tools resolved for the active role through this catalog.", "context.tool_definitions", ALL_AGENT_ROLES, ["turn", "provider"], "packages/core/src/agent/ContextPipeline.ts", "canonical"),
   serviceCapability("context.automatic_compaction", "context_stage", "Automatically replace only the oldest completed-turn model projection at 170k while retaining exact provenance and a recent whole-turn suffix.", "context.compact_oldest_head", ALL_AGENT_ROLES, ["turn", "conversation", "global"], "packages/core/src/context/contextCompression.ts", "canonical"),
   serviceCapability("worker.global_memory", "structured_worker", "Curate durable global memory asynchronously from completed exact evidence.", "agent.global_memory", [MEMORY], ["global"], "apps/server/src/services/store/memoryAgentRunner.ts", "canonical"),
@@ -192,6 +199,10 @@ const serviceCapabilities: CapabilityDefinition[] = [
 ]
 
 const typedUserCommandCapabilities: CapabilityDefinition[] = [
+  globalUserCommandCapability("command.access.mode.update", "access.mode.update", updateFilesystemAccessRequestSchema),
+  globalUserCommandCapability("command.access.path.add", "access.path.add", addFilesystemRootRequestSchema),
+  globalUserCommandCapability("command.access.path.update", "access.path.update", updateFilesystemRootCommandSchema),
+  globalUserCommandCapability("command.access.path.remove", "access.path.remove", removeFilesystemRootCommandSchema),
   userCommandCapability("command.classic.chat.message.send", "chat.message.send", chatMessageSendCommandSchema, "apps/server/src/ws/commandHandlers/chatMessageSend.ts"),
   userCommandCapability("command.classic.chat.turn.cancel", "chat.turn.cancel", chatTurnCancelCommandSchema, "apps/server/src/ws/commandHandlers/chatTurnCancel.ts"),
   userCommandCapability("command.classic.chat.conversation.subscribe", "chat.conversation.subscribe", chatConversationSubscribeCommandSchema, "apps/server/src/ws/commandDispatcher.ts"),
@@ -367,7 +378,7 @@ const dynamicToolCapability = (
     executorBinding: "mcp_dynamic",
     policy: {
       approval: "runtime_policy",
-      sandbox: "selected_resources",
+      access: "selected_paths",
       concurrency: "parallel",
       retry: "model_correction",
       timeout: "runtime_default",
@@ -443,7 +454,7 @@ function serviceCapability(
     resultSchema: z.unknown(),
     policy: {
       approval: "not_applicable",
-      sandbox: "backend_authority",
+      access: "backend_authority",
       concurrency: "single_flight",
       retry: kind === "structured_worker" ? "bounded_once" : "runtime_owned",
       timeout: kind === "structured_worker" ? "provider_default" : "runtime_default",
@@ -485,7 +496,7 @@ function userCommandCapability(
     resultSchema: z.unknown(),
     policy: {
       approval: "not_applicable",
-      sandbox: "backend_authority",
+      access: "backend_authority",
       concurrency: commandType.includes("message.send") ? "single_flight" : "serialized",
       retry: "none",
       timeout: "runtime_default",
@@ -508,11 +519,51 @@ function userCommandCapability(
   })
 }
 
+function globalUserCommandCapability(
+  id: string,
+  commandType: string,
+  inputSchema: z.ZodTypeAny,
+): CapabilityDefinition {
+  const implementationPath = "apps/server/src/routes/httpRoutes.ts"
+  return defineCapability({
+    id,
+    kind: "typed_user_command",
+    description: `Validate and dispatch the ${commandType} global access command.`,
+    allowedRoles: ["global_runtime"],
+    runtimeScopes: ["global", "runtime"],
+    executorBinding: commandType,
+    inputSchema,
+    resultSchema: z.unknown(),
+    policy: {
+      approval: "not_applicable",
+      access: "backend_authority",
+      concurrency: "serialized",
+      retry: "none",
+      timeout: "runtime_default",
+      idempotency: "conditional",
+    },
+    persistence: {
+      evidence: "lifecycle_receipt",
+      usage: "none",
+      errors: "typed_and_persisted",
+      audit: "summary",
+    },
+    source: {
+      owner: "apps/server",
+      definitionPath: "packages/contracts/src/filesystemAccess.ts",
+      implementationPath,
+      callers: ["apps/web/src/lib/api.ts", implementationPath],
+      tests: ["apps/server/src/services/store/accessStore.test.ts", "packages/contracts/src/contracts.test.ts"],
+      status: "canonical",
+    },
+  })
+}
+
 function policyForTool(tool: SocratesTool<any, any>) {
   return {
     approval: tool.permission === "read" ? "automatic" as const : "runtime_policy" as const,
-    sandbox: tool.category === "file" || tool.category === "patch" || tool.category === "shell"
-      ? "workspace" as const
+    access: tool.category === "file" || tool.category === "patch"
+      ? "selected_paths" as const
       : "backend_authority" as const,
     concurrency: tool.executeLane === "parallel" ? "parallel" as const : "serialized" as const,
     retry: "model_correction" as const,

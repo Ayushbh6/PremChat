@@ -6,6 +6,7 @@ import {
   waitToolOutputSchema,
   type SocratesFinalAnswer,
   type DynamicToolCapabilityRegistration,
+  type FilesystemAuthorizationSnapshot,
   type ModelToolDefinition,
   type NormalizedToolCall,
   type ProviderId,
@@ -93,6 +94,7 @@ export type SocratesAgentTurnInput = {
   messages: ModelMessage[]
   promptContext?: SocratesPromptContext
   workspacePath?: string
+  filesystemAuthorization?: FilesystemAuthorizationSnapshot
   toolExecutors?: ToolExecutors
   createModelCall?: (input: {
     providerId: ProviderId
@@ -383,7 +385,13 @@ export class SocratesAgent {
     insertDynamicPromptContext(messages, input.promptContext)
     if (input.resolvedTurnContextSeed) {
       const resolvedTurnContext: ResolvedTurnContext = prepareTurnContext(input.resolvedTurnContextSeed, input.resolvedTurnMemory, input.resolvedTurnCapabilities)
-      messages.push({ role: "developer", content: renderResolvedTurnContext(resolvedTurnContext) })
+      messages.push({
+        role: "developer",
+        content: [
+          renderResolvedTurnContext(resolvedTurnContext),
+          ...(input.filesystemAuthorization ? [renderFilesystemAuthorization(input.filesystemAuthorization)] : []),
+        ].join("\n\n"),
+      })
     }
 
     for (let step = 0; ; step += 1) {
@@ -663,6 +671,7 @@ export class SocratesAgent {
           sessionId: input.sessionId ?? "",
           turnId: input.turnId ?? "",
           workspacePath: input.workspacePath,
+          ...(input.filesystemAuthorization ? { filesystemAuthorization: input.filesystemAuthorization } : {}),
           runtimeConfig: currentRuntimeConfig,
           executors: input.toolExecutors,
           requestApproval: input.requestApproval,
@@ -798,7 +807,7 @@ export class SocratesAgent {
         }
       }
       const nativeToolMessages = execution.results
-        .flatMap((result) => nativeFollowUpMessagesForToolResult(result, input.workspacePath))
+        .flatMap((result) => nativeFollowUpMessagesForToolResult(result, input.workspacePath, input.filesystemAuthorization))
         .map((message) => ({ ...message, ...activeMessageMetadata() }))
       messages.push(...nativeToolMessages)
       if (repeatedToolInputsThisStep.size > 0) {
@@ -814,3 +823,17 @@ export class SocratesAgent {
   }
 
 }
+
+const renderFilesystemAuthorization = (authorization: FilesystemAuthorizationSnapshot): string => [
+  "<socrates_filesystem_access>",
+  `Access mode: ${authorization.mode === "read_only" ? "Read only" : authorization.mode === "selected" ? "Selected paths" : "Full access"}`,
+  `Working path: ${authorization.workingRootPath ?? "None selected"}`,
+  ...(authorization.mode === "full"
+    ? ["Structured file tools may use any absolute path. Destructive, sensitive, credential, and external actions still require their normal safeguards and approvals."]
+    : [
+        "Authorized paths:",
+        ...(authorization.roots.length ? authorization.roots.map((root) => `- ${root.path}`) : ["- None"]),
+      ]),
+  "Terminal commands run as the local user. The runtime checks the requested cwd and approval policy, but this access mode is not an operating-system process sandbox.",
+  "</socrates_filesystem_access>",
+].join("\n")

@@ -70,6 +70,18 @@ The database enforces one Flow per project and one foreground goal per Flow thro
 
 See `V2_FLOW_ARCHITECTURE.md` for table responsibilities, state-reconstruction requirements, and the immutable-evidence contract.
 
+## Global Filesystem Access State
+
+Migration `0034_woozy_tana_nile.sql` adds one global, view-neutral access authority. It does not replace or delete released `project_workspaces`; those rows remain migration metadata and are imported non-destructively as selected roots.
+
+| Table | Purpose |
+| --- | --- |
+| `filesystem_access_settings` | One row per user containing `read_only`, `selected`, or `full`, a monotonic revision, and timestamps. |
+| `filesystem_roots` | Canonical absolute path grants, labels, default-working-root state, active/missing/revoked lifecycle, and optional legacy-project provenance. |
+| `turn_filesystem_authorizations` | Immutable per-turn copy of the access mode, revision, active roots JSON, and working root used by both Classic and Flow execution. |
+
+Only active roots enter a turn snapshot. A mode or path change after snapshot creation affects the next turn, never an already-running or resumed turn. These tables define application-level structured-file authority; they do not claim OS process containment for Terminal.
+
 `v2_speech_jobs` implements the accepted V2 Voice V1 lifecycle without changing V1 `voice_inputs` or `audio_outputs`. Its database check allows local Whisper `base.en`/`small.en`, OpenRouter `nvidia/parakeet-tdt-0.6b-v3`/`microsoft/mai-transcribe-1.5`/`mistralai/voxtral-mini-transcribe`, and local Kokoro `kokoro-82m` only. It stores Flow/project ownership, input/output artifacts or source text, finalized transcript, model/voice/speed/language, duration, status, error link, and metadata for provider response/usage where available. Granite and Ollama speech are outside this contract.
 
 ## Semantic Retrieval Storage Contract

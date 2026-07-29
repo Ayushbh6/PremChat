@@ -18,6 +18,7 @@ export type AgentContextStage =
   | "stable_prompt"
   | "exact_messages"
   | "runtime_context"
+  | "filesystem_access"
   | "tool_definitions"
   | "automatic_compaction"
 
@@ -180,6 +181,7 @@ const CONTEXT_STAGE_ORDER: readonly AgentContextStage[] = [
   "stable_prompt",
   "exact_messages",
   "runtime_context",
+  "filesystem_access",
   "tool_definitions",
   "automatic_compaction",
 ]

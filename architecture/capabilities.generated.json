@@ -4,7 +4,7 @@
   "capabilities": [
     {
       "id": "tool.read",
-      "description": "Read a bounded file, directory, document, structured data file, or image from the active project workspace. Call this for exact file evidence and before editing existing files so freshness can be verified. Output is capped to an estimated 4k tokens by default and 6k tokens max; use charLimit, tokenLimit, and offset for large files.",
+      "description": "Read a bounded file, directory, document, structured data file, or image from the current filesystem access scope. Relative paths use the working path; authorized absolute paths are supported. Call this for exact file evidence and before editing existing files so freshness can be verified. Output is capped to an estimated 4k tokens by default and 6k tokens max; use charLimit, tokenLimit, and offset for large files.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates",
@@ -53,7 +53,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "automatic",
-        "sandbox": "workspace",
+        "access": "selected_paths",
         "concurrency": "parallel",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -67,8 +67,8 @@
       },
       "documentationTitle": "read",
       "documentationGuidance": [
-        "Read a bounded file, directory, document, structured data file, or image from the active project workspace. Call this for exact file evidence and before editing existing files so freshness can be verified. Output is capped to an estimated 4k tokens by default and 6k tokens max; use charLimit, tokenLimit, and offset for large files.",
-        "Use read/search for workspace files and governed socrates:// resources. Search socrates://capabilities before claiming a skill or MCP capability is unavailable."
+        "Read a bounded file, directory, document, structured data file, or image from the current filesystem access scope. Relative paths use the working path; authorized absolute paths are supported. Call this for exact file evidence and before editing existing files so freshness can be verified. Output is capped to an estimated 4k tokens by default and 6k tokens max; use charLimit, tokenLimit, and offset for large files.",
+        "Use read/search for files inside the current Read only, Selected paths, or Full access scope and for governed socrates:// resources. Search socrates://capabilities before claiming a skill or MCP capability is unavailable."
       ],
       "documentationPaths": [
         "read_search.md",
@@ -94,7 +94,7 @@
     },
     {
       "id": "tool.search",
-      "description": "Find files by name/path or search file contents in the active project workspace. Call this for targeted discovery before reading exact files. Use mode='files' for file discovery and mode='text' for grep-style content search. Set regex=true when using regex syntax such as |, .*, or word boundaries; otherwise prefer simple literal terms. Results default to 20 and are capped at 50, oversized lines are shortened, and serialized output cannot exceed an estimated 6k tokens; narrow path/query and then read the exact file for more.",
+      "description": "Find files by name/path or search file contents inside the current filesystem access scope. Relative paths use the working path; authorized absolute paths are supported. Call this for targeted discovery before reading exact files. Use mode='files' for file discovery and mode='text' for grep-style content search. Set regex=true when using regex syntax such as |, .*, or word boundaries; otherwise prefer simple literal terms. Results default to 20 and are capped at 50, oversized lines are shortened, and serialized output cannot exceed an estimated 6k tokens; narrow path/query and then read the exact file for more.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates",
@@ -158,7 +158,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "automatic",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "parallel",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -172,7 +172,7 @@
       },
       "documentationTitle": "search",
       "documentationGuidance": [
-        "Find files by name/path or search file contents in the active project workspace. Call this for targeted discovery before reading exact files. Use mode='files' for file discovery and mode='text' for grep-style content search. Set regex=true when using regex syntax such as |, .*, or word boundaries; otherwise prefer simple literal terms. Results default to 20 and are capped at 50, oversized lines are shortened, and serialized output cannot exceed an estimated 6k tokens; narrow path/query and then read the exact file for more."
+        "Find files by name/path or search file contents inside the current filesystem access scope. Relative paths use the working path; authorized absolute paths are supported. Call this for targeted discovery before reading exact files. Use mode='files' for file discovery and mode='text' for grep-style content search. Set regex=true when using regex syntax such as |, .*, or word boundaries; otherwise prefer simple literal terms. Results default to 20 and are capped at 50, oversized lines are shortened, and serialized output cannot exceed an estimated 6k tokens; narrow path/query and then read the exact file for more."
       ],
       "documentationPaths": [
         "read_search.md",
@@ -240,7 +240,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "automatic",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "parallel",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -276,7 +276,7 @@
     },
     {
       "id": "tool.edit",
-      "description": "Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. Durable Socrates memory, notes, and repo docs require an exact section URI; their base document URIs are read/search only. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
+      "description": "Create or modify one governed resource or file inside the current filesystem access scope. Relative paths use the working path; authorized absolute paths are supported. Read an existing target in the current turn before editing it. Durable Socrates memory, notes, and repo docs require an exact section URI; their base document URIs are read/search only. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates"
@@ -359,7 +359,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "runtime_policy",
-        "sandbox": "workspace",
+        "access": "selected_paths",
         "concurrency": "serialized",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -373,7 +373,7 @@
       },
       "documentationTitle": "edit",
       "documentationGuidance": [
-        "Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. Durable Socrates memory, notes, and repo docs require an exact section URI; their base document URIs are read/search only. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
+        "Create or modify one governed resource or file inside the current filesystem access scope. Relative paths use the working path; authorized absolute paths are supported. Read an existing target in the current turn before editing it. Durable Socrates memory, notes, and repo docs require an exact section URI; their base document URIs are read/search only. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
         "Read an existing target first. Targeted edits use one edits array; every match is resolved against the same original content, overlaps fail, and the write is atomic.",
         "Durable Socrates documents require an exact section URI for edits; base document URIs are read/search only.",
         "The model never supplies dryRun. Approval previews are an internal runtime concern. Re-read a changed target when later work depends on its exact new contents."
@@ -398,7 +398,7 @@
     },
     {
       "id": "tool.apply_patch",
-      "description": "Apply a patch to one or more files in the active project workspace. Call this only after reading existing target files in the current turn. Use patchText with the structured *** Begin Patch format by default: *** Update File, @@ hunks, *** Add File, *** Delete File, and *** Move to. This format does not require unified-diff line counts. Read existing files before patching, deleting, or renaming them, and read a file again before another mutation after a successful edit or patch. Standard unified diffs with ---/+++/@@ headers are accepted only when you already have a valid diff. Use for multi-hunk or multi-file changes.",
+      "description": "Apply a patch to one or more files in the turn's working path. Call this only after reading existing target files in the current turn. Use patchText with the structured *** Begin Patch format by default: *** Update File, @@ hunks, *** Add File, *** Delete File, and *** Move to. This format does not require unified-diff line counts. Read existing files before patching, deleting, or renaming them, and read a file again before another mutation after a successful edit or patch. Standard unified diffs with ---/+++/@@ headers are accepted only when you already have a valid diff. Use for multi-hunk or multi-file changes.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates"
@@ -428,7 +428,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "runtime_policy",
-        "sandbox": "workspace",
+        "access": "selected_paths",
         "concurrency": "serialized",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -442,7 +442,7 @@
       },
       "documentationTitle": "apply_patch",
       "documentationGuidance": [
-        "Apply a patch to one or more files in the active project workspace. Call this only after reading existing target files in the current turn. Use patchText with the structured *** Begin Patch format by default: *** Update File, @@ hunks, *** Add File, *** Delete File, and *** Move to. This format does not require unified-diff line counts. Read existing files before patching, deleting, or renaming them, and read a file again before another mutation after a successful edit or patch. Standard unified diffs with ---/+++/@@ headers are accepted only when you already have a valid diff. Use for multi-hunk or multi-file changes.",
+        "Apply a patch to one or more files in the turn's working path. Call this only after reading existing target files in the current turn. Use patchText with the structured *** Begin Patch format by default: *** Update File, @@ hunks, *** Add File, *** Delete File, and *** Move to. This format does not require unified-diff line counts. Read existing files before patching, deleting, or renaming them, and read a file again before another mutation after a successful edit or patch. Standard unified diffs with ---/+++/@@ headers are accepted only when you already have a valid diff. Use for multi-hunk or multi-file changes.",
         "Use the structured Begin Patch format for multi-file or multi-hunk work. The model never supplies dryRun; approval preview and verified application are internal runtime phases."
       ],
       "documentationPaths": [
@@ -465,7 +465,7 @@
     },
     {
       "id": "tool.bash",
-      "description": "Run commands or manage named persistent Terminals in the active workspace. Use run for a bounded foreground command, start with a unique name for a server or interactive process, inspect with that name to receive status plus new output, stop with that name, and list to discover existing names. Prefer read, search, edit, and apply_patch for structured file work. Use inputMode=user when the visible Terminal must accept user input.",
+      "description": "Run commands or manage named persistent Terminals from an authorized working directory. Terminal runs as the local user and is not OS-sandboxed; path selection checks cwd but cannot promise process containment. Use run for a bounded foreground command, start with a unique name for a server or interactive process, inspect with that name to receive status plus new output, stop with that name, and list to discover existing names. Prefer read, search, edit, and apply_patch for structured file work. Use inputMode=user when the visible Terminal must accept user input.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates"
@@ -600,7 +600,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "runtime_policy",
-        "sandbox": "workspace",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -614,8 +614,9 @@
       },
       "documentationTitle": "bash",
       "documentationGuidance": [
-        "Run commands or manage named persistent Terminals in the active workspace. Use run for a bounded foreground command, start with a unique name for a server or interactive process, inspect with that name to receive status plus new output, stop with that name, and list to discover existing names. Prefer read, search, edit, and apply_patch for structured file work. Use inputMode=user when the visible Terminal must accept user input.",
-        "The model-facing operations are exactly run, start, inspect, stop, and list. Use human-readable Terminal names; runtime ids and output cursors are internal."
+        "Run commands or manage named persistent Terminals from an authorized working directory. Terminal runs as the local user and is not OS-sandboxed; path selection checks cwd but cannot promise process containment. Use run for a bounded foreground command, start with a unique name for a server or interactive process, inspect with that name to receive status plus new output, stop with that name, and list to discover existing names. Prefer read, search, edit, and apply_patch for structured file work. Use inputMode=user when the visible Terminal must accept user input.",
+        "The model-facing operations are exactly run, start, inspect, stop, and list. Use human-readable Terminal names; runtime ids and output cursors are internal.",
+        "Terminal runs as the local OS user. Selected paths checks the requested cwd but is not process containment; Full access never removes destructive, sensitive, credential, external-action, or approval safeguards."
       ],
       "documentationPaths": [
         "terminal.md"
@@ -693,7 +694,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "runtime_policy",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -757,7 +758,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "runtime_policy",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -816,7 +817,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "automatic",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "parallel",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -1159,7 +1160,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "automatic",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "parallel",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -1624,7 +1625,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "automatic",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "parallel",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -1706,7 +1707,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "automatic",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "parallel",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -1951,7 +1952,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "runtime_policy",
-        "sandbox": "workspace",
+        "access": "selected_paths",
         "concurrency": "serialized",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -2383,7 +2384,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "runtime_policy",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -2457,7 +2458,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "automatic",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "parallel",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -2549,7 +2550,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "automatic",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "parallel",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -2657,7 +2658,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "automatic",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "parallel",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -2780,7 +2781,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "runtime_policy",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -2846,7 +2847,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "automatic",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "parallel",
         "retry": "model_correction",
         "timeout": "runtime_default",
@@ -2896,7 +2897,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "runtime_owned",
         "timeout": "runtime_default",
@@ -2939,7 +2940,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "runtime_owned",
         "timeout": "runtime_default",
@@ -2983,7 +2984,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "runtime_owned",
         "timeout": "runtime_default",
@@ -3026,7 +3027,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "runtime_owned",
         "timeout": "runtime_default",
@@ -3069,7 +3070,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "runtime_owned",
         "timeout": "runtime_default",
@@ -3112,7 +3113,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "runtime_owned",
         "timeout": "runtime_default",
@@ -3132,6 +3133,50 @@
         "implementationPath": "apps/server/src/services/turn/validatedTurnFinalization.ts",
         "callers": [
           "apps/server/src/services/turn/validatedTurnFinalization.ts"
+        ],
+        "tests": [
+          "apps/server/src/test/v2FlowRuntime.test.ts"
+        ],
+        "status": "canonical"
+      }
+    },
+    {
+      "id": "authority.filesystem_access",
+      "description": "Own global Read only, Selected paths, and Full access state plus immutable per-turn authorization snapshots.",
+      "kind": "deterministic_authority",
+      "allowedRoles": [
+        "socrates"
+      ],
+      "runtimeScopes": [
+        "turn",
+        "global",
+        "runtime"
+      ],
+      "executorBinding": "filesystem_access.snapshot",
+      "hasInputSchema": true,
+      "hasResultSchema": true,
+      "policy": {
+        "approval": "not_applicable",
+        "access": "backend_authority",
+        "concurrency": "single_flight",
+        "retry": "runtime_owned",
+        "timeout": "runtime_default",
+        "idempotency": "conditional"
+      },
+      "persistence": {
+        "evidence": "lifecycle_receipt",
+        "usage": "none",
+        "errors": "typed_and_persisted",
+        "audit": "summary"
+      },
+      "documentationGuidance": [],
+      "documentationPaths": [],
+      "source": {
+        "owner": "apps/server",
+        "definitionPath": "packages/core/src/capabilities/CapabilityCatalog.ts",
+        "implementationPath": "apps/server/src/services/store/accessStore.ts",
+        "callers": [
+          "apps/server/src/services/store/accessStore.ts"
         ],
         "tests": [
           "apps/server/src/test/v2FlowRuntime.test.ts"
@@ -3161,7 +3206,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "runtime_owned",
         "timeout": "runtime_default",
@@ -3212,7 +3257,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "runtime_owned",
         "timeout": "runtime_default",
@@ -3257,7 +3302,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "runtime_owned",
         "timeout": "runtime_default",
@@ -3277,6 +3322,50 @@
         "implementationPath": "packages/core/src/agent/ContextPipeline.ts",
         "callers": [
           "packages/core/src/agent/ContextPipeline.ts"
+        ],
+        "tests": [
+          "packages/core/src/test/prepareTurnContext.test.ts",
+          "packages/core/src/test/contextCompression.test.ts"
+        ],
+        "status": "canonical"
+      }
+    },
+    {
+      "id": "context.filesystem_access",
+      "description": "Attach the exact filesystem authorization snapshot used by structured tools and Terminal cwd preflight for this turn.",
+      "kind": "context_stage",
+      "allowedRoles": [
+        "socrates"
+      ],
+      "runtimeScopes": [
+        "turn",
+        "runtime"
+      ],
+      "executorBinding": "context.filesystem_access",
+      "hasInputSchema": true,
+      "hasResultSchema": true,
+      "policy": {
+        "approval": "not_applicable",
+        "access": "backend_authority",
+        "concurrency": "single_flight",
+        "retry": "runtime_owned",
+        "timeout": "runtime_default",
+        "idempotency": "idempotent"
+      },
+      "persistence": {
+        "evidence": "none",
+        "usage": "none",
+        "errors": "typed_and_persisted",
+        "audit": "summary"
+      },
+      "documentationGuidance": [],
+      "documentationPaths": [],
+      "source": {
+        "owner": "packages/core",
+        "definitionPath": "packages/core/src/capabilities/CapabilityCatalog.ts",
+        "implementationPath": "packages/core/src/agent/SocratesAgent.ts",
+        "callers": [
+          "packages/core/src/agent/SocratesAgent.ts"
         ],
         "tests": [
           "packages/core/src/test/prepareTurnContext.test.ts",
@@ -3308,7 +3397,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "runtime_owned",
         "timeout": "runtime_default",
@@ -3360,7 +3449,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "runtime_owned",
         "timeout": "runtime_default",
@@ -3403,7 +3492,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "bounded_once",
         "timeout": "provider_default",
@@ -3447,7 +3536,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "bounded_once",
         "timeout": "provider_default",
@@ -3490,7 +3579,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "bounded_once",
         "timeout": "provider_default",
@@ -3533,7 +3622,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "bounded_once",
         "timeout": "provider_default",
@@ -3579,7 +3668,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "bounded_once",
         "timeout": "provider_default",
@@ -3629,7 +3718,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "runtime_owned",
         "timeout": "runtime_default",
@@ -3672,7 +3761,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "runtime_owned",
         "timeout": "runtime_default",
@@ -3700,6 +3789,186 @@
       }
     },
     {
+      "id": "command.access.mode.update",
+      "description": "Validate and dispatch the access.mode.update global access command.",
+      "kind": "typed_user_command",
+      "allowedRoles": [
+        "global_runtime"
+      ],
+      "runtimeScopes": [
+        "global",
+        "runtime"
+      ],
+      "executorBinding": "access.mode.update",
+      "hasInputSchema": true,
+      "hasResultSchema": true,
+      "policy": {
+        "approval": "not_applicable",
+        "access": "backend_authority",
+        "concurrency": "serialized",
+        "retry": "none",
+        "timeout": "runtime_default",
+        "idempotency": "conditional"
+      },
+      "persistence": {
+        "evidence": "lifecycle_receipt",
+        "usage": "none",
+        "errors": "typed_and_persisted",
+        "audit": "summary"
+      },
+      "documentationGuidance": [],
+      "documentationPaths": [],
+      "source": {
+        "owner": "apps/server",
+        "definitionPath": "packages/contracts/src/filesystemAccess.ts",
+        "implementationPath": "apps/server/src/routes/httpRoutes.ts",
+        "callers": [
+          "apps/web/src/lib/api.ts",
+          "apps/server/src/routes/httpRoutes.ts"
+        ],
+        "tests": [
+          "apps/server/src/services/store/accessStore.test.ts",
+          "packages/contracts/src/contracts.test.ts"
+        ],
+        "status": "canonical"
+      }
+    },
+    {
+      "id": "command.access.path.add",
+      "description": "Validate and dispatch the access.path.add global access command.",
+      "kind": "typed_user_command",
+      "allowedRoles": [
+        "global_runtime"
+      ],
+      "runtimeScopes": [
+        "global",
+        "runtime"
+      ],
+      "executorBinding": "access.path.add",
+      "hasInputSchema": true,
+      "hasResultSchema": true,
+      "policy": {
+        "approval": "not_applicable",
+        "access": "backend_authority",
+        "concurrency": "serialized",
+        "retry": "none",
+        "timeout": "runtime_default",
+        "idempotency": "conditional"
+      },
+      "persistence": {
+        "evidence": "lifecycle_receipt",
+        "usage": "none",
+        "errors": "typed_and_persisted",
+        "audit": "summary"
+      },
+      "documentationGuidance": [],
+      "documentationPaths": [],
+      "source": {
+        "owner": "apps/server",
+        "definitionPath": "packages/contracts/src/filesystemAccess.ts",
+        "implementationPath": "apps/server/src/routes/httpRoutes.ts",
+        "callers": [
+          "apps/web/src/lib/api.ts",
+          "apps/server/src/routes/httpRoutes.ts"
+        ],
+        "tests": [
+          "apps/server/src/services/store/accessStore.test.ts",
+          "packages/contracts/src/contracts.test.ts"
+        ],
+        "status": "canonical"
+      }
+    },
+    {
+      "id": "command.access.path.update",
+      "description": "Validate and dispatch the access.path.update global access command.",
+      "kind": "typed_user_command",
+      "allowedRoles": [
+        "global_runtime"
+      ],
+      "runtimeScopes": [
+        "global",
+        "runtime"
+      ],
+      "executorBinding": "access.path.update",
+      "hasInputSchema": true,
+      "hasResultSchema": true,
+      "policy": {
+        "approval": "not_applicable",
+        "access": "backend_authority",
+        "concurrency": "serialized",
+        "retry": "none",
+        "timeout": "runtime_default",
+        "idempotency": "conditional"
+      },
+      "persistence": {
+        "evidence": "lifecycle_receipt",
+        "usage": "none",
+        "errors": "typed_and_persisted",
+        "audit": "summary"
+      },
+      "documentationGuidance": [],
+      "documentationPaths": [],
+      "source": {
+        "owner": "apps/server",
+        "definitionPath": "packages/contracts/src/filesystemAccess.ts",
+        "implementationPath": "apps/server/src/routes/httpRoutes.ts",
+        "callers": [
+          "apps/web/src/lib/api.ts",
+          "apps/server/src/routes/httpRoutes.ts"
+        ],
+        "tests": [
+          "apps/server/src/services/store/accessStore.test.ts",
+          "packages/contracts/src/contracts.test.ts"
+        ],
+        "status": "canonical"
+      }
+    },
+    {
+      "id": "command.access.path.remove",
+      "description": "Validate and dispatch the access.path.remove global access command.",
+      "kind": "typed_user_command",
+      "allowedRoles": [
+        "global_runtime"
+      ],
+      "runtimeScopes": [
+        "global",
+        "runtime"
+      ],
+      "executorBinding": "access.path.remove",
+      "hasInputSchema": true,
+      "hasResultSchema": true,
+      "policy": {
+        "approval": "not_applicable",
+        "access": "backend_authority",
+        "concurrency": "serialized",
+        "retry": "none",
+        "timeout": "runtime_default",
+        "idempotency": "conditional"
+      },
+      "persistence": {
+        "evidence": "lifecycle_receipt",
+        "usage": "none",
+        "errors": "typed_and_persisted",
+        "audit": "summary"
+      },
+      "documentationGuidance": [],
+      "documentationPaths": [],
+      "source": {
+        "owner": "apps/server",
+        "definitionPath": "packages/contracts/src/filesystemAccess.ts",
+        "implementationPath": "apps/server/src/routes/httpRoutes.ts",
+        "callers": [
+          "apps/web/src/lib/api.ts",
+          "apps/server/src/routes/httpRoutes.ts"
+        ],
+        "tests": [
+          "apps/server/src/services/store/accessStore.test.ts",
+          "packages/contracts/src/contracts.test.ts"
+        ],
+        "status": "canonical"
+      }
+    },
+    {
       "id": "command.classic.chat.message.send",
       "description": "Validate and dispatch the chat.message.send user command.",
       "kind": "typed_user_command",
@@ -3715,7 +3984,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "none",
         "timeout": "runtime_default",
@@ -3759,7 +4028,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -3803,7 +4072,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -3847,7 +4116,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -3891,7 +4160,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -3935,7 +4204,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -3979,7 +4248,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4023,7 +4292,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4067,7 +4336,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4111,7 +4380,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4155,7 +4424,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4199,7 +4468,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4243,7 +4512,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4287,7 +4556,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "single_flight",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4331,7 +4600,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4375,7 +4644,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4419,7 +4688,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4463,7 +4732,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4507,7 +4776,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4551,7 +4820,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4595,7 +4864,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4639,7 +4908,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4683,7 +4952,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",
@@ -4727,7 +4996,7 @@
       "hasResultSchema": true,
       "policy": {
         "approval": "not_applicable",
-        "sandbox": "backend_authority",
+        "access": "backend_authority",
         "concurrency": "serialized",
         "retry": "none",
         "timeout": "runtime_default",

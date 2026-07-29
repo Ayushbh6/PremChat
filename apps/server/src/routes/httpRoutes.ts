@@ -5,6 +5,8 @@ import path from "node:path"
 import { z } from "zod"
 import {
   MAX_MESSAGE_ATTACHMENTS,
+  addFilesystemRootRequestSchema,
+  addFilesystemRootResponseSchema,
   completeOnboardingRequestSchema,
   approveMemorySkillProposalResponseSchema,
   buildGlobalSkillRequestSchema,
@@ -28,6 +30,7 @@ import {
   deleteMcpServerResponseSchema,
   deleteSkillResponseSchema,
   getConversationDeletionImpactResponseSchema,
+  getFilesystemAccessResponseSchema,
   inspectWorkspaceRequestSchema,
   listMcpServersQuerySchema,
   listMcpServersResponseSchema,
@@ -53,6 +56,11 @@ import {
   setProviderCredentialSessionRequestSchema,
   startOpenAiChatGptOAuthResponseSchema,
   updateMemoryAgentGlobalSettingsRequestSchema,
+  updateFilesystemAccessRequestSchema,
+  updateFilesystemAccessResponseSchema,
+  updateFilesystemRootRequestSchema,
+  updateFilesystemRootResponseSchema,
+  removeFilesystemRootResponseSchema,
   updateWorkerModelSettingsRequestSchema,
   updateWorkerModelSettingsResponseSchema,
   updateMcpServerRequestSchema,
@@ -71,6 +79,7 @@ import type { SocratesStore, UploadedResourceInput } from "../services/store"
 import type { ProviderCredentialStore } from "../services/providerCredentials"
 
 const projectParamsSchema = z.object({ projectId: z.string().min(1) }).strict()
+const filesystemRootParamsSchema = z.object({ rootId: z.string().min(1) }).strict()
 const resourceParamsSchema = z.object({ projectId: z.string().min(1), resourceId: z.string().min(1) }).strict()
 const conversationParamsSchema = z.object({ projectId: z.string().min(1), conversationId: z.string().min(1) }).strict()
 const conversationDeletionQuerySchema = z.object({ scope: conversationDeletionScopeSchema.default("classic_only") }).strict()
@@ -143,6 +152,8 @@ const handleRouteError = (error: unknown) => {
     api.code === "invalid_route_params" ||
     api.code === "workspace_path_not_absolute" ||
     api.code === "workspace_path_not_directory" ||
+    api.code === "filesystem_root_not_absolute" ||
+    api.code === "filesystem_root_not_directory" ||
     api.code === "conversation_title_required" ||
     api.code === "message_content_required" ||
     api.code === "project_id_required" ||
@@ -447,6 +458,56 @@ export const registerHttpRoutes = async (
     try {
       const input = parseBody(completeOnboardingRequestSchema, request.body)
       return ok({ user: store.completeOnboarding(input) })
+    } catch (error) {
+      const { statusCode, response } = handleRouteError(error)
+      return reply.code(statusCode).send(response)
+    }
+  })
+
+  app.get("/api/access", async (_request, reply) => {
+    try {
+      return ok(getFilesystemAccessResponseSchema.parse(store.getFilesystemAccess()))
+    } catch (error) {
+      const { statusCode, response } = handleRouteError(error)
+      return reply.code(statusCode).send(response)
+    }
+  })
+
+  app.patch("/api/access", async (request, reply) => {
+    try {
+      const input = parseBody(updateFilesystemAccessRequestSchema, request.body)
+      return ok(updateFilesystemAccessResponseSchema.parse(store.setFilesystemAccessMode(input.mode)))
+    } catch (error) {
+      const { statusCode, response } = handleRouteError(error)
+      return reply.code(statusCode).send(response)
+    }
+  })
+
+  app.post("/api/access/paths", async (request, reply) => {
+    try {
+      const input = parseBody(addFilesystemRootRequestSchema, request.body)
+      return ok(addFilesystemRootResponseSchema.parse(store.addFilesystemRoot(input)))
+    } catch (error) {
+      const { statusCode, response } = handleRouteError(error)
+      return reply.code(statusCode).send(response)
+    }
+  })
+
+  app.patch("/api/access/paths/:rootId", async (request, reply) => {
+    try {
+      const { rootId } = parseParams(filesystemRootParamsSchema, request.params)
+      const input = parseBody(updateFilesystemRootRequestSchema, request.body)
+      return ok(updateFilesystemRootResponseSchema.parse(store.updateFilesystemRoot(rootId, input)))
+    } catch (error) {
+      const { statusCode, response } = handleRouteError(error)
+      return reply.code(statusCode).send(response)
+    }
+  })
+
+  app.delete("/api/access/paths/:rootId", async (request, reply) => {
+    try {
+      const { rootId } = parseParams(filesystemRootParamsSchema, request.params)
+      return ok(removeFilesystemRootResponseSchema.parse(store.removeFilesystemRoot(rootId)))
     } catch (error) {
       const { statusCode, response } = handleRouteError(error)
       return reply.code(statusCode).send(response)

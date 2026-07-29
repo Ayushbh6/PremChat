@@ -203,7 +203,11 @@ export const normalizeAlwaysApplyRules = (content: string | undefined): string =
   return rules.length > 0 ? rules.join("\n") : "- No always-apply rules recorded."
 }
 
-export const nativeFollowUpMessagesForToolResult = (result: ToolExecutionResult, workspacePath: string | undefined): ModelMessage[] => {
+export const nativeFollowUpMessagesForToolResult = (
+  result: ToolExecutionResult,
+  workspacePath: string | undefined,
+  filesystemAuthorization?: import("@socrates/contracts").FilesystemAuthorizationSnapshot,
+): ModelMessage[] => {
   if (!workspacePath || !result.ok || result.toolName !== "read") {
     return []
   }
@@ -211,7 +215,7 @@ export const nativeFollowUpMessagesForToolResult = (result: ToolExecutionResult,
   if (!isReadImageOutput(output) || output.image.nativeVisionSupported !== true || !output.mimeType) {
     return []
   }
-  const imageBytes = readWorkspaceImageForModel(workspacePath, output.path)
+  const imageBytes = readWorkspaceImageForModel(workspacePath, output.path, filesystemAuthorization)
   if (!imageBytes) {
     return []
   }
@@ -241,12 +245,35 @@ export const isReadImageOutput = (value: unknown): value is {
   typeof (value as { path?: unknown }).path === "string" &&
   typeof (value as { image?: { nativeVisionSupported?: unknown } }).image?.nativeVisionSupported === "boolean"
 
-export const readWorkspaceImageForModel = (workspacePath: string, relativePath: string): string | undefined => {
-  const workspaceRoot = path.resolve(workspacePath)
-  const absolutePath = path.resolve(workspaceRoot, relativePath)
-  const relative = path.relative(workspaceRoot, absolutePath)
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+export const readWorkspaceImageForModel = (
+  workspacePath: string,
+  requestedPath: string,
+  filesystemAuthorization?: import("@socrates/contracts").FilesystemAuthorizationSnapshot,
+): string | undefined => {
+  const workspaceRootInput = path.resolve(filesystemAuthorization?.workingRootPath ?? workspacePath)
+  let workspaceRoot: string
+  try {
+    workspaceRoot = fs.realpathSync.native(workspaceRootInput)
+  } catch {
+    workspaceRoot = workspaceRootInput
+  }
+  const candidate = path.isAbsolute(requestedPath) ? requestedPath : path.resolve(workspaceRoot, requestedPath)
+  let absolutePath: string
+  try {
+    absolutePath = fs.realpathSync.native(candidate)
+  } catch {
     return undefined
+  }
+  if (filesystemAuthorization?.mode !== "full") {
+    const roots = filesystemAuthorization?.roots.map((root) => {
+      const resolved = path.resolve(root.path)
+      try {
+        return fs.realpathSync.native(resolved)
+      } catch {
+        return resolved
+      }
+    }) ?? [workspaceRoot]
+    if (!roots.some((root) => absolutePath === root || absolutePath.startsWith(`${root}${path.sep}`))) return undefined
   }
   try {
     return fs.readFileSync(absolutePath).toString("base64")

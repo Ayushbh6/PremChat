@@ -12,7 +12,7 @@ index_tags: [tool_usage]
 <!-- socrates:section id="purpose" kind="purpose" tags="tools" -->
 ## Purpose
 
-- `bash`: Run commands or manage named persistent Terminals in the active workspace. Use run for a bounded foreground command, start with a unique name for a server or interactive process, inspect with that name to receive status plus new output, stop with that name, and list to discover existing names. Prefer read, search, edit, and apply_patch for structured file work. Use inputMode=user when the visible Terminal must accept user input.
+- `bash`: Run commands or manage named persistent Terminals from an authorized working directory. Terminal runs as the local user and is not OS-sandboxed; path selection checks cwd but cannot promise process containment. Use run for a bounded foreground command, start with a unique name for a server or interactive process, inspect with that name to receive status plus new output, stop with that name, and list to discover existing names. Prefer read, search, edit, and apply_patch for structured file work. Use inputMode=user when the visible Terminal must accept user input.
 - `wait`: Suspend this Socrates task until a meaningful event occurs on one or more named background Terminals. Use only after completing all independent useful work and every remaining step depends on those Terminals. terminalNames must be names shown by Terminal list/context. wakeOn supports completed, failed, and input_required. reason is a compact audit label: required, at most 7 words and 64 characters. This ends the current model execution without a final user answer when waiting is registered; it does not poll or wake on a timer.
 <!-- /socrates:section -->
 
@@ -22,6 +22,7 @@ index_tags: [tool_usage]
 - Use `bash` when the active task requires its cataloged mutation/execution capability.
 - Use `wait` when the active task requires its cataloged mutation/execution capability.
 - The model-facing operations are exactly run, start, inspect, stop, and list. Use human-readable Terminal names; runtime ids and output cursors are internal.
+- Terminal runs as the local OS user. Selected paths checks the requested cwd but is not process containment; Full access never removes destructive, sensitive, credential, external-action, or approval safeguards.
 <!-- /socrates:section -->
 
 <!-- socrates:section id="inputs" kind="schema" tags="tools" -->

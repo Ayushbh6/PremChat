@@ -2,6 +2,7 @@
 
 import {
   apiResponseSchema,
+  addFilesystemRootResponseSchema,
   approveMemorySkillProposalResponseSchema,
   buildGlobalSkillResponseSchema,
   buildProjectSkillResponseSchema,
@@ -25,6 +26,7 @@ import {
   getMeResponseSchema,
   getConversationDeletionImpactResponseSchema,
   getConversationResponseSchema,
+  getFilesystemAccessResponseSchema,
   getMcpServerConfigResponseSchema,
   getMemoryAgentFileContentResponseSchema,
   getMemoryAgentResponseSchema,
@@ -52,6 +54,9 @@ import {
   setProviderCredentialSessionResponseSchema,
   startOpenAiChatGptOAuthResponseSchema,
   updateMemoryAgentGlobalSettingsResponseSchema,
+  updateFilesystemAccessResponseSchema,
+  updateFilesystemRootResponseSchema,
+  removeFilesystemRootResponseSchema,
   updateMcpServerResponseSchema,
   updateWorkerModelSettingsResponseSchema,
   triggerMemoryAgentRunResponseSchema,
@@ -63,6 +68,8 @@ import {
   upsertProjectInstructionsResponseSchema,
   type ApiError,
   type ApiResponse,
+  type AddFilesystemRootRequest,
+  type AddFilesystemRootResponse,
   type ApproveMemorySkillProposalResponse,
   type BuildGlobalSkillRequest,
   type BuildGlobalSkillResponse,
@@ -96,6 +103,7 @@ import {
   type DeleteProviderCredentialResponse,
   type DeleteProjectResourceResponse,
   type GetConversationResponse,
+  type GetFilesystemAccessResponse,
   type GetConversationDeletionImpactResponse,
   type ConversationDeletionScope,
   type GetMcpServerConfigResponse,
@@ -133,6 +141,11 @@ import {
   type StartOpenAiChatGptOAuthResponse,
   type UpdateMemoryAgentGlobalSettingsRequest,
   type UpdateMemoryAgentGlobalSettingsResponse,
+  type UpdateFilesystemAccessRequest,
+  type UpdateFilesystemAccessResponse,
+  type UpdateFilesystemRootRequest,
+  type UpdateFilesystemRootResponse,
+  type RemoveFilesystemRootResponse,
   type UpdateMcpServerRequest,
   type UpdateMcpServerResponse,
   type TriggerMemoryAgentRunResponse,
@@ -531,6 +544,32 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }) as Promise<CompleteOnboardingResponse>,
+
+  getFilesystemAccess: () =>
+    request<typeof getFilesystemAccessResponseSchema>("/api/access", getFilesystemAccessResponseSchema) as Promise<GetFilesystemAccessResponse>,
+
+  updateFilesystemAccess: (input: UpdateFilesystemAccessRequest) =>
+    request<typeof updateFilesystemAccessResponseSchema>("/api/access", updateFilesystemAccessResponseSchema, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }) as Promise<UpdateFilesystemAccessResponse>,
+
+  addFilesystemRoot: (input: AddFilesystemRootRequest) =>
+    request<typeof addFilesystemRootResponseSchema>("/api/access/paths", addFilesystemRootResponseSchema, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }) as Promise<AddFilesystemRootResponse>,
+
+  updateFilesystemRoot: (rootId: string, input: UpdateFilesystemRootRequest) =>
+    request<typeof updateFilesystemRootResponseSchema>(`/api/access/paths/${encodeURIComponent(rootId)}`, updateFilesystemRootResponseSchema, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }) as Promise<UpdateFilesystemRootResponse>,
+
+  removeFilesystemRoot: (rootId: string) =>
+    request<typeof removeFilesystemRootResponseSchema>(`/api/access/paths/${encodeURIComponent(rootId)}`, removeFilesystemRootResponseSchema, {
+      method: "DELETE",
+    }) as Promise<RemoveFilesystemRootResponse>,
 
   listProjects: () =>
     request<typeof listProjectsResponseSchema>("/api/projects", listProjectsResponseSchema) as Promise<ListProjectsResponse>,

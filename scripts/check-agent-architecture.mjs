@@ -128,7 +128,7 @@ assertUnique(definitions.map((definition) => definition.id), "Agent definition i
 assertUnique(capabilities.map((capability) => capability.id), "Capability ids")
 assertUnique(commands.map((command) => command.executorBinding), "Typed user command bindings")
 if (modelTools.length !== 19) throw new Error(`Expected 19 static model-tool capabilities, found ${modelTools.length}.`)
-if (commands.length !== 24) throw new Error(`Expected 24 typed user-command capabilities, found ${commands.length}.`)
+if (commands.length !== 28) throw new Error(`Expected 28 typed user-command capabilities, found ${commands.length}.`)
 for (const kind of ["model_tool", "automatic_retrieval", "structured_worker", "context_stage", "deterministic_authority", "typed_user_command"]) {
   if (!capabilities.some((capability) => capability.kind === kind)) throw new Error(`Capability kind ${kind} is missing.`)
 }
@@ -201,8 +201,12 @@ for (const retiredMarker of [
   if (mainAgentSource.includes(retiredMarker)) throw new Error(`Retired hidden main-loop message remains: ${retiredMarker}.`)
 }
 const directDeveloperMessagePushes = [...mainAgentSource.matchAll(/messages\.push\(\{\s*role:\s*"developer"/g)]
-if (directDeveloperMessagePushes.length !== 1 || !mainAgentSource.includes('messages.push({ role: "developer", content: renderResolvedTurnContext(resolvedTurnContext) })')) {
-  throw new Error("Main Socrates may directly append only the declared resolved-turn context developer message.")
+if (
+  directDeveloperMessagePushes.length !== 1
+  || !mainAgentSource.includes("renderResolvedTurnContext(resolvedTurnContext)")
+  || !mainAgentSource.includes("renderFilesystemAuthorization(input.filesystemAuthorization)")
+) {
+  throw new Error("Main Socrates may directly append only the declared resolved-turn and filesystem-access context developer message.")
 }
 
 for (const capability of capabilities) {
@@ -220,6 +224,7 @@ for (const capability of capabilities) {
 }
 
 const expectedCommands = [
+  "access.mode.update", "access.path.add", "access.path.update", "access.path.remove",
   "chat.message.send", "chat.turn.cancel", "chat.conversation.subscribe", "chat.conversation.unsubscribe",
   "approval.decide", "credential.input.submit", "terminal.stop", "terminal.input", "terminal.resize", "terminal.rename", "feedback.submit",
   "v2.flow.subscribe", "v2.flow.unsubscribe", "v2.message.send", "v2.routing.clarification.respond", "v2.focus.update",
@@ -227,7 +232,7 @@ const expectedCommands = [
   "v2.terminal.stop", "v2.terminal.input", "v2.terminal.resize", "v2.terminal.rename",
 ].sort()
 if (JSON.stringify(commands.map((command) => command.executorBinding).sort()) !== JSON.stringify(expectedCommands)) {
-  throw new Error("Typed user-command inventory drifted from the Classic and Flow protocol boundary.")
+  throw new Error("Typed user-command inventory drifted from the global, Classic, and Flow protocol boundary.")
 }
 
 const productionRoots = [

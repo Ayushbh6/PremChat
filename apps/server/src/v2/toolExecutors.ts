@@ -39,7 +39,7 @@ export const createV2ToolExecutors = (input: V2ToolExecutorsInput) => createMain
         flowId: input.flowId,
         goalId: input.goalId,
         turnId: input.turnId,
-        workspacePath: input.workspacePath,
+        workspacePath: context.workspacePath,
       }, context)
       if (!shouldSerializeBashInput(toolInput)) return execute()
       const waiting = isWorkspaceMutationLocked(input.workspacePath)

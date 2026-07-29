@@ -2,9 +2,9 @@ import { execFile } from "node:child_process"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { promisify } from "node:util"
-import type { ReadToolInput, ReadToolOutput } from "@socrates/contracts"
+import type { FilesystemAuthorizationSnapshot, ReadToolInput, ReadToolOutput } from "@socrates/contracts"
 import { limitModelOutputItems, SocratesError } from "@socrates/shared"
-import { charLimitForTokenCap, clampCharLimit, emptyTruncation, isProbablyBinary, isSecretMaterialPath, resolveWorkspacePath, toWorkspaceRelativePath, truncateText } from "./common"
+import { charLimitForTokenCap, clampCharLimit, emptyTruncation, isProbablyBinary, isSecretMaterialPath, resolveAuthorizedPath, toAuthorizedDisplayPath, truncateText } from "./common"
 import type { FileFreshnessTracker } from "./fileFreshness"
 import { detectLineEnding, hashBuffer } from "./fileMetadata"
 
@@ -20,10 +20,10 @@ const nonVisionModelIds = new Set([
 
 export const readWorkspacePath = async (
   input: ReadToolInput,
-  context: { workspacePath: string; runtimeConfig?: { providerId?: string; modelId?: string }; fileFreshness?: FileFreshnessTracker },
+  context: { workspacePath: string; filesystemAuthorization?: FilesystemAuthorizationSnapshot; runtimeConfig?: { providerId?: string; modelId?: string }; fileFreshness?: FileFreshnessTracker },
 ): Promise<ReadToolOutput> => {
-  const absolutePath = resolveWorkspacePath(context.workspacePath, input.path)
-  const relativePath = toWorkspaceRelativePath(context.workspacePath, absolutePath)
+  const absolutePath = resolveAuthorizedPath(context, input.path)
+  const relativePath = toAuthorizedDisplayPath(context, absolutePath)
   if (isSecretMaterialPath(absolutePath)) {
     throw new SocratesError(
       "sensitive_path_denied",
@@ -54,7 +54,7 @@ export const readWorkspacePath = async (
       .sort((left, right) => left.name.localeCompare(right.name))
       .map((entry) => ({
         name: entry.name,
-        path: toWorkspaceRelativePath(context.workspacePath, path.join(absolutePath, entry.name)),
+        path: toAuthorizedDisplayPath(context, path.join(absolutePath, entry.name)),
         kind: entry.isDirectory() ? ("directory" as const) : ("file" as const),
       }))
     const limited = limitModelOutputItems(allEntries, {

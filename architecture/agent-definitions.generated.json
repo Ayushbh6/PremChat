@@ -30,9 +30,11 @@
         "authority.memory_selection",
         "authority.goal_ledger",
         "authority.finalization",
+        "authority.filesystem_access",
         "context.stable_prompt",
         "context.exact_messages",
         "context.runtime_state",
+        "context.filesystem_access",
         "context.tool_definitions",
         "context.automatic_compaction",
         "runtime.structured_repair",
@@ -41,11 +43,12 @@
       "dynamicCapabilityPrefixes": [
         "dynamic.mcp."
       ],
-      "contextProfileId": "interactive-agent-context-v1",
+      "contextProfileId": "socrates-interactive-context-v1",
       "contextStages": [
         "stable_prompt",
         "exact_messages",
         "runtime_context",
+        "filesystem_access",
         "tool_definitions",
         "automatic_compaction"
       ],

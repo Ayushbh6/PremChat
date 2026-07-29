@@ -56,6 +56,56 @@ export const projectWorkspaces = sqliteTable(
   }),
 )
 
+export const filesystemAccessSettings = sqliteTable("filesystem_access_settings", {
+  userId: text("user_id").primaryKey(),
+  mode: text("mode").notNull().default("selected"),
+  revision: integer("revision").notNull().default(1),
+  ...timestamps,
+}, (table) => ({
+  modeCheck: check("filesystem_access_settings_mode_check", sql`${table.mode} IN ('read_only', 'selected', 'full')`),
+}))
+
+export const filesystemRoots = sqliteTable(
+  "filesystem_roots",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    label: text("label").notNull(),
+    path: text("path").notNull(),
+    isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+    status: text("status").notNull().default("active"),
+    source: text("source").notNull().default("user"),
+    sourceProjectId: text("source_project_id"),
+    ...timestamps,
+    revokedAt: text("revoked_at"),
+  },
+  (table) => ({
+    userPathIdx: uniqueIndex("filesystem_roots_user_path_idx").on(table.userId, table.path),
+    userStatusIdx: index("filesystem_roots_user_status_idx").on(table.userId, table.status),
+    statusCheck: check("filesystem_roots_status_check", sql`${table.status} IN ('active', 'missing', 'revoked')`),
+    sourceCheck: check("filesystem_roots_source_check", sql`${table.source} IN ('user', 'legacy_project')`),
+  }),
+)
+
+export const turnFilesystemAuthorizations = sqliteTable(
+  "turn_filesystem_authorizations",
+  {
+    id: text("id").primaryKey(),
+    turnId: text("turn_id").notNull(),
+    userId: text("user_id").notNull(),
+    mode: text("mode").notNull(),
+    revision: integer("revision").notNull(),
+    rootsJson: text("roots_json").notNull(),
+    workingRootPath: text("working_root_path"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => ({
+    turnIdx: uniqueIndex("turn_filesystem_authorizations_turn_idx").on(table.turnId),
+    userCreatedIdx: index("turn_filesystem_authorizations_user_created_idx").on(table.userId, table.createdAt),
+    modeCheck: check("turn_filesystem_authorizations_mode_check", sql`${table.mode} IN ('read_only', 'selected', 'full')`),
+  }),
+)
+
 export const projectResources = sqliteTable(
   "project_resources",
   {
