@@ -98,6 +98,32 @@ for (const [path, content] of generatedToolDocs(capabilities)) generatedFiles.se
 if (writeMode) await removeStaleGeneratedToolDocs(new Set(generatedFiles.keys()))
 for (const [path, content] of generatedFiles) await writeOrCheck(path, content)
 
+const compactionAuthorityMarkers = [
+  "oldest completed tool-exchange prefix",
+  "original user request",
+  "pending operations",
+  "stable canonical turn/task ordinals",
+]
+for (const path of [
+  "AGENTS.md",
+  "context-files/AGENT_REFACTOR_MANIFESTO.md",
+  "context-files/UNIFIED_SOCRATES_LIFECYCLE.md",
+]) {
+  const source = await readFile(resolve(root, path), "utf8")
+  for (const marker of compactionAuthorityMarkers) {
+    if (!source.includes(marker)) throw new Error(`Compaction authority ${path} is missing required contract marker: ${marker}.`)
+  }
+}
+for (const path of [
+  "context-files/FLOW_NORTH_STAR.md",
+  "context-files/AGENT_CAPABILITY_WORKFLOW.md",
+]) {
+  const source = await readFile(resolve(root, path), "utf8")
+  for (const marker of ["oldest completed tool-exchange prefix", "pending operations", "stable canonical turn/task ordinals"]) {
+    if (!source.includes(marker)) throw new Error(`Compaction authority ${path} is missing required contract marker: ${marker}.`)
+  }
+}
+
 assertUnique(definitions.map((definition) => definition.id), "Agent definition ids")
 assertUnique(capabilities.map((capability) => capability.id), "Capability ids")
 assertUnique(commands.map((command) => command.executorBinding), "Typed user command bindings")

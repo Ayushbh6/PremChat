@@ -224,10 +224,12 @@ Every context-stage change must satisfy the exact-source and model-projection ru
 3. `bounded` means scoped or paginated, with explicit continuation, not truncated.
 4. Never document a stage merely as `bounded context`; name whether it is exact scoped selection, exact pagination, lossless indexing, turn-local released projection, or automatic provenance-linked model-context compaction.
 5. Parsing, chunking, embeddings, and ranking create disposable derivatives and never replace source text.
-6. At 170k estimated model-visible tokens, one shared stage automatically compacts only the oldest completed-turn head, preserves approximately 70k of newest complete Q/A plus the active turn, targets around 100k, accepts no result above 120k, and never dispatches the main model above the trigger after failed safe compaction.
+6. At 170k estimated model-visible tokens, one shared stage automatically compacts the oldest completed-turn head and, only when necessary, an oversized active turn's oldest completed tool-exchange prefix. It never separates a call from its results; keeps the original request, pending operations, and newest suffix raw; preserves approximately 70k of newest safe raw context when possible; targets around 100k; accepts no result above 120k; and never dispatches the main model above the trigger after failed safe compaction.
 7. Successful individual tool results over 3,000 estimated tokens receive monotonic turn-local `R<n>` handles; release is the only disposition, piggybacks with the next normal tool request, never adds model inference, and never blocks functional tools when omitted.
-8. Compaction and release remain provenance-linked model projections; canonical exact sources are never overwritten and exact retrieval stays available.
-9. Tests must prove whole selected messages remain exact, protected suffix turns remain complete, handles reset each user turn, release receipts can recover exact evidence, and pagination can recover exact deferred content.
+8. Compaction boundaries use persisted message/tool-batch references and stable canonical turn/task ordinals, never ordinals regenerated from a filtered projection. Prior important anchors are carried and deduplicated deterministically across snapshots.
+9. Every tool result crosses one shared final model-output guard. Dynamic MCP responses are persisted exactly before a 4,000-token default/6,000-token maximum projection and use existing read/trace pagination; no child executor may bypass this guard.
+10. Compaction and release remain provenance-linked model projections; canonical exact sources are never overwritten and exact retrieval stays available.
+11. Tests must prove whole selected messages remain exact, protected active-request/pending/suffix state remains raw, completed tool batches are never split, stable anchors survive repeated compactions, handles reset each user turn, release receipts can recover exact evidence, and pagination can recover exact deferred content.
 
 ## 10. Dynamic MCP Changes
 

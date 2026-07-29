@@ -28,13 +28,15 @@ Use precise language:
 - exact pagination means complete recoverable pages with continuation metadata;
 - lossless derived index means chunks, embeddings, lexical indexes, entities, or metadata pointing back to exact sources;
 - turn-local released projection means an unneeded large tool-result copy removed only from the active model context while exact evidence remains available;
-- automatic provenance-linked compaction means the oldest completed-turn head is summarized for model context while canonical sources remain exact and recoverable.
+- automatic provenance-linked compaction means the oldest completed-turn head, or an oversized active turn's oldest completed tool-exchange prefix, is summarized for model context while canonical sources remain exact and recoverable.
 
 The phrase bounded context is forbidden as a standalone description because it hides whether information was lost.
 
-At 170k estimated model-visible input tokens, the runtime automatically compacts only the oldest completed-turn head. It preserves approximately 70k of the newest completed Q/A by whole-turn boundary plus the active turn, targets a rebuilt request around 100k, accepts no result above 120k, and does not dispatch the main model above the trigger if safe compaction fails. The derivative retains provenance and never overwrites canonical content.
+At 170k estimated model-visible input tokens, the runtime automatically compacts the oldest completed-turn head. If the active turn alone is oversized, the same stage may compact only its oldest completed tool-exchange prefix, where one batch is an assistant tool-call group plus all of its completed results. The original user request, all pending operations including approval/Terminal/wait/incomplete work, and the newest tool-exchange suffix stay raw. It preserves approximately 70k of newest safe raw context when possible, targets a rebuilt request around 100k, accepts no result above 120k, and does not dispatch the main model above the trigger if safe compaction fails. One normal compactor request may contain both the completed historical head and active-turn prefix; it must not split them into detached model calls. The derivative uses stable canonical turn/task ordinals plus exact internal source references and never overwrites canonical content.
 
 Each successful individual tool result above 3,000 estimated tokens receives the next turn-local `R<n>` handle and one compact reminder appended to that existing tool result. It is not a separate hidden message. Socrates may release unneeded handles alongside its next normal tool call. There is no keep, distill, or unresolved state; omission never blocks normal tools; no separate model inference is added; and exact results remain retrievable.
+
+Every tool result also passes through one final shared model-projection guard. Existing narrower read/search/trace limits remain unchanged. A dynamic MCP result is persisted exactly first, then projected at approximately 4,000 estimated tokens by default and never above 6,000; truncation returns an `R<n>` reference plus exact continuation metadata usable through existing read/trace capabilities. Binary/base64 bodies are stored as evidence or artifacts rather than dumped into model context.
 
 A goal capsule is not automatic conversation compaction. It is structured live state derived from validated goal outcomes and source anchors. It may guide selection but cannot replace relevant exact wording or evidence.
 
