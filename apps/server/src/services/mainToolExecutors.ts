@@ -73,6 +73,7 @@ export const createMainToolExecutors = (input: MainToolExecutorsInput): ToolExec
         projectId: input.projectId,
         presentedConversationId: scope.presentedConversationId,
         goalId: scope.goalId,
+        currentTurnId: input.turnId,
         request: toolInput as TraceRetrieveMainToolInput,
       })
     },

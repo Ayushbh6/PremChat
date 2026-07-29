@@ -62,6 +62,16 @@ export class ToolStore extends StoreBase {
       .run()
   }
 
+  bindContextResultHandle(toolCallId: string, result: string): void {
+    const row = this.handle.db.select({ metadataJson: toolCalls.metadataJson }).from(toolCalls)
+      .where(eq(toolCalls.id, toolCallId)).limit(1).get()
+    if (!row) return
+    const previous = asRecord(parseJson(row.metadataJson)) ?? {}
+    this.handle.db.update(toolCalls)
+      .set({ metadataJson: JSON.stringify({ ...previous, contextResultHandle: result }) })
+      .where(eq(toolCalls.id, toolCallId)).run()
+  }
+
   failToolCall(toolCallId: string, errorId?: string, rejected = false): void {
     this.handle.db
       .update(toolCalls)

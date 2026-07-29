@@ -142,6 +142,7 @@ export const turns = sqliteTable(
     id: text("id").primaryKey(),
     sessionId: text("session_id").notNull(),
     conversationId: text("conversation_id").notNull(),
+    ordinal: integer("ordinal"),
     userMessageId: text("user_message_id"),
     assistantMessageId: text("assistant_message_id"),
     status: text("status").notNull(),
@@ -154,6 +155,7 @@ export const turns = sqliteTable(
   },
   (table) => ({
     conversationStatusIdx: index("turns_conversation_status_idx").on(table.conversationId, table.status),
+    conversationOrdinalIdx: uniqueIndex("turns_conversation_ordinal_idx").on(table.conversationId, table.ordinal),
     sessionIdx: index("turns_session_idx").on(table.sessionId),
   }),
 )

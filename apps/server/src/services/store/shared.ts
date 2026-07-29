@@ -37,6 +37,13 @@ export class StoreBase {
     this.context.appendEvent(input)
   }
 
+  protected nextConversationTurnOrdinal(conversationId: string): number {
+    const row = this.handle.sqlite
+      .prepare("SELECT COALESCE(MAX(ordinal), 0) + 1 AS ordinal FROM turns WHERE conversation_id = ?")
+      .get(conversationId) as { ordinal: number }
+    return row.ordinal
+  }
+
   protected getCurrentUserRow(): typeof users.$inferSelect | undefined {
     return this.handle.db.select().from(users).limit(1).get()
   }

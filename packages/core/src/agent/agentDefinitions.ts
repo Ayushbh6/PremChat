@@ -1,9 +1,8 @@
 import {
-  anchorRepairSchema,
-  chatCompactionDraftSchema,
+  chatCompactionSchema,
   conversationTitleAgentOutputSchema,
   memoryAgentJournalOutputSchema,
-  memoryCompactionDraftSchema,
+  memoryCompactionSchema,
   socratesFinalAnswerSchema,
   soulConfirmationAgentOutputSchema,
   type ConversationTitleAgentOutput,
@@ -215,28 +214,20 @@ const createCompressorDefinition = <TOutput>(input: {
   persistenceScope: input.persistenceScope,
 })
 
-export const chatCompressorAgentDefinition = createCompressorDefinition<z.infer<typeof chatCompactionDraftSchema>>({
+export const chatCompressorAgentDefinition = createCompressorDefinition<z.infer<typeof chatCompactionSchema>>({
   id: "socrates-context-compactor",
   role: "socrates_context_compactor",
   promptId: "socrates-context-compactor-v1",
-  schema: chatCompactionDraftSchema,
+  schema: chatCompactionSchema,
   persistenceScope: "conversation",
 })
 
-export const memoryCompressorAgentDefinition = createCompressorDefinition<z.infer<typeof memoryCompactionDraftSchema>>({
+export const memoryCompressorAgentDefinition = createCompressorDefinition<z.infer<typeof memoryCompactionSchema>>({
   id: "memory-context-compactor",
   role: "memory_context_compactor",
   promptId: "memory-context-compactor-v1",
-  schema: memoryCompactionDraftSchema,
+  schema: memoryCompactionSchema,
   persistenceScope: "global",
-})
-
-export const anchorRepairAgentDefinition = createCompressorDefinition({
-  id: "context-anchor-repair",
-  role: "context_anchor_repair",
-  promptId: "context-anchor-repair-v1",
-  schema: anchorRepairSchema,
-  persistenceScope: "none",
 })
 
 export const phaseOneAgentDefinitions = [
@@ -247,7 +238,6 @@ export const phaseOneAgentDefinitions = [
   globalMemoryAgentDefinition,
   chatCompressorAgentDefinition,
   memoryCompressorAgentDefinition,
-  anchorRepairAgentDefinition,
 ] as const
 
 export const phaseOneAgentDefinitionInventory = (): AgentDefinitionInventoryEntry[] =>

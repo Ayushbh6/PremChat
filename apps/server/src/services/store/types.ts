@@ -31,6 +31,7 @@ export type ProjectDashboard = {
 export type CreatedTurn = {
   sessionId: string
   turnId: string
+  turnOrdinal: number
   runtimeConfigId: string
   userMessage: Message
   shouldGenerateTitle: boolean
@@ -68,6 +69,8 @@ export type ConversationModelMessage = {
       >
   id?: string
   turnId?: string
+  turnOrdinal?: number
+  taskOrdinal?: number
 }
 
 export type AgentContext = {

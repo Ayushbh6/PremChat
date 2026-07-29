@@ -51,7 +51,6 @@ export {
   type ContextPipelinePrepareResult,
 } from "./agent/ContextPipeline"
 export {
-  anchorRepairAgentDefinition,
   chatCompressorAgentDefinition,
   globalMemoryAgentDefinition,
   memoryCompressorAgentDefinition,

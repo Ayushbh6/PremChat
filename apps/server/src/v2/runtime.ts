@@ -528,6 +528,7 @@ export class V2ExecutionRuntime {
         conversationId: command.flowId,
         sessionId: created.turn.id,
         turnId: created.turn.id,
+        turnOrdinal: created.turn.ordinal,
         cacheKey: `project:${command.projectId}:flow:${command.flowId}:focus:${activeGoalId}`,
         providerId: runtimeConfig.providerId,
         modelId: runtimeConfig.modelId,
@@ -564,6 +565,7 @@ export class V2ExecutionRuntime {
           turnId: created.turn.id,
           workspacePath,
         }),
+        bindContextResultHandle: ({ result, toolCallId }) => this.deps.store.bindContextResultHandle(toolCallId, result),
         toolExecutors,
         runtimeCapabilities: () => this.deps.mcpRuntime
           ? [...exposedMcpServers].flatMap((serverId) => this.deps.mcpRuntime!.getDynamicCapabilityDefinitions(serverId, { workspacePath }))

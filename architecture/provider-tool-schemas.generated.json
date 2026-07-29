@@ -657,6 +657,11 @@
                 "type": "string",
                 "const": "inspect"
               },
+              "result": {
+                "type": "string",
+                "pattern": "^R[1-9]\\d*$",
+                "description": "Current-turn large-result handle such as R1."
+              },
               "resultNumber": {
                 "type": "integer",
                 "exclusiveMinimum": 0,
@@ -1055,6 +1060,10 @@
               "operation": {
                 "type": "string",
                 "const": "inspect"
+              },
+              "result": {
+                "type": "string",
+                "pattern": "^R[1-9]\\d*$"
               },
               "resultNumber": {
                 "type": "integer",

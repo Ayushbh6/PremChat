@@ -232,6 +232,13 @@
       "when": 1785157200000,
       "tag": "0032_remove_router_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1785326400000,
+      "tag": "0033_stable_turn_ordinals",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { toolExecutionResultSchema, type NormalizedToolCall, type ToolExecutionResult } from "@socrates/contracts"
+import { DEFAULT_MODEL_OUTPUT_TOKEN_LIMIT, MAX_MODEL_OUTPUT_TOKEN_LIMIT, resolveModelOutputCharLimit } from "@socrates/shared"
 
 
 export const sanitizeToolExecutionResultForModel = (result: ToolExecutionResult, modelToolCallId: string): ToolExecutionResult => {
@@ -28,8 +29,57 @@ export const sanitizeToolExecutionResultForModel = (result: ToolExecutionResult,
 }
 
 export const compactModelToolOutput = (toolName: string, output: unknown): unknown => {
-  void toolName
-  return output
+  const dynamicMcp = toolName.startsWith("mcp__")
+  const projected = dynamicMcp ? removeDynamicBinaryPayloads(output) : output
+  const serialized = safeSerialize(projected)
+  const charLimit = resolveModelOutputCharLimit({
+    tokenLimit: dynamicMcp ? DEFAULT_MODEL_OUTPUT_TOKEN_LIMIT : MAX_MODEL_OUTPUT_TOKEN_LIMIT,
+    defaultTokenLimit: dynamicMcp ? DEFAULT_MODEL_OUTPUT_TOKEN_LIMIT : MAX_MODEL_OUTPUT_TOKEN_LIMIT,
+  })
+  if (serialized.length <= charLimit) return projected
+  const envelope = (preview: string) => ({
+    truncated: true,
+    kind: dynamicMcp ? "dynamic_mcp_result_preview" : "tool_result_preview",
+    preview,
+    truncation: {
+      charLimit,
+      originalLength: serialized.length,
+      returnedLength: preview.length,
+    },
+    recovery: "The exact result is persisted in the tool audit. Use its R-number if shown, or trace_retrieve audit/inspect after this turn.",
+  })
+  let low = 0
+  let high = serialized.length
+  while (low < high) {
+    const candidate = Math.ceil((low + high) / 2)
+    if (safeSerialize(envelope(serialized.slice(0, candidate))).length <= charLimit) low = candidate
+    else high = candidate - 1
+  }
+  return envelope(serialized.slice(0, low))
+}
+
+const removeDynamicBinaryPayloads = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(removeDynamicBinaryPayloads)
+  if (!value || typeof value !== "object") return value
+  const source = value as Record<string, unknown>
+  const media = source.type === "image" || source.type === "audio" || source.type === "resource"
+  const result: Record<string, unknown> = {}
+  for (const [key, child] of Object.entries(source)) {
+    if (media && (key === "data" || key === "blob") && typeof child === "string") {
+      result[key] = `[binary payload omitted; ${child.length} encoded characters retained in exact audit]`
+    } else {
+      result[key] = removeDynamicBinaryPayloads(child)
+    }
+  }
+  return result
+}
+
+const safeSerialize = (value: unknown): string => {
+  try {
+    return typeof value === "string" ? value : JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
 }
 
 export const sanitizeModelVisibleValue = (value: unknown, options: { preserveTraceRetrieveIds?: boolean } = {}): unknown => {

@@ -4,6 +4,8 @@ import type { ChatCompaction } from "@socrates/contracts"
 export type CompressorTurnInput = {
   turnNo: number
   turnId?: string
+  taskOrdinal?: number
+  sourceKind?: "completed_turn" | "active_tool_batch"
   messages: ModelMessage[]
 }
 
@@ -23,10 +25,11 @@ facts in the right fields, not to print JSON manually.
 <task>
 Compress only:
 - the Previous Summary, if present;
-- the Old Head Turns To Compress.
+- the Completed Source Batches To Compress.
 
-Do not summarize the recent raw tail. The newest raw Q&A turns remain outside your output and will be appended
-verbatim after this summary.
+The source can contain completed historical turns and the oldest completed tool-exchange batches from the active
+turn. Do not summarize the active turn's original user request, pending operations, or newest raw tool-exchange
+suffix. Those remain outside your output and are appended verbatim after this summary.
 </task>
 
 <priority_order>
@@ -157,30 +160,12 @@ Before finalizing, verify mentally:
 - A future agent could continue the work without re-reading the whole compressed head.
 </quality_check>`
 
-export const SOCRATES_ANCHOR_REPAIR_SYSTEM_PROMPT = `You repair only Socrates compaction anchors.
-
-Return one structured object with this exact shape:
-{
-  "anchors": ["Turn <number>: string"]
-}
-
-Rules:
-- Repair only anchors. Do not rewrite, summarize, or comment on any other section.
-- Every item must be one anchor and must start exactly with "Turn <number>:".
-- Use only turn numbers that appear in the provided source text.
-- Prefer anchors for exact user constraints, repo rules, paths, commands, errors, decisions, and unresolved tasks.
-- Drop anchors that cannot be tied to a real input turn number.
-
-Examples:
-- Turn 7: inspect the user's exact do-not-touch instruction for root context-files/.
-- Turn 11: inspect the command failure and the path it affected.`
-
 export const buildSocratesCompressorUserContent = (input: SocratesCompressorUserPromptInput): string => {
   const sections = [
     "# Previous Summary",
     input.previousSummary?.trim() || "None.",
     "",
-    "# Old Head Turns To Compress",
+    "# Completed Source Batches To Compress",
     input.headTurns.length > 0 ? input.headTurns.map(renderTurn).join("\n\n") : "None.",
   ]
   return sections.join("\n")
@@ -228,6 +213,8 @@ const renderTurn = (turn: CompressorTurnInput): string =>
   [
     `## Turn ${turn.turnNo}`,
     turn.turnId ? `turnId: ${turn.turnId}` : undefined,
+    turn.taskOrdinal ? `taskOrdinal: ${turn.taskOrdinal}` : undefined,
+    turn.sourceKind ? `sourceKind: ${turn.sourceKind}` : undefined,
     ...turn.messages.map((message) => renderMessage(message)),
   ]
     .filter((line): line is string => Boolean(line))
@@ -247,9 +234,9 @@ const renderPart = (part: ModelMessagePart): string => {
     return `[image: ${part.fileName ?? "unnamed"} ${part.mediaType}; bytes omitted]`
   }
   if (part.type === "tool-call") {
-    return `[tool-call ${part.toolName} ${part.toolCallId}] input=${truncate(JSON.stringify(part.input), 4_000)}`
+    return `[tool-call ${part.toolName} ${part.toolCallId}] input=${truncate(JSON.stringify(part.input), 2_000)}`
   }
-  return `[tool-result ${part.toolName} ${part.toolCallId}] output=${truncate(JSON.stringify(part.output), 12_000)}`
+  return `[tool-result ${part.toolName} ${part.toolCallId}] output=${truncate(JSON.stringify(part.output), 3_000)}`
 }
 
 const truncate = (text: string, maxChars: number): string => (text.length <= maxChars ? text : `${text.slice(0, maxChars)}\n[truncated]`)

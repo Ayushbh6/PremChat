@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { NormalizedToolCall } from "@socrates/contracts"
 import type { ModelMessage, ModelMessagePart } from "@socrates/providers"
 import { ToolOutputDispositionLedger } from "../context/toolOutputDisposition"
+import { compactModelToolOutput } from "../agent/socratesToolResultSupport"
 
 const largeResult = (toolCallId: string, marker: string): ModelMessage => ({
   role: "tool",
@@ -76,5 +77,49 @@ describe("ToolOutputDispositionLedger", () => {
     expect(JSON.stringify(messages)).not.toContain("Large temporary result R1:")
     expect(JSON.stringify(messages)).toContain("Large temporary result R2:")
     expect(JSON.stringify(messages)).toContain("SECOND")
+  })
+
+  it("caps dynamic MCP projection at the shared default while preserving an exact-recovery contract", () => {
+    const projected = compactModelToolOutput("mcp__documents__read", {
+      image: { type: "image", data: "a".repeat(20_000), mimeType: "image/png" },
+      content: [{ type: "text", text: `MCP_EXACT_MARKER ${"x".repeat(30_000)}` }],
+    })
+    const serialized = JSON.stringify(projected)
+
+    expect(serialized.length).toBeLessThanOrEqual(16_000)
+    expect(projected).toMatchObject({ truncated: true, kind: "dynamic_mcp_result_preview" })
+    expect(serialized).toContain("exact result is persisted")
+    expect(serialized).toContain("binary payload omitted")
+    expect(serialized).not.toContain("a".repeat(500))
+  })
+
+  it("keeps the serialized MCP envelope under the hard cap even when preview text needs escaping", () => {
+    const projected = compactModelToolOutput("mcp__documents__read", { content: `MCP_ESCAPED ${"\\\"".repeat(20_000)}` })
+
+    expect(JSON.stringify(projected).length).toBeLessThanOrEqual(16_000)
+    expect(projected).toMatchObject({ truncated: true, kind: "dynamic_mcp_result_preview" })
+  })
+
+  it("assigns R handles from the exact raw result even when the model projection was capped", () => {
+    const message: ModelMessage = {
+      role: "tool",
+      content: [{
+        type: "tool-result",
+        toolCallId: "provider-call",
+        toolName: "mcp__documents__read",
+        output: { ok: true, output: { truncated: true, preview: "short projection" } },
+      }],
+    }
+    const ledger = new ToolOutputDispositionLedger()
+    const assignments = ledger.recordBatch({
+      message,
+      toolCalls: [{ ...call("runtime-call", "report.pdf"), providerToolCallId: "provider-call", toolName: "mcp__documents__read" }],
+      rawResults: [{ toolCallId: "runtime-call", providerToolCallId: "provider-call", ok: true, output: { content: "x".repeat(30_000) } }],
+      providerId: "deepseek",
+      modelId: "deepseek-v4-pro",
+    })
+
+    expect(assignments).toEqual([{ result: "R1", toolCallId: "runtime-call" }])
+    expect(JSON.stringify(message)).toContain("Large temporary result R1")
   })
 })

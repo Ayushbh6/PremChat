@@ -48,6 +48,7 @@ export class TurnStore extends StoreBase {
     const now = nowIso()
     const sessionId = this.ensureSession(projectId, conversationId)
     const turnId = createId("turn")
+    const turnOrdinal = this.nextConversationTurnOrdinal(conversationId)
     const messageId = payload.clientMessageId
     const existingUserMessage = this.handle.db
       .select({ id: messages.id })
@@ -89,6 +90,7 @@ export class TurnStore extends StoreBase {
         id: turnId,
         sessionId,
         conversationId,
+        ordinal: turnOrdinal,
         userMessageId: messageId,
         status: "running",
         startedAt: now,
@@ -120,6 +122,7 @@ export class TurnStore extends StoreBase {
     return {
       sessionId,
       turnId,
+      turnOrdinal,
       runtimeConfigId,
       userMessage,
       shouldGenerateTitle: shouldDeriveTitle,

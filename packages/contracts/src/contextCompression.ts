@@ -59,20 +59,32 @@ const memoryCompactionObjectSchema = z
 
 export const memoryCompactionSchema = boundedSummary(memoryCompactionObjectSchema)
 
-export const anchorRepairSchema = z
+export const compactionSourceKindSchema = z.enum(["completed_turn", "active_tool_batch", "anchor"])
+
+export const compactionSourceRefSchema = z
   .object({
-    anchors: z.array(compactionAnchorSchema).max(80),
+    schemaVersion: z.literal(2),
+    kind: compactionSourceKindSchema,
+    turnOrdinal: z.number().int().positive(),
+    taskOrdinal: z.number().int().positive().optional(),
+    turnId: z.string().min(1).optional(),
+    messageIds: z.array(z.string().min(1)).max(500),
+    projectId: z.string().min(1).optional(),
+    conversationId: z.string().min(1).optional(),
+    anchor: compactionAnchorSchema.optional(),
+    retrieve: z.string().min(1).optional(),
   })
   .strict()
-
-export const chatCompactionDraftSchema = chatCompactionObjectSchema.extend({
-  anchors: compactionLinesSchema,
-})
-
-export const memoryCompactionDraftSchema = memoryCompactionObjectSchema.extend({
-  anchors: compactionLinesSchema,
-})
+  .superRefine((value, context) => {
+    if (value.kind !== "anchor" && value.messageIds.length === 0) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["messageIds"], message: "Compacted sources require exact message ids." })
+    }
+    if (value.kind === "anchor" && !value.anchor) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["anchor"], message: "Anchor sources require anchor text." })
+    }
+  })
 
 export type ChatCompaction = z.infer<typeof chatCompactionSchema>
 export type MemoryCompaction = z.infer<typeof memoryCompactionSchema>
-export type AnchorRepairOutput = z.infer<typeof anchorRepairSchema>
+export type CompactionSourceKind = z.infer<typeof compactionSourceKindSchema>
+export type CompactionSourceRef = z.infer<typeof compactionSourceRefSchema>

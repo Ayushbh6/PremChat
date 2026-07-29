@@ -912,11 +912,17 @@ export class SocratesStore {
     const projected = projectedRecords
       .filter((message) => ["user", "assistant", "system", "developer"].includes(message.role) && message.status === "completed")
       .map((message): ConversationModelMessage => {
+        const turnOrdinal = this.canonicalWork?.turnOrdinal(message.sourceRuntime, message.sourceTurnId)
+        const taskOrdinal = message.goalId
+          ? this.canonicalWork?.taskOrdinal(message.goalId, message.sourceRuntime, message.sourceTurnId)
+          : undefined
         const base = {
           role: message.role as ConversationModelMessage["role"],
           content: message.content,
           id: message.sourceMessageId,
           turnId: message.sourceTurnId,
+          ...(turnOrdinal !== undefined ? { turnOrdinal } : {}),
+          ...(taskOrdinal !== undefined ? { taskOrdinal } : {}),
         }
         if (message.role !== "user" || message.classicAttachments.length === 0) return base
         const references = message.classicAttachments.map((attachment) =>
@@ -1147,6 +1153,10 @@ export class SocratesStore {
     this.tools.completeToolCall(toolCallId, result)
   }
 
+  bindContextResultHandle(toolCallId: string, result: string): void {
+    this.tools.bindContextResultHandle(toolCallId, result)
+  }
+
   failToolCall(toolCallId: string, errorId?: string, rejected?: boolean): void {
     this.tools.failToolCall(toolCallId, errorId, rejected)
   }
@@ -1254,9 +1264,17 @@ export class SocratesStore {
 
   async retrieveGlobalToolTraces(
     input: TraceRetrieveGlobalToolInput,
-    authority?: { scope: "presented_context" | "current_goal" | "project"; presentedConversationId: string; goalId: string },
+    authority?: { scope: "presented_context" | "current_goal" | "project"; presentedConversationId: string; goalId: string; currentTurnId: string },
   ): Promise<TraceRetrieveGlobalToolOutput> {
     if (input.operation === "inspect") {
+      if (input.result) {
+        const exactResult = this.retrieveContextResultByHandle(input.result, authority)
+        if (!exactResult) {
+          throw new SocratesError("trace_result_not_found", `No visible exact tool result matched ${input.result}.`, { recoverable: true })
+        }
+        this.globalTraceRefs = [{ projectId: exactResult.projectId, turnId: exactResult.result.turnId as string }]
+        return limitGlobalTraceInspectOutput([exactResult.result], input)
+      }
       const previous = input.resultNumber ? this.globalTraceRefs[input.resultNumber - 1] : undefined
       const turnId = input.turnId ?? previous?.turnId
       const projectId = previous?.projectId ?? input.projectId ?? this.resolveGlobalInspectProjectId(input, turnId)
@@ -1392,6 +1410,97 @@ export class SocratesStore {
     return { results, totalMatches: results.length, ...(warnings.length ? { warnings } : {}) }
   }
 
+  private retrieveContextResultByHandle(
+    resultHandle: string,
+    authority?: { scope: "presented_context" | "current_goal" | "project"; presentedConversationId: string; goalId: string; currentTurnId: string },
+  ): { projectId: string; result: TraceRetrieveGlobalResult } | undefined {
+    type ExactToolRow = {
+      projectId: string
+      conversationKey: string
+      conversationTitle: string | null
+      goalId: string | null
+      turnId: string
+      turnOrdinal: number | null
+      startedAt: string
+      toolName: string
+      status: string
+      argumentsJson: string
+      resultJson: string | null
+    }
+    const classic = this.handle.sqlite.prepare(
+      `SELECT c.project_id AS projectId,
+              c.id AS conversationKey,
+              c.title AS conversationTitle,
+              wt.goal_id AS goalId,
+              t.id AS turnId,
+              COALESCE(t.ordinal, (SELECT COUNT(*) FROM turns prior WHERE prior.conversation_id = t.conversation_id AND (prior.started_at < t.started_at OR (prior.started_at = t.started_at AND prior.id <= t.id)))) AS turnOrdinal,
+              t.started_at AS startedAt,
+              tc.tool_name AS toolName,
+              tc.status,
+              tc.arguments_json AS argumentsJson,
+              tc.result_json AS resultJson
+       FROM tool_calls tc
+       INNER JOIN turns t ON t.id = tc.turn_id
+       INNER JOIN conversations c ON c.id = t.conversation_id AND c.status IN ('active','archived')
+       LEFT JOIN work_tasks wt ON wt.source_runtime = 'classic' AND wt.source_turn_id = t.id
+       WHERE json_extract(tc.metadata_json, '$.contextResultHandle') = ?`,
+    ).all(resultHandle) as ExactToolRow[]
+    const flow = this.handle.sqlite.prepare(
+      `SELECT vtc.project_id AS projectId,
+              vtc.flow_id AS conversationKey,
+              'Seamless Flow' AS conversationTitle,
+              COALESCE(vtc.goal_id, wt.goal_id) AS goalId,
+              vt.id AS turnId,
+              vt.ordinal AS turnOrdinal,
+              vt.started_at AS startedAt,
+              vtc.tool_name AS toolName,
+              vtc.status,
+              vtc.arguments_json AS argumentsJson,
+              vtc.result_json AS resultJson
+       FROM v2_tool_calls vtc
+       INNER JOIN v2_turns vt ON vt.id = vtc.turn_id
+       LEFT JOIN work_tasks wt ON wt.source_runtime = 'v2_flow' AND wt.source_turn_id = vt.id
+       WHERE json_extract(vtc.metadata_json, '$.contextResultHandle') = ?`,
+    ).all(resultHandle) as ExactToolRow[]
+    const visible = authority
+      ? [...classic, ...flow].filter((row) => row.conversationKey === authority.presentedConversationId || row.goalId === authority.goalId)
+      : [...classic, ...flow]
+    const selected = visible.sort((left, right) => {
+      const leftCurrent = authority && left.turnId === authority.currentTurnId ? 1 : 0
+      const rightCurrent = authority && right.turnId === authority.currentTurnId ? 1 : 0
+      if (leftCurrent !== rightCurrent) return rightCurrent - leftCurrent
+      const leftPresented = authority && left.conversationKey === authority.presentedConversationId ? 1 : 0
+      const rightPresented = authority && right.conversationKey === authority.presentedConversationId ? 1 : 0
+      if (leftPresented !== rightPresented) return rightPresented - leftPresented
+      const leftGoal = authority && left.goalId === authority.goalId ? 1 : 0
+      const rightGoal = authority && right.goalId === authority.goalId ? 1 : 0
+      if (leftGoal !== rightGoal) return rightGoal - leftGoal
+      return right.startedAt.localeCompare(left.startedAt) || right.turnId.localeCompare(left.turnId)
+    })[0]
+    if (!selected) return undefined
+    const content = [
+      `Result: ${resultHandle}`,
+      `Tool: ${selected.toolName}`,
+      `Status: ${selected.status}`,
+      `Arguments: ${selected.argumentsJson}`,
+      selected.resultJson ? `Exact result: ${selected.resultJson}` : "Exact result: unavailable",
+    ].join("\n")
+    return {
+      projectId: selected.projectId,
+      result: {
+        resultNumber: 1,
+        content,
+        turnId: selected.turnId,
+        projectTitle: this.projectTitle(selected.projectId),
+        conversationTitle: selected.conversationTitle?.trim() || "Untitled conversation",
+        turnNumber: selected.turnOrdinal ?? 1,
+        matchedRole: "assistant",
+        status: selected.status === "completed" ? "complete" : "failed_user_only",
+        occurredAt: selected.startedAt,
+      },
+    }
+  }
+
   retrieveMainToolTraces(projectId: string, conversationId: string, input: TraceRetrieveMainToolInput | TraceRetrieveToolInput) {
     return this.retrieval.retrieveMainTrace(projectId, conversationId, traceRetrieveMainToolInputSchema.parse(input))
   }
@@ -1400,6 +1509,7 @@ export class SocratesStore {
     projectId: string
     presentedConversationId: string
     goalId: string
+    currentTurnId: string
     request: TraceRetrieveMainToolInput
   }) {
     return retrieveUnifiedMainToolTracesFromAuthority(

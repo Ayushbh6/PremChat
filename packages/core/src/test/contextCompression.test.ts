@@ -3,6 +3,7 @@ import {
   DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS,
   SOCRATES_COMPRESSOR_SYSTEM_PROMPT,
   buildCompressorUserMessageContent,
+  buildSocratesCompressorUserContent,
   type CompleteCompactionSnapshotInput,
   type ContextCompactionSummary,
   type StartCompactionSnapshotInput,
@@ -243,11 +244,12 @@ describe("context compression", () => {
     expect(countOccurrences(compressorInput, previous)).toBe(1)
   })
 
-  it("repairs only invalid anchors when the rest of the object validates", async () => {
+  it("uses the normal bounded structured-output retry instead of a separate anchor agent", async () => {
     const badAnchors = validChat({ anchors: ["inspect turn one without prefix"] })
+    const repaired = validChat({ goal: badAnchors.goal, anchors: ["Turn 1: inspect the repaired anchor."] })
     const provider = structuredProvider({
       counts: [10, 5],
-      outputs: [badAnchors, { anchors: ["Turn 1: inspect the repaired anchor."] }],
+      outputs: [badAnchors, repaired],
     })
     const completed: ContextCompactionSummary[] = []
 
@@ -274,7 +276,8 @@ describe("context compression", () => {
     })
 
     expect(provider.structuredRequests).toHaveLength(2)
-    expect(String(provider.structuredRequests[1]?.system)).toContain("repair only")
+    expect(String(provider.structuredRequests[1]?.system)).toContain("Socrates Compressor Agent")
+    expect(String(provider.structuredRequests[1]?.system)).not.toContain("repair only")
     expect(completed[0]?.summary.goal).toBe(badAnchors.goal)
     expect(completed[0]?.summary.anchors).toEqual(["Turn 1: inspect the repaired anchor."])
   })
@@ -472,7 +475,7 @@ describe("context compression", () => {
     })
 
     const compressorInput = String(provider.structuredRequests[0]?.messages[0]?.content)
-    expect(compressorInput).toContain("# Old Head Turns To Compress")
+    expect(compressorInput).toContain("# Completed Source Batches To Compress")
     expect(compressorInput).toContain("HEAD_OBJECTIVE_SENTINEL")
     expect(compressorInput).toContain("HEAD_FAILURE_SENTINEL")
     expect(compressorInput).not.toContain("TAIL_RAW_SENTINEL")
@@ -510,10 +513,40 @@ describe("context compression", () => {
       expect(completed[0]?.renderedSummary).toContain(header)
     }
     expect(completed[0]?.sourceHandles).toEqual([
-      { turnNo: 1, turnId: "turn_head_1", retrieve: "trace_retrieve({ turnNo: 1 })" },
-      { turnNo: 2, turnId: "turn_head_2", retrieve: "trace_retrieve({ turnNo: 2 })" },
-      { anchor: "Turn 1: inspect the durable user objective.", turnNo: 1, turnId: "turn_head_1" },
-      { anchor: "Turn 2: inspect the exact failed command and relevant file path.", turnNo: 2, turnId: "turn_head_2" },
+      {
+        schemaVersion: 2,
+        kind: "completed_turn",
+        turnOrdinal: 1,
+        turnId: "turn_head_1",
+        messageIds: ["msg_head_1u", "msg_head_1a"],
+        retrieve: "trace_retrieve({ turnNo: 1 })",
+      },
+      {
+        schemaVersion: 2,
+        kind: "completed_turn",
+        turnOrdinal: 2,
+        turnId: "turn_head_2",
+        messageIds: ["msg_head_2u", "msg_head_2a"],
+        retrieve: "trace_retrieve({ turnNo: 2 })",
+      },
+      {
+        schemaVersion: 2,
+        kind: "anchor",
+        anchor: "Turn 1: inspect the durable user objective.",
+        turnOrdinal: 1,
+        turnId: "turn_head_1",
+        messageIds: ["msg_head_1u", "msg_head_1a"],
+        retrieve: "trace_retrieve({ turnNo: 1 })",
+      },
+      {
+        schemaVersion: 2,
+        kind: "anchor",
+        anchor: "Turn 2: inspect the exact failed command and relevant file path.",
+        turnOrdinal: 2,
+        turnId: "turn_head_2",
+        messageIds: ["msg_head_2u", "msg_head_2a"],
+        retrieve: "trace_retrieve({ turnNo: 2 })",
+      },
     ])
 
     const packed = JSON.stringify(prepared.messages)
@@ -527,32 +560,58 @@ describe("context compression", () => {
     expect(prepared.compactionEvents.map((event) => event.type)).toEqual(["context.compaction.started", "context.compaction.completed"])
   }, SLOW_COMPRESSION_TEST_TIMEOUT_MS)
 
-  it("refuses to mutate an oversized active turn when there is no completed head to compact", async () => {
-    const provider = structuredProvider({ counts: [170_000] })
+  it("compacts completed tool batches in an oversized first turn while keeping the request and newest batch raw", async () => {
+    // Sanitized shape from a local Codex rollout: its first turn completed 122
+    // tool exchanges with 792,583 output characters. No conversation text is copied.
+    const naturalToolBatchCount = 122
+    const syntheticPayloadChars = 256
+    const provider = structuredProvider({
+      counts: [170_000, 60_000],
+      outputs: [validChat({ anchors: ["Turn 17: inspect the exact first-turn request and completed tool evidence."] })],
+    })
     const messages = [
       {
         role: "user" as const,
         content: "First active turn needs lots of tools.",
         id: "msg_user",
         turnId: "turn_1",
+        turnOrdinal: 17,
       },
+      ...Array.from({ length: naturalToolBatchCount }, (_, index) => {
+        const number = index + 1
+        return [
+          {
+            role: "assistant" as const,
+            id: `msg_call_${number}`,
+            turnId: "turn_1",
+            turnOrdinal: 17,
+            content: [{ type: "tool-call" as const, toolCallId: `tool_${number}`, toolName: "read", input: { path: `src/file${number}.ts` } }],
+          },
+          {
+            role: "tool" as const,
+            id: `msg_result_${number}`,
+            turnId: "turn_1",
+            turnOrdinal: 17,
+            content: [{
+              type: "tool-result" as const,
+              toolCallId: `tool_${number}`,
+              toolName: "read",
+              output: { path: `src/file${number}.ts`, content: `ACTIVE_BATCH_${number} ${"x".repeat(syntheticPayloadChars)}` },
+            }],
+          },
+        ]
+      }).flat(),
       {
         role: "assistant" as const,
-        id: "msg_assistant",
+        id: "msg_pending_call",
         turnId: "turn_1",
-        content: Array.from({ length: 7 }, (_, index) => [
-          { type: "tool-call" as const, toolCallId: `tool_${index + 1}`, toolName: "read", input: { path: `src/file${index + 1}.ts` } },
-          {
-            type: "tool-result" as const,
-            toolCallId: `tool_${index + 1}`,
-            toolName: "read",
-            output: { path: `src/file${index + 1}.ts`, content: `result ${index + 1} ${"x".repeat(1200)}` },
-          },
-        ]).flat(),
+        turnOrdinal: 17,
+        content: [{ type: "tool-call" as const, toolCallId: "tool_pending", toolName: "wait", input: { terminalNames: ["build"] } }],
       },
     ]
 
-    await expect(prepareContextForModelCall({
+    const completed: CompleteCompactionSnapshotInput[] = []
+    const prepared = await prepareContextForModelCall({
       provider,
       providerId: "openai",
       modelId: "gpt-5.4-mini",
@@ -561,14 +620,62 @@ describe("context compression", () => {
       messages,
       compression: {
         enabled: true,
-        thresholds: { triggerTokens: 170_000 },
+        thresholds: { triggerTokens: 170_000, recentTailTargetTokens: 500 },
+        completeSnapshot: (snapshot) => {
+          completed.push(snapshot)
+        },
       },
-    })).rejects.toMatchObject({
-      code: "context_hard_limit_exceeded",
-      details: { hardLimitTokens: 170_000, compactionError: "context_compaction_no_safe_head" },
     })
-    expect(provider.structuredRequests).toHaveLength(0)
+
+    const compressorInput = String(provider.structuredRequests[0]?.messages[0]?.content)
+    expect(compressorInput).toContain("ACTIVE_BATCH_1")
+    expect(compressorInput).not.toContain("First active turn needs lots of tools.")
+    expect(compressorInput).not.toContain(`ACTIVE_BATCH_${naturalToolBatchCount}`)
+    const packed = JSON.stringify(prepared.messages)
+    const rawSuffix = JSON.stringify(prepared.messages.slice(1))
+    expect(packed).toContain("First active turn needs lots of tools.")
+    expect(packed).toContain(`ACTIVE_BATCH_${naturalToolBatchCount}`)
+    expect(packed).toContain("tool_pending")
+    expect(rawSuffix).not.toContain("ACTIVE_BATCH_1 ")
+    expect(completed[0]?.sourceHandles).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        schemaVersion: 2,
+        kind: "active_tool_batch",
+        turnOrdinal: 17,
+        turnId: "turn_1",
+        messageIds: ["msg_call_1", "msg_result_1"],
+      }),
+    ]))
   }, SLOW_COMPRESSION_TEST_TIMEOUT_MS)
+
+  it("keeps a sanitized 122-result active-turn projection within one compactor request", () => {
+    const headTurns = Array.from({ length: 122 }, (_, index) => {
+      const number = index + 1
+      return {
+        turnNo: 17,
+        turnId: "turn_17",
+        sourceKind: "active_tool_batch" as const,
+        messages: [{
+          role: "tool" as const,
+          id: `msg_result_${number}`,
+          turnId: "turn_17",
+          turnOrdinal: 17,
+          content: [{
+            type: "tool-result" as const,
+            toolCallId: `tool_${number}`,
+            toolName: "read",
+            output: { content: `SANITIZED_RESULT_${number} ${"representative output ".repeat(325)}` },
+          }],
+        }],
+      }
+    })
+
+    const projected = buildSocratesCompressorUserContent({ headTurns })
+    expect(projected.length).toBeLessThan(500_000)
+    expect(projected).toContain("SANITIZED_RESULT_1")
+    expect(projected).toContain("SANITIZED_RESULT_122")
+    expect(projected).toContain("[truncated]")
+  })
 
   it("precomputes at the same 170k trigger", async () => {
     const provider = structuredProvider({ counts: [170_000, 70_000], outputs: [validChat()] })
@@ -646,6 +753,89 @@ describe("context compression", () => {
     expect(packed).toContain("middle user")
     expect(packed).toContain("current user")
     expect(provider.structuredRequests).toHaveLength(0)
+  })
+
+  it("applies an active-batch snapshot by exact message id without dropping the same-turn raw suffix", async () => {
+    const provider = structuredProvider({ counts: [50] })
+    const messages = [
+      { role: "user" as const, id: "msg_request", turnId: "turn_active", turnOrdinal: 42, content: "Keep this exact request." },
+      { role: "assistant" as const, id: "msg_call_old", turnId: "turn_active", turnOrdinal: 42, content: [{ type: "tool-call" as const, toolCallId: "old", toolName: "read", input: { path: "old.md" } }] },
+      { role: "tool" as const, id: "msg_result_old", turnId: "turn_active", turnOrdinal: 42, content: [{ type: "tool-result" as const, toolCallId: "old", toolName: "read", output: { ok: true, output: "OLD_RAW_RESULT" } }] },
+      { role: "assistant" as const, id: "msg_call_new", turnId: "turn_active", turnOrdinal: 42, content: [{ type: "tool-call" as const, toolCallId: "new", toolName: "read", input: { path: "new.md" } }] },
+      { role: "tool" as const, id: "msg_result_new", turnId: "turn_active", turnOrdinal: 42, content: [{ type: "tool-result" as const, toolCallId: "new", toolName: "read", output: { ok: true, output: "NEW_RAW_RESULT" } }] },
+    ]
+    const prepared = await prepareContextForModelCall({
+      provider,
+      providerId: "openai",
+      modelId: "gpt-5.4-mini",
+      runtimeConfig,
+      system: "system",
+      messages,
+      compression: {
+        enabled: true,
+        thresholds: { triggerTokens: 1_000 },
+        getLatestSnapshot: () => ({
+          snapshotId: "ctxcmp_partial",
+          summary: validChat({ goal: "PARTIAL_SUMMARY" }),
+          renderedSummary: "# Goal\nPARTIAL_SUMMARY",
+          sourceHandles: [{
+            schemaVersion: 2,
+            kind: "active_tool_batch",
+            turnOrdinal: 42,
+            turnId: "turn_active",
+            messageIds: ["msg_call_old", "msg_result_old"],
+            retrieve: "trace_retrieve({ turnNo: 42 })",
+          }],
+          outputTokensEstimate: 20,
+        }),
+      },
+    })
+
+    const packed = JSON.stringify(prepared.messages)
+    expect(packed).toContain("PARTIAL_SUMMARY")
+    expect(packed).toContain("Keep this exact request.")
+    expect(packed).not.toContain("OLD_RAW_RESULT")
+    expect(packed).toContain("NEW_RAW_RESULT")
+  })
+
+  it("uses persisted canonical ordinals and carries prior anchors across repeated compactions", async () => {
+    const provider = structuredProvider({
+      counts: [170_000, 60_000],
+      outputs: [validChat({ anchors: ["Turn 42: inspect the newer exact evidence."] })],
+    })
+    const completed: CompleteCompactionSnapshotInput[] = []
+    await prepareContextForModelCall({
+      provider,
+      providerId: "openai",
+      modelId: "gpt-5.4-mini",
+      runtimeConfig,
+      system: "system",
+      messages: [
+        { role: "user", id: "msg_42u", turnId: "turn_42", turnOrdinal: 42, content: "newer completed request" },
+        { role: "assistant", id: "msg_42a", turnId: "turn_42", turnOrdinal: 42, content: "newer completed answer" },
+        { role: "user", id: "msg_43u", turnId: "turn_43", turnOrdinal: 43, content: "active request" },
+      ],
+      compression: {
+        enabled: true,
+        thresholds: { recentTailTargetTokens: 1 },
+        getLatestSnapshot: () => ({
+          snapshotId: "ctxcmp_prior",
+          summary: validChat({ anchors: ["Turn 7: inspect the original durable constraint."] }),
+          renderedSummary: "# Anchors\n- Turn 7: inspect the original durable constraint.",
+          sourceHandles: [{ turnNo: 7, turnId: "turn_7" }],
+          outputTokensEstimate: 20,
+        }),
+        completeSnapshot: (snapshot) => {
+          completed.push(snapshot)
+        },
+      },
+    })
+
+    expect(String(provider.structuredRequests[0]?.messages[0]?.content)).toContain("## Turn 42")
+    expect(completed[0]?.summary.anchors).toEqual([
+      "Turn 7: inspect the original durable constraint.",
+      "Turn 42: inspect the newer exact evidence.",
+    ])
   })
 
   it("rejects anchors whose turns are absent from compressor input", async () => {

@@ -1235,7 +1235,11 @@ export class TraceStore extends StoreBase {
              t.completed_at AS completedAt,
              t.user_message_id AS userMessageId,
              t.assistant_message_id AS assistantMessageId,
-             ROW_NUMBER() OVER (ORDER BY t.started_at ASC, t.id ASC) AS turnNo
+             COALESCE(t.ordinal, (
+               SELECT COUNT(*) FROM turns prior
+               WHERE prior.conversation_id = t.conversation_id
+                 AND (prior.started_at < t.started_at OR (prior.started_at = t.started_at AND prior.id <= t.id))
+             )) AS turnNo
            FROM turns t
            INNER JOIN conversations c ON c.id = t.conversation_id
            WHERE ${where.join(" AND ")}
@@ -1283,7 +1287,8 @@ export class TraceStore extends StoreBase {
           : input.turnId && !input.handle
             ? this.buildTurnBundle(projectId, input.turnId, include)
             : doc.content
-      const truncated = truncateText(content, charLimit)
+      const offset = input.offset ?? 0
+      const truncated = truncateText(content.slice(offset), charLimit)
       const turnNo = doc.turnId && doc.conversationId ? this.findTurnNo(projectId, doc.conversationId, doc.turnId) : undefined
       const rawMessage = doc.sourceTable === "messages" ? this.getRawMessage(projectId, doc.sourceId) : undefined
       const resolvedMessageRole = doc.sourceTable === "messages" ? (this.messageRoleForDocument(doc) ?? messageRole(rawMessage?.role ?? "")) : undefined
@@ -1308,7 +1313,7 @@ export class TraceStore extends StoreBase {
                 charLimit,
                 originalLength: content.length,
                 returnedLength: truncated.text.length,
-                nextOffset: truncated.text.length,
+                nextOffset: offset + truncated.text.length,
               },
             }
           : {}),
@@ -2150,14 +2155,14 @@ export class TraceStore extends StoreBase {
   private findTurnNo(projectId: string, conversationId: string, turnId: string): number | undefined {
     const row = this.handle.sqlite
       .prepare(
-        `SELECT ordered.turn_no AS turnNo
-         FROM (
-           SELECT t.id, ROW_NUMBER() OVER (ORDER BY t.started_at ASC, t.id ASC) AS turn_no
-           FROM turns t
-           INNER JOIN conversations c ON c.id = t.conversation_id
-           WHERE c.project_id = ? AND c.status IN ('active', 'archived') AND t.conversation_id = ? AND t.user_message_id IS NOT NULL
-         ) ordered
-         WHERE ordered.id = ?
+        `SELECT COALESCE(t.ordinal, (
+                  SELECT COUNT(*) FROM turns prior
+                  WHERE prior.conversation_id = t.conversation_id
+                    AND (prior.started_at < t.started_at OR (prior.started_at = t.started_at AND prior.id <= t.id))
+                )) AS turnNo
+         FROM turns t
+         INNER JOIN conversations c ON c.id = t.conversation_id
+         WHERE c.project_id = ? AND c.status IN ('active', 'archived') AND t.conversation_id = ? AND t.id = ?
          LIMIT 1`,
       )
       .get(projectId, conversationId, turnId) as { turnNo: number } | undefined
@@ -2362,10 +2367,6 @@ export class TraceStore extends StoreBase {
       return message ? [makeSyntheticSourceDocument(projectId, message.conversationId, message.turnId, "messages", message.id, `${capitalize(message.role)} message`, message.content)] : []
     }
     if (input.toolCallId) {
-      const docs = this.selectVisibleTraceDocuments(projectId, "td.source_table = 'tool_calls' AND td.source_id = ?", [input.toolCallId])
-      if (docs.length > 0) {
-        return docs
-      }
       const toolCall = this.getRawToolCall(projectId, input.toolCallId)
       return toolCall
         ? [

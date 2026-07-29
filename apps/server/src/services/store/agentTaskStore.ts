@@ -49,6 +49,7 @@ export type ReadyTerminalTask = {
 
 export type ContinuedTerminalTask = ReadyTerminalTask & {
   turnId: string
+  turnOrdinal: number
   runtimeConfigId: string
 }
 
@@ -333,6 +334,7 @@ export class AgentTaskStore extends StoreBase {
   beginContinuation(task: ReadyTerminalTask): ContinuedTerminalTask | undefined {
     const now = nowIso()
     const turnId = createId("turn")
+    const turnOrdinal = this.nextConversationTurnOrdinal(task.conversationId)
     const runtimeConfigId = createId("trc")
     const started = this.handle.sqlite.transaction(() => {
       const changed = this.handle.db
@@ -341,14 +343,21 @@ export class AgentTaskStore extends StoreBase {
         .where(and(eq(agentTasks.id, task.taskId), eq(agentTasks.status, "ready")))
         .run().changes
       if (changed === 0) return false
-      this.handle.db.insert(turns).values({ id: turnId, sessionId: task.sessionId, conversationId: task.conversationId, status: "running", startedAt: now }).run()
+      this.handle.db.insert(turns).values({
+        id: turnId,
+        sessionId: task.sessionId,
+        conversationId: task.conversationId,
+        ordinal: turnOrdinal,
+        status: "running",
+        startedAt: now,
+      }).run()
       const ordinal = this.handle.db.select({ id: agentTaskTurns.id }).from(agentTaskTurns).where(eq(agentTaskTurns.taskId, task.taskId)).all().length
       this.handle.db.insert(agentTaskTurns).values({ id: createId("tturn"), taskId: task.taskId, turnId, ordinal, kind: "resume", createdAt: now }).run()
       this.insertRuntimeConfigWithId(runtimeConfigId, turnId, task.runtimeConfig, now)
       this.handle.db.update(sessions).set({ status: "active", updatedAt: now }).where(eq(sessions.id, task.sessionId)).run()
       return true
     })()
-    return started ? { ...task, turnId, runtimeConfigId } : undefined
+    return started ? { ...task, turnId, turnOrdinal, runtimeConfigId } : undefined
   }
 
   listReadyTasks(): ReadyTerminalTask[] {

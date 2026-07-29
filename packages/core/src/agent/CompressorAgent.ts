@@ -1,7 +1,5 @@
 import {
-  chatCompactionDraftSchema,
   chatCompactionSchema,
-  memoryCompactionDraftSchema,
   memoryCompactionSchema,
   type ChatCompaction,
   type MemoryCompaction,
@@ -10,12 +8,10 @@ import {
 import type { ModelProvider, ModelUsage } from "@socrates/providers"
 import type { ProviderAuthMode, ProviderId, ThinkingEffort } from "@socrates/contracts"
 import { SocratesError } from "@socrates/shared"
-import { SOCRATES_ANCHOR_REPAIR_SYSTEM_PROMPT } from "../prompts/socratesCompressorPrompt"
 import { AgentInstance } from "./AgentInstance"
 import type { AgentDefinition } from "./AgentDefinition"
 import type { AgentRuntimeStructuredResult } from "./AgentRuntime"
 import {
-  anchorRepairAgentDefinition,
   chatCompressorAgentDefinition,
   memoryCompressorAgentDefinition,
   type DynamicSystemPromptContext,
@@ -110,7 +106,7 @@ export class CompressorAgent {
     attemptNumber: number,
     maxOutputRepairAttempts: number,
   ): Promise<CompressorAgentResult> {
-    const schemas = schemasForMode(input.mode)
+    const schema = schemaForMode(input.mode)
     const definition = (input.mode === "chat"
       ? chatCompressorAgentDefinition
       : memoryCompressorAgentDefinition) as AgentDefinition<DynamicSystemPromptContext, unknown>
@@ -123,55 +119,16 @@ export class CompressorAgent {
       maxOutputRepairAttempts,
     )
 
-    const strict = schemas.strict.safeParse(generated.output)
-    if (strict.success) {
-      assertAnchorTurnsAllowed(strict.data as { anchors: string[] }, input.allowedTurnNumbers)
-      const output = enforceDeterministicCarryover(input.mode, strict.data, input.userContent, schemas.strict)
-      const usage = mergeUsages(generated.usages)
-      return {
-        mode: input.mode,
-        output: output as never,
-        providerId: model.providerId,
-        modelId: model.modelId,
-        ...(usage ? { usage } : {}),
-        repairedAnchors: false,
-        attempts: attemptNumber,
-      } as CompressorAgentResult
-    }
-
-    const withoutAnchors = schemas.rest.safeParse(generated.output)
-    if (!withoutAnchors.success) {
+    const strict = schema.safeParse(generated.output)
+    if (!strict.success) {
       throw new SocratesError("compressor_schema_validation_failed", "Compressor output did not match the required schema.", {
         details: strict.error.flatten(),
         recoverable: true,
       })
     }
-
-    const repaired = await this.runStructured(
-      input,
-      model,
-      anchorRepairAgentDefinition,
-      SOCRATES_ANCHOR_REPAIR_SYSTEM_PROMPT,
-      [
-        "# Source Text",
-        input.userContent,
-        "",
-        "# Bad Anchors",
-        JSON.stringify(anchorValue(generated.output), null, 2),
-      ].join("\n"),
-      1,
-    )
-    const repairedOutput = { ...recordOrEmpty(generated.output), anchors: repaired.output.anchors }
-    const repairedStrict = schemas.strict.safeParse(repairedOutput)
-    if (!repairedStrict.success) {
-      throw new SocratesError("compressor_anchor_repair_failed", "Compressor anchor repair did not produce valid anchors.", {
-        details: repairedStrict.error.flatten(),
-        recoverable: true,
-      })
-    }
-    assertAnchorTurnsAllowed(repairedStrict.data as { anchors: string[] }, input.allowedTurnNumbers)
-    const output = enforceDeterministicCarryover(input.mode, repairedStrict.data, input.userContent, schemas.strict)
-    const usage = mergeUsage(mergeUsages(generated.usages), mergeUsages(repaired.usages))
+    assertAnchorTurnsAllowed(strict.data as { anchors: string[] }, input.allowedTurnNumbers)
+    const output = enforceDeterministicCarryover(input.mode, strict.data, input.userContent, schema)
+    const usage = mergeUsages(generated.usages)
 
     return {
       mode: input.mode,
@@ -179,7 +136,7 @@ export class CompressorAgent {
       providerId: model.providerId,
       modelId: model.modelId,
       ...(usage ? { usage } : {}),
-      repairedAnchors: true,
+      repairedAnchors: false,
       attempts: attemptNumber,
     } as CompressorAgentResult
   }
@@ -330,16 +287,8 @@ const assertAnchorTurnsAllowed = (output: { anchors: string[] }, allowedTurnNumb
   }
 }
 
-const schemasForMode = (mode: CompressorAgentMode) =>
-  mode === "chat"
-    ? {
-        strict: chatCompactionSchema,
-        rest: chatCompactionDraftSchema,
-      }
-    : {
-        strict: memoryCompactionSchema,
-        rest: memoryCompactionDraftSchema,
-      }
+const schemaForMode = (mode: CompressorAgentMode) =>
+  mode === "chat" ? chatCompactionSchema : memoryCompactionSchema
 
 const compressorRuntimeConfig = (model: CompressorAgentModel): RuntimeConfig => ({
   providerId: model.providerId,
@@ -350,11 +299,6 @@ const compressorRuntimeConfig = (model: CompressorAgentModel): RuntimeConfig => 
   approvalMode: "read_only_auto" as const,
   sandboxMode: "read_only" as const,
 })
-
-const anchorValue = (output: unknown): unknown =>
-  output && typeof output === "object" && "anchors" in output ? (output as { anchors?: unknown }).anchors : undefined
-
-const recordOrEmpty = (value: unknown): Record<string, unknown> => (value && typeof value === "object" ? (value as Record<string, unknown>) : {})
 
 const mergeUsage = (first?: ModelUsage, second?: ModelUsage): ModelUsage | undefined => {
   if (!first) {

@@ -15,6 +15,10 @@ export type ModelMessage = {
   content: ModelMessageContent
   id?: string
   turnId?: string
+  /** Stable canonical position in the full conversation/flow, never projection-relative. */
+  turnOrdinal?: number
+  /** Stable canonical task/goal position when the runtime has one. */
+  taskOrdinal?: number
 }
 
 export type ModelMessageContent = string | ModelMessagePart[]

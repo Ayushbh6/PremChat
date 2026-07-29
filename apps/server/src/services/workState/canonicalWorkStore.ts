@@ -222,6 +222,15 @@ export class CanonicalWorkStore {
     return index >= 0 ? index + 1 : Math.max(1, tasks.length)
   }
 
+  turnOrdinal(sourceRuntime: WorkSourceRuntime, sourceTurnId: string): number | undefined {
+    if (sourceRuntime === "v2_flow") {
+      return this.handle.db.select({ ordinal: v2Turns.ordinal }).from(v2Turns)
+        .where(eq(v2Turns.id, sourceTurnId)).limit(1).get()?.ordinal
+    }
+    return this.handle.db.select({ ordinal: turns.ordinal }).from(turns)
+      .where(eq(turns.id, sourceTurnId)).limit(1).get()?.ordinal ?? undefined
+  }
+
   listFlowToolCalls(flowId: string): V2ToolCall[] {
     const tasks = this.handle.db.select({ task: workTasks }).from(workTasks)
       .innerJoin(v2Goals, eq(v2Goals.id, workTasks.goalId))

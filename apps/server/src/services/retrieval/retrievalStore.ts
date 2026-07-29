@@ -477,7 +477,7 @@ export class RetrievalStore {
       params.push(options.conversationTitle)
     }
     if (options.turnNumber) {
-      where.push("(SELECT COUNT(*) FROM turns prior WHERE prior.conversation_id = t.conversation_id AND (prior.started_at < t.started_at OR (prior.started_at = t.started_at AND prior.id <= t.id))) = ?")
+      where.push("COALESCE(t.ordinal, (SELECT COUNT(*) FROM turns prior WHERE prior.conversation_id = t.conversation_id AND (prior.started_at < t.started_at OR (prior.started_at = t.started_at AND prior.id <= t.id)))) = ?")
       params.push(options.turnNumber)
     }
     const limit = Math.min(8, Math.max(1, options.limit ?? 8))
@@ -490,7 +490,7 @@ export class RetrievalStore {
               t.failed_at AS failedAt,
               t.cancelled_at AS cancelledAt,
               c.title AS conversationTitle,
-              (SELECT COUNT(*) FROM turns prior WHERE prior.conversation_id = t.conversation_id AND (prior.started_at < t.started_at OR (prior.started_at = t.started_at AND prior.id <= t.id))) AS turnNumber,
+              COALESCE(t.ordinal, (SELECT COUNT(*) FROM turns prior WHERE prior.conversation_id = t.conversation_id AND (prior.started_at < t.started_at OR (prior.started_at = t.started_at AND prior.id <= t.id)))) AS turnNumber,
               um.content AS userContent,
               am.content AS assistantContent
        FROM turns t
@@ -568,7 +568,7 @@ export class RetrievalStore {
               td.created_at AS occurredAt,
               c.title AS conversationTitle,
               t.status AS turnStatus,
-              (SELECT COUNT(*) FROM turns prior WHERE prior.conversation_id = t.conversation_id AND (prior.started_at < t.started_at OR (prior.started_at = t.started_at AND prior.id <= t.id))) AS turnNumber
+              COALESCE(t.ordinal, (SELECT COUNT(*) FROM turns prior WHERE prior.conversation_id = t.conversation_id AND (prior.started_at < t.started_at OR (prior.started_at = t.started_at AND prior.id <= t.id)))) AS turnNumber
        FROM trace_documents_fts
        INNER JOIN trace_documents td ON td.id = trace_documents_fts.trace_document_id
        INNER JOIN conversations c ON c.id = td.conversation_id

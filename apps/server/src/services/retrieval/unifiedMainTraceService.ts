@@ -10,6 +10,7 @@ type UnifiedTraceAuthority = {
   scope: "presented_context" | "current_goal" | "project"
   presentedConversationId: string
   goalId: string
+  currentTurnId: string
 }
 
 export const retrieveUnifiedMainToolTraces = async (
@@ -21,6 +22,7 @@ export const retrieveUnifiedMainToolTraces = async (
     projectId: string
     presentedConversationId: string
     goalId: string
+    currentTurnId: string
     request: TraceRetrieveMainToolInput
   },
 ): Promise<TraceRetrieveMainToolOutput> => {
@@ -29,6 +31,7 @@ export const retrieveUnifiedMainToolTraces = async (
     scope: request.operation === "inspect" ? "project" : request.scope ?? "project",
     presentedConversationId: input.presentedConversationId,
     goalId: input.goalId,
+    currentTurnId: input.currentTurnId,
   })
   return {
     results: output.results.map(({ projectTitle: _projectTitle, turnId: _turnId, ...result }) => result),
@@ -45,6 +48,7 @@ const toGlobalInput = (
   if (request.operation === "inspect") {
     return {
       operation: "inspect",
+      ...(request.result ? { result: request.result } : {}),
       ...(request.resultNumber ? { resultNumber: request.resultNumber } : {}),
       ...(request.conversationTitle ? { conversationTitle: request.conversationTitle } : {}),
       ...(request.turnNo ? { turnNo: request.turnNo } : {}),

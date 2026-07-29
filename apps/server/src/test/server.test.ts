@@ -6770,6 +6770,14 @@ describe("WebSocket API", () => {
     try {
       const sessionA = insertTestSession(handle.sqlite, projectA.id, conversationA.id)
       const sessionB = insertTestSession(handle.sqlite, projectB.id, conversationB.id)
+      const betaOlder = insertCompletedTestTurn(
+        handle.sqlite,
+        conversationB.id,
+        sessionB,
+        "An older Beta turn.",
+        "Older Beta evidence recorded.",
+        new Date(Date.now() - 3_000).toISOString(),
+      )
       const alpha = insertCompletedTestTurn(
         handle.sqlite,
         conversationA.id,
@@ -6786,6 +6794,8 @@ describe("WebSocket API", () => {
         "Beta evidence recorded.",
         new Date(Date.now() - 1_000).toISOString(),
       )
+      handle.sqlite.prepare("UPDATE turns SET ordinal = ? WHERE id = ?").run(17, alpha.turnId)
+      handle.sqlite.prepare("UPDATE turns SET ordinal = ? WHERE id = ?").run(41, beta.turnId)
       const now = nowIso()
       handle.sqlite
         .prepare(
@@ -6821,6 +6831,7 @@ describe("WebSocket API", () => {
         projectTitle: "Global Trace Alpha",
         conversationTitle: "Alpha Evidence",
         turnId: alpha.turnId,
+        turnNumber: 17,
         matchedRole: "user",
       }))
       expect(lexical.results[0]).not.toHaveProperty("projectId")
@@ -6848,6 +6859,50 @@ describe("WebSocket API", () => {
       expect(audit.results[0]).toEqual(expect.objectContaining({ projectTitle: "Global Trace Beta", turnId: beta.turnId }))
       expect(audit.results[0]?.content).toContain("GLOBALAUDIT88.txt")
       expect(audit.results).toHaveLength(1)
+
+      const olderExactToolCallId = createId("tcall")
+      store.createToolCall({
+        toolCallId: olderExactToolCallId,
+        conversationId: conversationB.id,
+        sessionId: sessionB,
+        turnId: betaOlder.turnId,
+        toolName: "mcp__test__older_result",
+        arguments: { operation: "read" },
+        requiresApproval: false,
+      })
+      store.completeToolCall(olderExactToolCallId, { content: "OLDER-R1-MUST-NOT-WIN" })
+      store.bindContextResultHandle(olderExactToolCallId, "R1")
+
+      const exactToolCallId = createId("tcall")
+      store.createToolCall({
+        toolCallId: exactToolCallId,
+        conversationId: conversationB.id,
+        sessionId: sessionB,
+        turnId: beta.turnId,
+        toolName: "mcp__test__large_result",
+        arguments: { operation: "read" },
+        requiresApproval: false,
+      })
+      store.completeToolCall(exactToolCallId, { content: `CLASSIC-R1-EXACT-START ${"x".repeat(30_000)} CLASSIC-R1-EXACT-END` })
+      store.bindContextResultHandle(exactToolCallId, "R1")
+      let offset = 0
+      let recovered = ""
+      for (let page = 0; page < 4; page += 1) {
+        const inspectedR1 = await store.retrieveUnifiedMainToolTraces({
+          projectId: projectB.id,
+          presentedConversationId: conversationB.id,
+          goalId: "goal_not_required_for_presented_context",
+          currentTurnId: beta.turnId,
+          request: { operation: "inspect", result: "R1", charLimit: 10_000, offset },
+        })
+        const result = inspectedR1.results[0]
+        expect(result && "turnNumber" in result ? result.turnNumber : undefined).toBe(41)
+        recovered += result && "content" in result ? result.content : ""
+        offset = inspectedR1.truncation?.nextOffset ?? offset
+      }
+      expect(recovered).toContain("CLASSIC-R1-EXACT-START")
+      expect(recovered).toContain("CLASSIC-R1-EXACT-END")
+      expect(recovered).not.toContain("OLDER-R1-MUST-NOT-WIN")
     } finally {
       await store.close()
     }

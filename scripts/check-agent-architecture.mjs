@@ -26,7 +26,7 @@ const executionOwners = [
   { id: "socrates-main", path: "packages/core/src/agent/SocratesAgent.ts", definitionId: "socrates-main", status: "canonical" },
   { id: "skill-writer", path: "apps/server/src/services/store/skillWriterAgentRunner.ts", definitionId: "skill-writer", status: "canonical" },
   { id: "global-memory", path: "apps/server/src/services/store/memoryAgentRunner.ts", definitionId: "global-memory", status: "canonical" },
-  { id: "context-compressor", path: "packages/core/src/agent/CompressorAgent.ts", definitionId: "socrates-context-compactor,memory-context-compactor,context-anchor-repair", status: "canonical" },
+  { id: "context-compressor", path: "packages/core/src/agent/CompressorAgent.ts", definitionId: "socrates-context-compactor,memory-context-compactor", status: "canonical" },
   { id: "title-generator", path: "packages/core/src/agent/TitleGeneratorAgent.ts", definitionId: "title-generator", status: "canonical" },
   { id: "soul-confirmation", path: "packages/core/src/agent/SoulConfirmationAgent.ts", definitionId: "soul-confirmation", status: "canonical" },
 ]

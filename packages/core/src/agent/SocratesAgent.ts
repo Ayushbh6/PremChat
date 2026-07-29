@@ -84,6 +84,8 @@ export type SocratesAgentTurnInput = {
   sessionId?: string
   cacheKey?: string
   turnId?: string
+  turnOrdinal?: number
+  taskOrdinal?: number
   providerId: ProviderId
   modelId: string
   runtimeConfig: RuntimeConfig
@@ -102,6 +104,7 @@ export type SocratesAgentTurnInput = {
     promptContext?: SocratesPromptContext
     tools: ModelToolDefinition[]
   }) => string
+  bindContextResultHandle?: (input: { result: string; toolCallId: string; turnId?: string }) => void | Promise<void>
   requestApproval?: (request: ApprovalRequest) => Promise<ApprovalDecision>
   requestCredentialInput?: (request: CredentialInputRequest) => Promise<CredentialInputDecision>
   stableCachePreludeSnapshot?: StableCachePreludeSnapshot
@@ -323,6 +326,16 @@ export class SocratesAgent {
     const system = this.definition.prompt.buildSystem(this.definitionPromptContext)
     const messages: ModelMessage[] = [...input.messages]
     const toolOutputDispositions = new ToolOutputDispositionLedger()
+    const activeTurnOrdinal = input.turnOrdinal ?? [...input.messages].reverse().find((message) =>
+      (!input.turnId || message.turnId === input.turnId) && message.turnOrdinal !== undefined,
+    )?.turnOrdinal
+    const activeTaskOrdinal = input.taskOrdinal ?? input.resolvedTurnContextSeed?.task.ordinal
+    const activeMessageMetadata = () => ({
+      id: createId("msg"),
+      ...(input.turnId ? { turnId: input.turnId } : {}),
+      ...(activeTurnOrdinal ? { turnOrdinal: activeTurnOrdinal } : {}),
+      ...(activeTaskOrdinal ? { taskOrdinal: activeTaskOrdinal } : {}),
+    })
     if (
       input.maxToolCallsPerTurn !== undefined
       && (!Number.isInteger(input.maxToolCallsPerTurn)
@@ -711,7 +724,7 @@ export class SocratesAgent {
       const confirmedToolErrorResults = execution.results.filter(isConfirmedToolErrorResult)
       confirmedToolErrors += confirmedToolErrorResults.length
 
-      messages.push({ role: "assistant", content: assistantParts })
+      messages.push({ role: "assistant", content: assistantParts, ...activeMessageMetadata() })
       const toolResultMessage: ModelMessage = {
         role: "tool",
         content: execution.results.map((result) => ({
@@ -720,6 +733,7 @@ export class SocratesAgent {
           toolName: result.toolName,
           output: sanitizeToolExecutionResultForModel(result, result.providerToolCallId ?? result.toolCallId),
         })),
+        ...activeMessageMetadata(),
       }
       const reconciliationReminder = reconciliationWatermark.takePendingReminder()
       if (reconciliationReminder) {
@@ -730,12 +744,19 @@ export class SocratesAgent {
         })
         await persistReconciliationWatermark()
       }
-      toolOutputDispositions.recordBatch({
+      const resultAssignments = toolOutputDispositions.recordBatch({
         message: toolResultMessage,
         toolCalls: operationalToolCalls,
+        rawResults: operationalResults,
         providerId: currentProviderId,
         modelId: currentModelId,
       })
+      for (const assignment of resultAssignments) {
+        await input.bindContextResultHandle?.({
+          ...assignment,
+          ...(input.turnId ? { turnId: input.turnId } : {}),
+        })
+      }
       messages.push(toolResultMessage)
       const rejectedHandover = execution.results.find(
         (result) =>
@@ -776,7 +797,9 @@ export class SocratesAgent {
           ...(parsedHandover.focus ? { focus: parsedHandover.focus } : {}),
         }
       }
-      const nativeToolMessages = execution.results.flatMap((result) => nativeFollowUpMessagesForToolResult(result, input.workspacePath))
+      const nativeToolMessages = execution.results
+        .flatMap((result) => nativeFollowUpMessagesForToolResult(result, input.workspacePath))
+        .map((message) => ({ ...message, ...activeMessageMetadata() }))
       messages.push(...nativeToolMessages)
       if (repeatedToolInputsThisStep.size > 0) {
         forceFinalNoTools = true

@@ -7,6 +7,7 @@ export type ClassicTerminalTaskContinuation = Readonly<{
   conversationId: string
   sessionId: string
   turnId: string
+  turnOrdinal: number
   runtimeConfigId: string
   runtimeConfig: RuntimeConfig
   resumedFromTurnId: string

@@ -70,7 +70,11 @@ export const loadCanonicalTraceRows = (handle: DatabaseHandle, projectId: string
                 t.assistant_message_id AS assistantMessageId,
                 c.project_id AS projectId,
                 c.title AS conversationTitle,
-                ROW_NUMBER() OVER (PARTITION BY t.conversation_id ORDER BY t.started_at ASC, t.id ASC) AS turnNumber
+                COALESCE(t.ordinal, (
+                  SELECT COUNT(*) FROM turns prior
+                  WHERE prior.conversation_id = t.conversation_id
+                    AND (prior.started_at < t.started_at OR (prior.started_at = t.started_at AND prior.id <= t.id))
+                )) AS turnNumber
          FROM turns t
          INNER JOIN conversations c ON c.id = t.conversation_id
          WHERE c.project_id = ?
@@ -118,7 +122,7 @@ export const loadCanonicalTraceRows = (handle: DatabaseHandle, projectId: string
                 t.assistant_message_id AS assistantMessageId,
                 f.project_id AS projectId,
                 COALESCE('Seamless Flow · ' || NULLIF(TRIM(g.title), ''), 'Seamless Flow') AS conversationTitle,
-                ROW_NUMBER() OVER (PARTITION BY t.flow_id ORDER BY t.ordinal ASC, t.started_at ASC, t.id ASC) AS turnNumber
+                t.ordinal AS turnNumber
          FROM v2_turns t
          INNER JOIN v2_flows f ON f.id = t.flow_id
          LEFT JOIN v2_goals g ON g.id = t.goal_id

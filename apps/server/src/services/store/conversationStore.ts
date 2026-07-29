@@ -309,6 +309,7 @@ export class ConversationStore extends StoreBase {
     const now = nowIso()
     const sessionId = this.ensureSession(projectId, conversationId)
     const turnId = createId("turn")
+    const turnOrdinal = this.nextConversationTurnOrdinal(conversationId)
     const messageId = createId("msg")
     const shouldDeriveTitle = !existingUserMessage && conversation.title === defaultConversationTitle
     const nextTitle = shouldDeriveTitle ? deriveConversationTitle(content) : conversation.title
@@ -319,6 +320,7 @@ export class ConversationStore extends StoreBase {
         id: turnId,
         sessionId,
         conversationId,
+        ordinal: turnOrdinal,
         userMessageId: messageId,
         status: "completed",
         startedAt: now,
@@ -505,15 +507,23 @@ export class ConversationStore extends StoreBase {
         return message.role === "assistant" && message.status === "cancelled" && isCancelledPartialAssistant(message.metadataJson)
       })
     const attachmentsByMessageId = this.getAttachmentsByMessageIds(messageRows.map((message) => message.id))
+    const turnOrdinals = new Map(
+      this.handle.db.select({ id: turns.id, ordinal: turns.ordinal }).from(turns)
+        .where(eq(turns.conversationId, conversationId)).all()
+        .filter((turn): turn is { id: string; ordinal: number } => turn.ordinal !== null)
+        .map((turn) => [turn.id, turn.ordinal]),
+    )
 
     return messageRows.map((message) => {
       const attachments = attachmentsByMessageId.get(message.id) ?? []
       const content = buildModelMessageContent(message.content, attachments, options)
+      const turnOrdinal = message.turnId ? turnOrdinals.get(message.turnId) : undefined
       return {
         role: message.role as ConversationModelMessage["role"],
         content,
         id: message.id,
         ...(message.turnId ? { turnId: message.turnId } : {}),
+        ...(turnOrdinal !== undefined ? { turnOrdinal } : {}),
       }
     })
   }

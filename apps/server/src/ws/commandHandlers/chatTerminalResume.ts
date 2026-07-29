@@ -57,6 +57,7 @@ export const resumeTerminalTask = async (
     conversationId: continued.conversationId,
     sessionId: continued.sessionId,
     turnId: continued.turnId,
+    turnOrdinal: continued.turnOrdinal,
     runtimeConfigId: continued.runtimeConfigId,
     runtimeConfig: continued.runtimeConfig,
     resumedFromTurnId: continued.currentTurnId,

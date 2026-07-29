@@ -1,4 +1,12 @@
-import { MAX_COMPACTION_SUMMARY_CHARS, chatCompactionSchema, memoryCompactionSchema, type ChatCompaction, type MemoryCompaction } from "@socrates/contracts"
+import {
+  MAX_COMPACTION_SUMMARY_CHARS,
+  chatCompactionSchema,
+  compactionSourceRefSchema,
+  memoryCompactionSchema,
+  type ChatCompaction,
+  type CompactionSourceRef,
+  type MemoryCompaction,
+} from "@socrates/contracts"
 import { estimateTextTokens, type ModelMessage, type ModelMessagePart, type ModelProvider, type ModelUsage, type TokenCountResult } from "@socrates/providers"
 import type { ModelToolDefinition, ProviderAuthMode, ProviderId, RuntimeConfig, ThinkingEffort } from "@socrates/contracts"
 import { createId, SocratesError } from "@socrates/shared"
@@ -179,9 +187,13 @@ const withLatestSnapshotApplied = async (input: PrepareContextInput): Promise<Pr
   const mode = input.compression.mode ?? "chat"
   const latest = validLatestSnapshot(await input.compression.getLatestSnapshot(), mode)
   if (!latest) return input
-  const compactedTurnIds = new Set(latest.sourceHandles.map((handle) => handle.turnId).filter(isString))
+  const compactedMessageIds = new Set(latest.sourceHandles.flatMap(sourceRefMessageIds))
+  const compactedLegacyTurnIds = new Set(latest.sourceHandles.filter(isLegacyWholeTurnSource).map((handle) => handle.turnId).filter(isString))
   const rawMessages = input.messages.filter((message) => !isInternalCompactionMessage(message))
-  const retainedMessages = rawMessages.filter((message) => !message.turnId || !compactedTurnIds.has(message.turnId))
+  const retainedMessages = rawMessages.filter((message) =>
+    (!message.id || !compactedMessageIds.has(message.id)) &&
+    (!message.turnId || !compactedLegacyTurnIds.has(message.turnId)),
+  )
   return {
     ...input,
     messages: [compactionContextMessage(latest.renderedSummary, mode), ...retainedMessages],
@@ -397,17 +409,18 @@ const runContextCompaction = async (
   const compressorFallbackModelId = compression.compressorFallbackModelId ?? DEFAULT_COMPRESSOR_FALLBACK_MODEL.modelId
   const mode = compression.mode ?? "chat"
   const latestSnapshot = validLatestSnapshot(await compression.getLatestSnapshot?.(), mode)
-  const previouslyCompactedTurnIds = new Set(
-    latestSnapshot?.sourceHandles.map((handle) => handle.turnId).filter(isString) ?? [],
+  const previouslyCompactedMessageIds = new Set(latestSnapshot?.sourceHandles.flatMap(sourceRefMessageIds) ?? [])
+  const previouslyCompactedLegacyTurnIds = new Set(
+    latestSnapshot?.sourceHandles.filter(isLegacyWholeTurnSource).map((handle) => handle.turnId).filter(isString) ?? [],
   )
   const selection = selectCompactionWindow(
     input.messages,
     thresholds,
     mode,
-    previouslyCompactedTurnIds,
+    previouslyCompactedMessageIds,
+    previouslyCompactedLegacyTurnIds,
     estimateCompactionFixedTokens(input),
   )
-  const keptRawMessages = [...selection.tailTurns, ...selection.activeTurns].flatMap((turn) => turn.messages)
   const sourceMessageIds = unique(selection.headTurns.flatMap((turn) => turn.messages.map((message) => message.id).filter(isString)))
   const sourceTurnIds = unique(selection.headTurns.map((turn) => turn.turnId).filter(isString))
   const started: ContextCompactionStartedEvent = {
@@ -471,15 +484,16 @@ const runContextCompaction = async (
       throw new SocratesError("context_compaction_wrong_mode", "Compressor returned the wrong output mode.", { recoverable: true })
     }
 
-    const renderedSummary = renderCompactionMarkdown(compressorResult.output)
+    const summary = carryAnchorsDeterministically(latestSnapshot?.summary, compressorResult.output)
+    const renderedSummary = renderCompactionMarkdown(summary)
     return {
       ok: true,
       snapshotId,
-      summary: compressorResult.output,
+      summary,
       renderedSummary,
       sourceHandles: buildSourceHandles(
         selection.headTurns,
-        compressorResult.output,
+        summary,
         compression.projectId,
         compression.conversationId,
         latestSnapshot?.sourceHandles,
@@ -577,13 +591,21 @@ const selectCompactionWindow = (
   messages: ModelMessage[],
   thresholds: ContextCompressionThresholds,
   mode: ContextCompressionMode = "chat",
-  previouslyCompactedTurnIds: ReadonlySet<string> = new Set(),
+  previouslyCompactedMessageIds: ReadonlySet<string> = new Set(),
+  previouslyCompactedLegacyTurnIds: ReadonlySet<string> = new Set(),
   fixedTokens = 0,
 ): CompactionSelection => {
-  const turns = groupMessagesByTurn(messages.filter((message) => !isInternalCompactionMessage(message)))
-    .filter((turn) => !turn.turnId || !previouslyCompactedTurnIds.has(turn.turnId))
-  const activeTurns = turns.length > 0 ? [turns[turns.length - 1]!] : []
+  const rawMessages = messages
+    .filter((message) => !isInternalCompactionMessage(message))
+    .filter((message) => (!message.id || !previouslyCompactedMessageIds.has(message.id)))
+  const turns = groupMessagesByTurn(rawMessages)
+    .filter((turn) => !turn.turnId || !previouslyCompactedLegacyTurnIds.has(turn.turnId))
+  const activeTurn = turns.at(-1)
   const completedTurns = turns.slice(0, -1)
+  const activeSplit = activeTurn && mode === "chat"
+    ? splitActiveTurn(activeTurn, thresholds, fixedTokens)
+    : { compacted: [] as CompressorTurnInput[], raw: activeTurn ? [activeTurn] : [] }
+  const activeTurns = activeSplit.raw
   const tailTurns: CompressorTurnInput[] = []
   let tailTokens = 0
   const activeTokens = activeTurns.reduce((total, turn) => total + estimateTurnTokens(turn), 0)
@@ -601,7 +623,10 @@ const selectCompactionWindow = (
   }
 
   const selection = {
-    headTurns: completedTurns.slice(0, completedTurns.length - tailTurns.length),
+    headTurns: [
+      ...completedTurns.slice(0, completedTurns.length - tailTurns.length),
+      ...activeSplit.compacted,
+    ],
     tailTurns,
     activeTurns,
   }
@@ -618,13 +643,17 @@ const selectCompactionWindow = (
 const groupMessagesByTurn = (messages: ModelMessage[]): CompressorTurnInput[] => {
   const turns: CompressorTurnInput[] = []
   let currentKey: string | undefined
+  let fallbackOrdinal = 0
   for (const message of messages) {
     const key = message.turnId ?? `message:${message.id ?? turns.length}`
     if (!currentKey || key !== currentKey) {
       currentKey = key
+      fallbackOrdinal += 1
       turns.push({
-        turnNo: turns.length + 1,
+        turnNo: validOrdinal(message.turnOrdinal) ?? fallbackOrdinal,
         ...(message.turnId ? { turnId: message.turnId } : {}),
+        ...(validOrdinal(message.taskOrdinal) ? { taskOrdinal: message.taskOrdinal } : {}),
+        sourceKind: "completed_turn",
         messages: [],
       })
     }
@@ -632,6 +661,99 @@ const groupMessagesByTurn = (messages: ModelMessage[]): CompressorTurnInput[] =>
   }
   return turns
 }
+
+type ActiveToolBatch = {
+  messages: ModelMessage[]
+  firstIndex: number
+  lastIndex: number
+}
+
+const splitActiveTurn = (
+  turn: CompressorTurnInput,
+  thresholds: ContextCompressionThresholds,
+  fixedTokens: number,
+): { compacted: CompressorTurnInput[]; raw: CompressorTurnInput[] } => {
+  const batches = completedActiveToolBatches(turn.messages)
+  if (batches.length < 2) return { compacted: [], raw: [turn] }
+
+  const newest = batches.at(-1)!
+  const protectedIndexes = new Set<number>()
+  for (let index = 0; index < turn.messages.length; index += 1) {
+    const inAnyBatch = batches.some((batch) => index >= batch.firstIndex && index <= batch.lastIndex)
+    if (!inAnyBatch) protectedIndexes.add(index)
+  }
+  const protectedMessages = turn.messages.filter((_message, index) => protectedIndexes.has(index))
+  const protectedTokens = estimateMessagesTokens(protectedMessages)
+  const rawBatchBudget = Math.max(
+    estimateMessagesTokens(newest.messages),
+    Math.min(thresholds.recentTailTargetTokens, thresholds.postCompactionTargetTokens - fixedTokens - protectedTokens),
+  )
+  const rawBatches: ActiveToolBatch[] = []
+  let rawBatchTokens = 0
+  for (let index = batches.length - 1; index >= 0; index -= 1) {
+    const batch = batches[index]!
+    const batchTokens = estimateMessagesTokens(batch.messages)
+    if (rawBatches.length > 0 && rawBatchTokens + batchTokens > rawBatchBudget) break
+    rawBatches.unshift(batch)
+    rawBatchTokens += batchTokens
+  }
+  const rawBatchStarts = new Set(rawBatches.map((batch) => batch.firstIndex))
+  const compactedBatches = batches.filter((batch) => !rawBatchStarts.has(batch.firstIndex))
+  if (compactedBatches.length === 0 || compactedBatches.some((batch) => batch.messages.some((message) => !message.id))) {
+    return { compacted: [], raw: [turn] }
+  }
+  const compactedIndexes = new Set(compactedBatches.flatMap((batch) =>
+    Array.from({ length: batch.lastIndex - batch.firstIndex + 1 }, (_unused, offset) => batch.firstIndex + offset),
+  ))
+  const rawMessages = turn.messages.filter((_message, index) => !compactedIndexes.has(index))
+  return {
+    compacted: compactedBatches.map((batch) => ({
+      turnNo: turn.turnNo,
+      ...(turn.turnId ? { turnId: turn.turnId } : {}),
+      ...(turn.taskOrdinal ? { taskOrdinal: turn.taskOrdinal } : {}),
+      sourceKind: "active_tool_batch",
+      messages: batch.messages,
+    })),
+    raw: [{ ...turn, messages: rawMessages }],
+  }
+}
+
+const completedActiveToolBatches = (messages: ModelMessage[]): ActiveToolBatch[] => {
+  const batches: ActiveToolBatch[] = []
+  for (let index = 0; index < messages.length - 1; index += 1) {
+    const assistant = messages[index]
+    const result = messages[index + 1]
+    if (!assistant || !result || assistant.role !== "assistant" || result.role !== "tool") continue
+    if (!Array.isArray(assistant.content) || !Array.isArray(result.content)) continue
+    const calls = assistant.content.filter((part) => part.type === "tool-call")
+    const results = result.content.filter((part) => part.type === "tool-result")
+    if (calls.length === 0 || results.length !== calls.length) continue
+    const resultIds = new Set(results.map((part) => part.toolCallId))
+    if (calls.some((part) => !resultIds.has(part.toolCallId)) || results.some((part) => hasPendingStructuredState(part.output))) continue
+    batches.push({ messages: [assistant, result], firstIndex: index, lastIndex: index + 1 })
+    index += 1
+  }
+  return batches
+}
+
+const PENDING_STRUCTURED_STATUSES = new Set(["pending", "queued", "starting", "running", "waiting", "awaiting_input", "awaiting_approval", "streaming"])
+
+const hasPendingStructuredState = (value: unknown): boolean => {
+  if (!value || typeof value !== "object") return false
+  const record = value as Record<string, unknown>
+  if (typeof record.status === "string" && PENDING_STRUCTURED_STATUSES.has(record.status)) return true
+  return [record.output, record.result, record.state].some((nested) => {
+    if (!nested || typeof nested !== "object") return false
+    const status = (nested as Record<string, unknown>).status
+    return typeof status === "string" && PENDING_STRUCTURED_STATUSES.has(status)
+  })
+}
+
+const estimateMessagesTokens = (messages: ModelMessage[]): number =>
+  estimateTextTokens(JSON.stringify(messages.map(messageForTokenEstimate))).inputTokens
+
+const validOrdinal = (value: number | undefined): number | undefined =>
+  Number.isInteger(value) && (value ?? 0) > 0 ? value : undefined
 
 const estimateTurnTokens = (turn: CompressorTurnInput): number => estimateTextTokens(JSON.stringify(turn.messages.map(messageForTokenEstimate))).inputTokens
 
@@ -750,25 +872,79 @@ const buildSourceHandles = (
   conversationId?: string,
   previousSourceHandles: Array<Record<string, unknown>> = [],
 ): Array<Record<string, unknown>> => {
-  const handles = headTurns.map((turn) => ({
-    turnNo: turn.turnNo,
-    ...(turn.turnId ? { turnId: turn.turnId } : {}),
-    ...(projectId ? { projectId } : {}),
-    ...(conversationId ? { conversationId } : {}),
-    retrieve: `trace_retrieve({ turnNo: ${turn.turnNo} })`,
-  }))
-  const anchors = summary.anchors.map((anchor: string) => {
-    const turnNo = Number(/^Turn (\d+):/.exec(anchor)?.[1])
-    const turn = headTurns.find((candidate) => candidate.turnNo === turnNo)
-    return {
-      anchor,
-      turnNo,
-      ...(turn?.turnId ? { turnId: turn.turnId } : {}),
+  const handles: Array<Record<string, unknown>> = headTurns.map((turn) => {
+    const messageIds = turn.messages.map((message) => message.id).filter(isString)
+    if (messageIds.length === 0) {
+      return {
+        turnNo: turn.turnNo,
+        ...(turn.turnId ? { turnId: turn.turnId } : {}),
+        ...(projectId ? { projectId } : {}),
+        ...(conversationId ? { conversationId } : {}),
+        retrieve: `trace_retrieve({ turnNo: ${turn.turnNo} })`,
+      }
+    }
+    return compactionSourceRefSchema.parse({
+      schemaVersion: 2,
+      kind: turn.sourceKind ?? "completed_turn",
+      turnOrdinal: turn.turnNo,
+      ...(turn.taskOrdinal ? { taskOrdinal: turn.taskOrdinal } : {}),
+      ...(turn.turnId ? { turnId: turn.turnId } : {}),
+      messageIds,
       ...(projectId ? { projectId } : {}),
       ...(conversationId ? { conversationId } : {}),
-    }
+      retrieve: `trace_retrieve({ turnNo: ${turn.turnNo} })`,
+    })
+  })
+  const anchors: CompactionSourceRef[] = summary.anchors.map((anchor: string) => {
+    const turnNo = Number(/^Turn (\d+):/.exec(anchor)?.[1])
+    const currentTurn = headTurns.find((candidate) => candidate.turnNo === turnNo)
+    const previousTurn = sourceTurnFromPrevious(previousSourceHandles, turnNo)
+    return compactionSourceRefSchema.parse({
+      schemaVersion: 2,
+      kind: "anchor",
+      anchor,
+      turnOrdinal: turnNo,
+      ...(currentTurn?.turnId || previousTurn?.turnId ? { turnId: currentTurn?.turnId ?? previousTurn?.turnId } : {}),
+      ...(currentTurn?.taskOrdinal || previousTurn?.taskOrdinal ? { taskOrdinal: currentTurn?.taskOrdinal ?? previousTurn?.taskOrdinal } : {}),
+      messageIds: currentTurn
+        ? currentTurn.messages.map((message) => message.id).filter(isString)
+        : previousTurn?.messageIds ?? [],
+      ...(projectId ? { projectId } : {}),
+      ...(conversationId ? { conversationId } : {}),
+      retrieve: `trace_retrieve({ turnNo: ${turnNo} })`,
+    })
   })
   return dedupeSourceHandles([...previousSourceHandles, ...handles, ...anchors])
+}
+
+const sourceTurnFromPrevious = (
+  handles: Array<Record<string, unknown>>,
+  turnNo: number,
+): { turnId?: string; taskOrdinal?: number; messageIds: string[] } | undefined => {
+  const handle = handles.find((candidate) => candidate.turnOrdinal === turnNo || candidate.turnNo === turnNo)
+  if (!handle) return undefined
+  return {
+    ...(isString(handle.turnId) ? { turnId: handle.turnId } : {}),
+    ...(validOrdinal(typeof handle.taskOrdinal === "number" ? handle.taskOrdinal : undefined) ? { taskOrdinal: handle.taskOrdinal as number } : {}),
+    messageIds: sourceRefMessageIds(handle),
+  }
+}
+
+const sourceRefMessageIds = (source: Record<string, unknown>): string[] =>
+  Array.isArray(source.messageIds) ? source.messageIds.filter(isString) : []
+
+const isLegacyWholeTurnSource = (source: Record<string, unknown>): boolean =>
+  source.schemaVersion !== 2 && sourceRefMessageIds(source).length === 0
+
+const carryAnchorsDeterministically = (
+  previous: ChatCompaction | MemoryCompaction | undefined,
+  current: ChatCompaction | MemoryCompaction,
+): ChatCompaction | MemoryCompaction => {
+  const record = current as (ChatCompaction | MemoryCompaction) & { anchors: string[] }
+  return {
+    ...record,
+    anchors: unique([...(previous?.anchors ?? []), ...record.anchors]).slice(0, 80),
+  }
 }
 
 const dedupeSourceHandles = (handles: Array<Record<string, unknown>>): Array<Record<string, unknown>> => {
@@ -830,8 +1006,9 @@ export const buildCompressorUserMessageContent = (input: {
   thresholds?: Partial<ContextCompressionThresholds>
 }): string => {
   const thresholds = { ...DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS, ...input.thresholds }
-  const summarizedTurnIds = new Set(input.latestSnapshot?.sourceHandles.map((handle) => handle.turnId).filter(isString) ?? [])
-  const selection = selectCompactionWindow(input.messages, thresholds, "chat", summarizedTurnIds)
+  const summarizedMessageIds = new Set(input.latestSnapshot?.sourceHandles.flatMap(sourceRefMessageIds) ?? [])
+  const legacyTurnIds = new Set(input.latestSnapshot?.sourceHandles.filter(isLegacyWholeTurnSource).map((handle) => handle.turnId).filter(isString) ?? [])
+  const selection = selectCompactionWindow(input.messages, thresholds, "chat", summarizedMessageIds, legacyTurnIds)
   return buildSocratesCompressorUserContent({
     headTurns: selection.headTurns,
     ...(input.latestSnapshot?.renderedSummary ? { previousSummary: input.latestSnapshot.renderedSummary } : {}),

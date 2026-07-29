@@ -854,7 +854,7 @@
     },
     {
       "id": "tool.trace_retrieve.main",
-      "description": "Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Search returns at most 8 numbered results; use inspect with resultNumber for the exact Q&A parent, then continue a bounded inspection with offset=truncation.nextOffset. Internal conversation, Flow, goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.",
+      "description": "Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Search returns at most 8 numbered results; inspect with resultNumber for the exact Q&A parent or with a shown turn-local result such as R1 for its exact tool output, then page with offset=truncation.nextOffset. Internal conversation, Flow, goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates"
@@ -1113,6 +1113,11 @@
                 "type": "string",
                 "const": "inspect"
               },
+              "result": {
+                "type": "string",
+                "pattern": "^R[1-9]\\d*$",
+                "description": "Current-turn large-result handle such as R1."
+              },
               "resultNumber": {
                 "type": "integer",
                 "exclusiveMinimum": 0,
@@ -1167,7 +1172,7 @@
       },
       "documentationTitle": "trace_retrieve",
       "documentationGuidance": [
-        "Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Search returns at most 8 numbered results; use inspect with resultNumber for the exact Q&A parent, then continue a bounded inspection with offset=truncation.nextOffset. Internal conversation, Flow, goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.",
+        "Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Search returns at most 8 numbered results; inspect with resultNumber for the exact Q&A parent or with a shown turn-local result such as R1 for its exact tool output, then page with offset=truncation.nextOffset. Internal conversation, Flow, goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.",
         "Use this capability for prior conversation and evidence investigation when earlier visible work can affect the current answer.",
         "Use `mode: \"lexical\"` for concise literal retrieval, semantic for conceptual recall, combined for both, and audit only for runtime evidence.",
         "Main Socrates searches the active project only; cross-project selectors are unavailable."
@@ -1192,7 +1197,7 @@
     },
     {
       "id": "tool.trace_retrieve.global",
-      "description": "Recall any prior visible conversation across Socrates projects. This uses the same retrieval behavior as the main agent: lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Search all projects by default or select projects by id/title. Search returns at most 8 numbered results; use inspect with resultNumber, turnId, or project/conversation/turn coordinates for the exact Q&A parent, then continue a bounded inspection with offset=truncation.nextOffset.",
+      "description": "Recall any prior visible conversation across Socrates projects. This uses the same retrieval behavior as the main agent: lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Search all projects by default or select projects by id/title. Search returns at most 8 numbered results; inspect with resultNumber, a shown turn-local result such as R1, turnId, or project/conversation/turn coordinates, then page with offset=truncation.nextOffset.",
       "kind": "model_tool",
       "allowedRoles": [
         "global_memory",
@@ -1563,6 +1568,10 @@
                 "type": "string",
                 "const": "inspect"
               },
+              "result": {
+                "type": "string",
+                "pattern": "^R[1-9]\\d*$"
+              },
               "resultNumber": {
                 "type": "integer",
                 "exclusiveMinimum": 0,
@@ -1628,7 +1637,7 @@
       },
       "documentationTitle": "trace_retrieve",
       "documentationGuidance": [
-        "Recall any prior visible conversation across Socrates projects. This uses the same retrieval behavior as the main agent: lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Search all projects by default or select projects by id/title. Search returns at most 8 numbered results; use inspect with resultNumber, turnId, or project/conversation/turn coordinates for the exact Q&A parent, then continue a bounded inspection with offset=truncation.nextOffset.",
+        "Recall any prior visible conversation across Socrates projects. This uses the same retrieval behavior as the main agent: lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Search all projects by default or select projects by id/title. Search returns at most 8 numbered results; inspect with resultNumber, a shown turn-local result such as R1, turnId, or project/conversation/turn coordinates, then page with offset=truncation.nextOffset.",
         "The Global Memory Agent has cross-project scope, while retaining the same canonical Q&A, inspect, and audit evidence contracts.",
         "Legacy `exact`, trace handles, entry-type selectors, and hidden query normalization are not part of this contract."
       ],

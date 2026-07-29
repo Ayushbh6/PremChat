@@ -163,20 +163,6 @@
       ],
       "dynamicCapabilityPrefixes": [],
       "modelTools": []
-    },
-    {
-      "definitionId": "context-anchor-repair",
-      "role": "context_anchor_repair",
-      "capabilityIds": [
-        "worker.context_compactor",
-        "context.stable_prompt",
-        "context.exact_messages",
-        "context.tool_definitions",
-        "context.automatic_compaction",
-        "runtime.structured_repair"
-      ],
-      "dynamicCapabilityPrefixes": [],
-      "modelTools": []
     }
   ]
 }

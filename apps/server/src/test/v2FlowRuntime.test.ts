@@ -716,18 +716,62 @@ describe("V2ExecutionRuntime", () => {
     const secondPageResult = secondInspectPage.results[0]
     expect(secondPageResult && "content" in secondPageResult ? secondPageResult.content : "").toBe(fullInspectContent.slice(80, 160))
 
+    const exactToolCallId = createId("tcall")
+    testRuntime.flowStore.createToolCall({
+      id: exactToolCallId,
+      projectId: "proj_one",
+      flowId: flow.id,
+      goalId: applied.goal.id,
+      turnId: created.turn.id,
+      toolName: "mcp__test__large_result",
+      arguments: { operation: "read" },
+      requiresApproval: false,
+    })
+    testRuntime.flowStore.completeToolCall(exactToolCallId, { content: `V2-R1-EXACT-START ${"x".repeat(30_000)} V2-R1-EXACT-END` })
+    testRuntime.flowStore.bindContextResultHandle(exactToolCallId, "R1")
+
+    const exactR1First = await mainTraceTools.trace_retrieve({ operation: "inspect", result: "R1", charLimit: 10_000 }, toolContext)
+    const exactR1Second = await mainTraceTools.trace_retrieve({
+      operation: "inspect",
+      result: "R1",
+      charLimit: 10_000,
+      offset: exactR1First.truncation?.nextOffset ?? 0,
+    }, toolContext)
+    const exactR1Third = await mainTraceTools.trace_retrieve({
+      operation: "inspect",
+      result: "R1",
+      charLimit: 10_000,
+      offset: exactR1Second.truncation?.nextOffset ?? 0,
+    }, toolContext)
+    const exactR1Fourth = await mainTraceTools.trace_retrieve({
+      operation: "inspect",
+      result: "R1",
+      charLimit: 10_000,
+      offset: exactR1Third.truncation?.nextOffset ?? 0,
+    }, toolContext)
+    const recoveredR1 = [exactR1First, exactR1Second, exactR1Third, exactR1Fourth]
+      .map((page) => {
+        const result = page.results[0]
+        return result && "content" in result ? result.content : ""
+      })
+      .join("")
+    expect(recoveredR1).toContain("V2-R1-EXACT-START")
+    expect(recoveredR1).toContain("V2-R1-EXACT-END")
+
     for (const mode of ["lexical", "semantic", "combined"] as const) {
       const request = { mode, scope: "current_goal" as const, query: "exact restart evidence" }
       const flowView = await testRuntime.sharedStore.retrieveUnifiedMainToolTraces({
         projectId: "proj_one",
         presentedConversationId: flow.id,
         goalId: applied.goal.id,
+        currentTurnId: created.turn.id,
         request,
       })
       const classicView = await testRuntime.sharedStore.retrieveUnifiedMainToolTraces({
         projectId: "proj_one",
         presentedConversationId: "classic_projection_probe",
         goalId: applied.goal.id,
+        currentTurnId: created.turn.id,
         request,
       })
       expect(flowView).toEqual(classicView)

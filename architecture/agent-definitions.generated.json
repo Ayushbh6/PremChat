@@ -227,33 +227,6 @@
       "maxToolCalls": 0,
       "maxOutputRepairAttempts": 1,
       "persistenceScope": "global"
-    },
-    {
-      "id": "context-anchor-repair",
-      "role": "context_anchor_repair",
-      "modelRole": "context_anchor_repair",
-      "promptId": "context-anchor-repair-v1",
-      "completionMode": "structured",
-      "roleManifestId": "context-anchor-repair-capabilities-v2",
-      "capabilityIds": [
-        "worker.context_compactor",
-        "context.stable_prompt",
-        "context.exact_messages",
-        "context.tool_definitions",
-        "context.automatic_compaction",
-        "runtime.structured_repair"
-      ],
-      "dynamicCapabilityPrefixes": [],
-      "contextProfileId": "structured-worker-context-v1",
-      "contextStages": [
-        "stable_prompt",
-        "exact_messages",
-        "tool_definitions",
-        "automatic_compaction"
-      ],
-      "maxToolCalls": 0,
-      "maxOutputRepairAttempts": 1,
-      "persistenceScope": "none"
     }
   ],
   "executionOwners": [
@@ -278,7 +251,7 @@
     {
       "id": "context-compressor",
       "path": "packages/core/src/agent/CompressorAgent.ts",
-      "definitionId": "socrates-context-compactor,memory-context-compactor,context-anchor-repair",
+      "definitionId": "socrates-context-compactor,memory-context-compactor",
       "status": "canonical"
     },
     {

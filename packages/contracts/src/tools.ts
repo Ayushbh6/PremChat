@@ -587,6 +587,7 @@ export const traceRetrieveMainSearchInputSchema = z.union([
 export const traceRetrieveMainInspectInputSchema = z
   .object({
     operation: z.literal("inspect"),
+    result: z.string().regex(/^R[1-9]\d*$/).optional().describe("Current-turn large-result handle such as R1."),
     resultNumber: z.number().int().positive().max(8).optional(),
     conversationTitle: z.string().min(1).max(240).optional(),
     turnNo: z.number().int().positive().max(10_000).optional(),
@@ -595,10 +596,10 @@ export const traceRetrieveMainInspectInputSchema = z
   })
   .strict()
   .superRefine((input, context) => {
-    if (!input.resultNumber && !(input.conversationTitle && input.turnNo)) {
+    if (!input.result && !input.resultNumber && !(input.conversationTitle && input.turnNo)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "inspect requires resultNumber or conversationTitle plus turnNo.",
+        message: "inspect requires result, resultNumber, or conversationTitle plus turnNo.",
       })
     }
   })
@@ -682,6 +683,7 @@ export type TraceRetrieveGlobalSearchInput = z.infer<typeof traceRetrieveGlobalS
 export const traceRetrieveGlobalInspectInputSchema = z
   .object({
     operation: z.literal("inspect"),
+    result: z.string().regex(/^R[1-9]\d*$/).optional(),
     resultNumber: z.number().int().positive().max(8).optional(),
     turnId: z.string().min(1).optional(),
     projectId: z.string().min(1).optional(),
@@ -693,10 +695,10 @@ export const traceRetrieveGlobalInspectInputSchema = z
   })
   .strict()
   .superRefine((input, context) => {
-    if (!input.resultNumber && !input.turnId && !((input.projectId || input.projectTitle) && input.conversationTitle && input.turnNo)) {
+    if (!input.result && !input.resultNumber && !input.turnId && !((input.projectId || input.projectTitle) && input.conversationTitle && input.turnNo)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "inspect requires resultNumber, turnId, or projectTitle plus conversationTitle plus turnNo.",
+        message: "inspect requires result, resultNumber, turnId, or projectTitle plus conversationTitle plus turnNo.",
       })
     }
   })
@@ -856,7 +858,7 @@ const traceRetrieveSearchOnlyKeys = new Set([
   "limit",
 ])
 
-const traceRetrieveInspectOnlyKeys = new Set(["resultNumber", "handle", "turnId", "messageId", "toolId", "toolCallId", "startTurnNo", "turnLimit"])
+const traceRetrieveInspectOnlyKeys = new Set(["resultNumber", "handle", "turnId", "messageId", "toolId", "toolCallId", "startTurnNo", "turnLimit", "offset"])
 
 const traceRetrieveLooksLikeSearch = (value: Record<string, unknown>): boolean =>
   value.operation === "search" ||
@@ -905,6 +907,7 @@ export const normalizeTraceRetrieveInput = (value: unknown): unknown => {
     return {
       operation: "inspect",
       messageId: normalized.messageId,
+      ...(typeof normalized.offset === "number" ? { offset: normalized.offset } : {}),
       ...(typeof normalized.charLimit === "number" ? { charLimit: normalized.charLimit } : {}),
     }
   } else if (typeof normalized.toolId === "string" || typeof normalized.toolCallId === "string") {
@@ -912,6 +915,7 @@ export const normalizeTraceRetrieveInput = (value: unknown): unknown => {
       return {
         operation: "inspect",
         toolCallId: typeof normalized.toolId === "string" ? normalized.toolId : normalized.toolCallId,
+        ...(typeof normalized.offset === "number" ? { offset: normalized.offset } : {}),
         ...(typeof normalized.charLimit === "number" ? { charLimit: normalized.charLimit } : {}),
       }
     }
@@ -941,6 +945,7 @@ export const traceRetrieveInspectArgsSchema = z
     turnLimit: z.number().int().positive().max(100).optional(),
     include: z.array(traceRetrieveIncludeSchema).optional(),
     includeRaw: z.boolean().optional(),
+    offset: z.number().int().nonnegative().optional(),
     charLimit: z.number().int().positive().max(80_000).optional(),
   })
   .strict()

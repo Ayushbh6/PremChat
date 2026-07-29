@@ -1911,6 +1911,17 @@ export class V2FlowStore {
   getModelMessages(flowId: string, foregroundGoalId: string, includeImageParts = false): ModelMessage[] {
     const canonical = this.canonicalWork.listFlowMessages(flowId)
       .filter((message) => message.goalId === foregroundGoalId && message.status === "completed")
+    const v2TurnOrdinals = new Map(
+      this.handle.db.select({ id: v2Turns.id, ordinal: v2Turns.ordinal }).from(v2Turns)
+        .where(eq(v2Turns.flowId, flowId)).all().map((turn) => [turn.id, turn.ordinal]),
+    )
+    const classicTurnIds = canonical.filter((message) => message.sourceRuntime === "classic").map((message) => message.sourceTurnId)
+    const classicTurnOrdinals = new Map(classicTurnIds.length === 0 ? [] :
+      this.handle.db.select({ id: turns.id, ordinal: turns.ordinal }).from(turns)
+        .where(inArray(turns.id, classicTurnIds)).all()
+        .filter((turn): turn is { id: string; ordinal: number } => turn.ordinal !== null)
+        .map((turn) => [turn.id, turn.ordinal]),
+    )
     const canonicalIds = new Set(canonical.map((message) => message.sourceMessageId))
     const linkedMessageIds = this.handle.db.select({ messageId: v2GoalMessageLinks.messageId }).from(v2GoalMessageLinks)
       .where(and(eq(v2GoalMessageLinks.flowId, flowId), eq(v2GoalMessageLinks.goalId, foregroundGoalId)))
@@ -1937,6 +1948,12 @@ export class V2FlowStore {
       ...canonical.map((message) => ({
         id: message.sourceMessageId,
         turnId: message.sourceTurnId,
+        turnOrdinal: message.sourceRuntime === "v2_flow"
+          ? v2TurnOrdinals.get(message.sourceTurnId)
+          : classicTurnOrdinals.get(message.sourceTurnId),
+        taskOrdinal: message.goalId
+          ? this.canonicalWork.taskOrdinal(message.goalId, message.sourceRuntime, message.sourceTurnId)
+          : undefined,
         role: message.role,
         content: message.content,
         createdAt: message.createdAt,
@@ -1945,6 +1962,8 @@ export class V2FlowStore {
       ...nativeRows.map((row) => ({
         id: row.id,
         ...(row.turnId ? { turnId: row.turnId } : {}),
+        ...(row.turnId && v2TurnOrdinals.has(row.turnId) ? { turnOrdinal: v2TurnOrdinals.get(row.turnId) } : {}),
+        ...(row.turnId && row.goalId ? { taskOrdinal: this.canonicalWork.taskOrdinal(row.goalId, "v2_flow", row.turnId) } : {}),
         role: row.role as ModelMessage["role"],
         content: row.content,
         createdAt: row.createdAt,
@@ -1959,6 +1978,8 @@ export class V2FlowStore {
         content: message.content,
         id: message.id,
         ...(message.turnId ? { turnId: message.turnId } : {}),
+        ...(message.turnOrdinal ? { turnOrdinal: message.turnOrdinal } : {}),
+        ...(message.taskOrdinal ? { taskOrdinal: message.taskOrdinal } : {}),
       } satisfies ModelMessage
       if (message.attachments.length === 0 || role !== "user") return base
       const images = message.attachments.filter((attachment) => attachment.kind === "image")
@@ -2316,6 +2337,16 @@ export class V2FlowStore {
   completeToolCall(toolCallId: string, result: unknown): V2ToolCall {
     this.handle.db.update(v2ToolCalls).set({ status: "completed", resultJson: JSON.stringify(result ?? null), completedAt: nowIso() }).where(eq(v2ToolCalls.id, toolCallId)).run()
     return this.getToolCall(toolCallId)
+  }
+
+  bindContextResultHandle(toolCallId: string, result: string): void {
+    const row = this.handle.db.select({ metadataJson: v2ToolCalls.metadataJson }).from(v2ToolCalls)
+      .where(eq(v2ToolCalls.id, toolCallId)).limit(1).get()
+    if (!row) return
+    const previous = parseJsonObject(row.metadataJson)
+    this.handle.db.update(v2ToolCalls)
+      .set({ metadataJson: JSON.stringify({ ...previous, contextResultHandle: result }) })
+      .where(eq(v2ToolCalls.id, toolCallId)).run()
   }
 
   failToolCall(toolCallId: string, errorId: string): V2ToolCall {

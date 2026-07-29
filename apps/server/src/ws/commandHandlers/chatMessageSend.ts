@@ -75,6 +75,7 @@ export const handleChatMessageSend = async (
     ? {
         sessionId: continuation.sessionId,
         turnId: continuation.turnId,
+        turnOrdinal: continuation.turnOrdinal,
         runtimeConfigId: continuation.runtimeConfigId,
         userMessage: undefined,
         shouldGenerateTitle: false,
@@ -303,6 +304,7 @@ export const handleChatMessageSend = async (
       conversationId,
       sessionId: created.sessionId,
       turnId: created.turnId,
+      turnOrdinal: created.turnOrdinal,
       providerId: runtimeConfig.providerId,
       modelId: runtimeConfig.modelId,
       runtimeConfig,
@@ -339,6 +341,7 @@ export const handleChatMessageSend = async (
       runtimeCapabilities: () =>
         mcpRuntime ? [...exposedMcpServers].flatMap((serverId) => mcpRuntime.getDynamicCapabilityDefinitions(serverId, { workspacePath })) : [],
       contextCompression: createClassicContextCompressionRuntime(store, projectId, conversationId, created.sessionId, created.turnId),
+      bindContextResultHandle: ({ result, toolCallId }) => store.bindContextResultHandle(toolCallId, result),
       maxParallelToolCalls: 5,
       maxToolCallsPerTurn: 80,
       createModelCall: (modelRequest) => {

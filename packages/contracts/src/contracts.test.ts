@@ -94,7 +94,7 @@ import {
   memorySoulConfirmationRequestedEventSchema,
   memorySoulConfirmationResolvedEventSchema,
   memorySoulUpdatedEventSchema,
-  anchorRepairSchema,
+  compactionSourceRefSchema,
   notificationCreatedEventSchema,
   notificationReadEventSchema,
   patchProjectRequestSchema,
@@ -1430,9 +1430,23 @@ describe("context compaction contracts", () => {
 
     expect(chatCompactionSchema.safeParse(chat).success).toBe(true)
     expect(memoryCompactionSchema.safeParse(memory).success).toBe(true)
-    expect(anchorRepairSchema.safeParse({ anchors: ["Turn 3: inspect exact source."] }).success).toBe(true)
+    expect(compactionSourceRefSchema.safeParse({
+      schemaVersion: 2,
+      kind: "active_tool_batch",
+      turnOrdinal: 3,
+      taskOrdinal: 2,
+      turnId: "turn_3",
+      messageIds: ["msg_call", "msg_result"],
+      retrieve: "trace_retrieve({ turnNo: 3 })",
+    }).success).toBe(true)
     expect(chatCompactionSchema.safeParse({ ...chat, anchors: ["inspect without turn number"] }).success).toBe(false)
-    expect(anchorRepairSchema.safeParse({ anchors: ["turn 3: wrong prefix"] }).success).toBe(false)
+    expect(compactionSourceRefSchema.safeParse({
+      schemaVersion: 2,
+      kind: "anchor",
+      turnOrdinal: 3,
+      messageIds: [],
+      anchor: "turn 3: wrong prefix",
+    }).success).toBe(false)
     expect(
       chatCompactionSchema.safeParse({
         ...chat,
@@ -1588,6 +1602,7 @@ describe("tool contracts", () => {
     expect(traceRetrieveGlobalToolInputSchema.safeParse({ query: "slow mode", mode: "combined", projectId: "project_1", conversationId: "conv_1" }).success).toBe(true)
     expect(traceRetrieveGlobalToolInputSchema.safeParse({ query: "npm test", mode: "audit", include: ["shell", "errors"] }).success).toBe(true)
     expect(traceRetrieveGlobalToolInputSchema.safeParse({ operation: "inspect", resultNumber: 1 }).success).toBe(true)
+    expect(traceRetrieveGlobalToolInputSchema.safeParse({ operation: "inspect", result: "R1", offset: 6_000 }).success).toBe(true)
     expect(traceRetrieveGlobalToolInputSchema.safeParse({ operation: "inspect", projectTitle: "Socrates", conversationTitle: "Memory", turnNo: 2 }).success).toBe(true)
     expect(traceRetrieveGlobalToolInputSchema.safeParse({ query: "x".repeat(129), mode: "lexical" }).success).toBe(false)
     expect(traceRetrieveGlobalToolInputSchema.safeParse({ query: "slow mode", mode: "exact" }).success).toBe(false)
@@ -2028,6 +2043,7 @@ describe("tool contracts", () => {
     expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "combined", query: "slow mode", scope: "current_goal" }).success).toBe(true)
     expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "lexical", query: "slow mode", scope: "current_conversation" }).success).toBe(false)
     expect(traceRetrieveMainToolInputSchema.safeParse({ operation: "inspect", turnId: "opaque_turn" }).success).toBe(false)
+    expect(traceRetrieveMainToolInputSchema.safeParse({ operation: "inspect", result: "R1", offset: 6_000 }).success).toBe(true)
     expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "lexical", query: "x".repeat(129) }).success).toBe(false)
     expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "semantic", query: "what we know about slow mode" }).success).toBe(true)
     expect(traceRetrieveMainToolInputSchema.safeParse({ mode: "semantic", query: "x".repeat(1_001) }).success).toBe(false)
