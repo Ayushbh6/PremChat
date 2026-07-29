@@ -276,7 +276,7 @@
     },
     {
       "id": "tool.edit",
-      "description": "Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
+      "description": "Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. Durable Socrates memory, notes, and repo docs require an exact section URI; their base document URIs are read/search only. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates"
@@ -373,8 +373,9 @@
       },
       "documentationTitle": "edit",
       "documentationGuidance": [
-        "Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
+        "Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. Durable Socrates memory, notes, and repo docs require an exact section URI; their base document URIs are read/search only. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
         "Read an existing target first. Targeted edits use one edits array; every match is resolved against the same original content, overlaps fail, and the write is atomic.",
+        "Durable Socrates documents require an exact section URI for edits; base document URIs are read/search only.",
         "The model never supplies dryRun. Approval previews are an internal runtime concern. Re-read a changed target when later work depends on its exact new contents."
       ],
       "documentationPaths": [
@@ -1739,7 +1740,7 @@
     },
     {
       "id": "tool.edit_files",
-      "description": "Write global memory-agent targets through scoped names only. target is \"identity\", \"user_profile\", or \"skill\"; name is required for skill. Tool docs are read-only for models. No arbitrary filesystem paths are accepted. Use replace with sectionId and exact oldText/newText for a focused edit. Use move with exact sourceText, canonical destinationText, source/destination section ids, and an evidence rationale to atomically repair a clearly misplaced entry.",
+      "description": "Write global memory-agent targets through scoped names only. Identity and user-profile replacements require sectionId plus exact section-local oldText/newText; whole-document replacements are invalid. Use move with exact sourceText, canonical destinationText, source/destination section ids, and evidence rationale. target=\"skill\" creates only a user-approved Skill Writer proposal. Tool docs are read-only and arbitrary paths are never accepted.",
       "kind": "model_tool",
       "allowedRoles": [
         "global_memory"
@@ -1759,28 +1760,12 @@
                 "type": "string",
                 "enum": [
                   "identity",
-                  "user_profile",
-                  "skill"
-                ]
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
+                  "user_profile"
                 ]
               },
               "editMode": {
                 "type": "string",
-                "enum": [
-                  "replace",
-                  "create"
-                ]
+                "const": "replace"
               },
               "sectionId": {
                 "type": "string",
@@ -1807,12 +1792,83 @@
                   "minLength": 1
                 },
                 "maxItems": 12
+              },
+              "name": {
+                "not": {}
+              },
+              "scope": {
+                "not": {}
               }
             },
             "required": [
               "target",
               "editMode",
+              "sectionId",
+              "oldText",
               "newText"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string",
+                "const": "skill"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "editMode": {
+                "type": "string",
+                "enum": [
+                  "replace",
+                  "create"
+                ]
+              },
+              "sectionId": {
+                "not": {}
+              },
+              "oldText": {
+                "type": "string"
+              },
+              "newText": {
+                "type": "string",
+                "minLength": 1
+              },
+              "replaceAll": {
+                "not": {}
+              },
+              "rationale": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sourceTurnIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "maxItems": 12
+              }
+            },
+            "required": [
+              "target",
+              "name",
+              "editMode",
+              "newText",
+              "rationale",
+              "sourceTurnIds"
             ],
             "additionalProperties": false
           },
@@ -1909,7 +1965,8 @@
       },
       "documentationTitle": "edit_files",
       "documentationGuidance": [
-        "Write global memory-agent targets through scoped names only. target is \"identity\", \"user_profile\", or \"skill\"; name is required for skill. Tool docs are read-only for models. No arbitrary filesystem paths are accepted. Use replace with sectionId and exact oldText/newText for a focused edit. Use move with exact sourceText, canonical destinationText, source/destination section ids, and an evidence rationale to atomically repair a clearly misplaced entry.",
+        "Write global memory-agent targets through scoped names only. Identity and user-profile replacements require sectionId plus exact section-local oldText/newText; whole-document replacements are invalid. Use move with exact sourceText, canonical destinationText, source/destination section ids, and evidence rationale. target=\"skill\" creates only a user-approved Skill Writer proposal. Tool docs are read-only and arbitrary paths are never accepted.",
+        "Identity and user-profile replacements require the exact sectionId and section-local oldText; whole-document replacement is not supported.",
         "For `target: \"skill\"`, create a user-visible skill proposal only after exact evidence is inspected; the Skill Writer performs the final approved `SKILL.md` write."
       ],
       "documentationPaths": [

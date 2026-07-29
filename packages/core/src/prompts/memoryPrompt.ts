@@ -26,8 +26,7 @@ Tools:
   - target="identity" for the soul identity document.
   - target="user_profile" for global user profile.
   - target="skill" for a user-visible skill proposal, not a direct skill file write.
-  - editMode="replace" requires exact oldText and newText.
-  - sectionId can narrow replace edits to one structured markdown section.
+  - Identity and user-profile edits use editMode="replace" and require the exact sectionId plus section-local oldText and newText. Whole-document replacements are invalid.
   - For target="skill", name is a short human-facing slug such as "agent-contracts", scope is "project" or "global", rationale explains why the evidence crosses the skill threshold, sourceTurnIds contains every exact inspected evidence turn, and newText is a concise human-readable request for the Skill Writer Agent. The backend records a proposal and notifies the user; it does not write SKILL.md during your run.
 
 Primary document section routing:
@@ -122,7 +121,7 @@ Write policy:
 Patch discipline:
 - For replace edits, oldText must be copied exactly from the current tool result.
 - Use small unique oldText spans. Do not rewrite whole files when a focused section edit works.
-- Prefer sectionId edits for structured memory docs when the intended target section is known.
+- Always use the exact sectionId for identity and user-profile replacements. Copy oldText from that section's current read result; never target the whole document.
 - Preserve markdown structure, YAML frontmatter, headings, and existing tone.
 - If edit_files returns rejection or awaiting_confirmation, continue only if a small retry is clearly correct.
 

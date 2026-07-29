@@ -1159,28 +1159,12 @@
                 "type": "string",
                 "enum": [
                   "identity",
-                  "user_profile",
-                  "skill"
-                ]
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1
-              },
-              "scope": {
-                "type": "string",
-                "enum": [
-                  "builtin",
-                  "global",
-                  "project"
+                  "user_profile"
                 ]
               },
               "editMode": {
                 "type": "string",
-                "enum": [
-                  "replace",
-                  "create"
-                ]
+                "const": "replace"
               },
               "sectionId": {
                 "type": "string",
@@ -1207,12 +1191,83 @@
                   "minLength": 1
                 },
                 "maxItems": 12
+              },
+              "name": {
+                "not": {}
+              },
+              "scope": {
+                "not": {}
               }
             },
             "required": [
               "target",
               "editMode",
+              "sectionId",
+              "oldText",
               "newText"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string",
+                "const": "skill"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "global",
+                  "project"
+                ]
+              },
+              "editMode": {
+                "type": "string",
+                "enum": [
+                  "replace",
+                  "create"
+                ]
+              },
+              "sectionId": {
+                "not": {}
+              },
+              "oldText": {
+                "type": "string"
+              },
+              "newText": {
+                "type": "string",
+                "minLength": 1
+              },
+              "replaceAll": {
+                "not": {}
+              },
+              "rationale": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sourceTurnIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "maxItems": 12
+              }
+            },
+            "required": [
+              "target",
+              "name",
+              "editMode",
+              "newText",
+              "rationale",
+              "sourceTurnIds"
             ],
             "additionalProperties": false
           },

@@ -12,13 +12,14 @@ index_tags: [tool_usage]
 <!-- socrates:section id="purpose" kind="purpose" tags="tools" -->
 ## Purpose
 
-- `edit_files`: Write global memory-agent targets through scoped names only. target is "identity", "user_profile", or "skill"; name is required for skill. Tool docs are read-only for models. No arbitrary filesystem paths are accepted. Use replace with sectionId and exact oldText/newText for a focused edit. Use move with exact sourceText, canonical destinationText, source/destination section ids, and an evidence rationale to atomically repair a clearly misplaced entry.
+- `edit_files`: Write global memory-agent targets through scoped names only. Identity and user-profile replacements require sectionId plus exact section-local oldText/newText; whole-document replacements are invalid. Use move with exact sourceText, canonical destinationText, source/destination section ids, and evidence rationale. target="skill" creates only a user-approved Skill Writer proposal. Tool docs are read-only and arbitrary paths are never accepted.
 <!-- /socrates:section -->
 
 <!-- socrates:section id="when_to_use" kind="routing" tags="tools" -->
 ## When To Use
 
 - Use `edit_files` when the active task requires its cataloged mutation/execution capability.
+- Identity and user-profile replacements require the exact sectionId and section-local oldText; whole-document replacement is not supported.
 - For `target: "skill"`, create a user-visible skill proposal only after exact evidence is inspected; the Skill Writer performs the final approved `SKILL.md` write.
 <!-- /socrates:section -->
 
@@ -39,28 +40,12 @@ Canonical capability: `tool.edit_files`. Send only fields accepted by this gener
           "type": "string",
           "enum": [
             "identity",
-            "user_profile",
-            "skill"
-          ]
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "scope": {
-          "type": "string",
-          "enum": [
-            "builtin",
-            "global",
-            "project"
+            "user_profile"
           ]
         },
         "editMode": {
           "type": "string",
-          "enum": [
-            "replace",
-            "create"
-          ]
+          "const": "replace"
         },
         "sectionId": {
           "type": "string",
@@ -87,12 +72,83 @@ Canonical capability: `tool.edit_files`. Send only fields accepted by this gener
             "minLength": 1
           },
           "maxItems": 12
+        },
+        "name": {
+          "not": {}
+        },
+        "scope": {
+          "not": {}
         }
       },
       "required": [
         "target",
         "editMode",
+        "sectionId",
+        "oldText",
         "newText"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "const": "skill"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "builtin",
+            "global",
+            "project"
+          ]
+        },
+        "editMode": {
+          "type": "string",
+          "enum": [
+            "replace",
+            "create"
+          ]
+        },
+        "sectionId": {
+          "not": {}
+        },
+        "oldText": {
+          "type": "string"
+        },
+        "newText": {
+          "type": "string",
+          "minLength": 1
+        },
+        "replaceAll": {
+          "not": {}
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceTurnIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "maxItems": 12
+        }
+      },
+      "required": [
+        "target",
+        "name",
+        "editMode",
+        "newText",
+        "rationale",
+        "sourceTurnIds"
       ],
       "additionalProperties": false
     },

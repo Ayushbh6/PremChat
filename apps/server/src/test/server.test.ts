@@ -5219,34 +5219,18 @@ describe("WebSocket API", () => {
     const requests: unknown[] = []
     const dbPath = tempDbPath()
     const socratesHome = tempDir()
-    const scaffoldedToolDoc = [
-      "---",
-      "socrates_doc: tool_doc",
-      "schema_version: 1",
-      "owner_tool: read",
-      "scope: global",
-      "index_tags: [tool_usage]",
-      "---",
-      "",
-      "# read search Usage Guide",
-      "",
-      '<!-- socrates:section id="purpose" kind="purpose" tags="tools" -->',
-      "## Purpose",
-      "",
-      "- What this tool guidance is for.",
-      "<!-- /socrates:section -->",
-      "",
-      '<!-- socrates:section id="legacy_content" kind="legacy" tags="migration" -->',
-      "## Legacy Content",
-      "",
-      "# read_search Usage Guide",
-      "",
-      "Use `search` to find candidate files or lines.",
-      "<!-- /socrates:section -->",
-      "",
-    ].join("\n")
+    const bundledToolUsageRoot = path.resolve(process.cwd(), "src/memory/defaults/primary/tool_usage")
+    const bundledReadSearch = fs.readFileSync(
+      path.join(bundledToolUsageRoot, "read_search.md"),
+      "utf8",
+    )
+    const semanticallyStaleToolDoc = bundledReadSearch.replace(
+      "Search socrates://capabilities before claiming a skill or MCP capability is unavailable.",
+      "STALE: Capability fallback is optional.",
+    )
     fs.mkdirSync(path.join(socratesHome, "tool_usage"), { recursive: true })
-    fs.writeFileSync(path.join(socratesHome, "tool_usage", "read_search.md"), scaffoldedToolDoc)
+    fs.writeFileSync(path.join(socratesHome, "tool_usage", "read_search.md"), semanticallyStaleToolDoc)
+    fs.writeFileSync(path.join(socratesHome, "tool_usage", "focus_ledger.md"), bundledReadSearch)
     fs.writeFileSync(path.join(socratesHome, "operating_principles.md"), "# Retired\n\nThis file should be deleted.")
     fs.mkdirSync(path.join(socratesHome, "primary"), { recursive: true })
     fs.writeFileSync(path.join(socratesHome, "primary", "operating_principles.md"), "# Retired Primary\n\nThis file should not be copied forward.")
@@ -5299,7 +5283,30 @@ describe("WebSocket API", () => {
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "read_search.md"))).toBe(true)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "current_time.md"))).toBe(true)
 	    expect(fs.existsSync(path.join(socratesHome, "tool_usage", "memory_agent", "read_memory_journal.md"))).toBe(true)
+    const installedToolGuidePaths = [
+      ...fs.readdirSync(path.join(socratesHome, "tool_usage"), { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+        .map((entry) => entry.name),
+      ...fs.readdirSync(path.join(socratesHome, "tool_usage", "memory_agent"), { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+        .map((entry) => `memory_agent/${entry.name}`),
+    ].sort()
+    const bundledToolGuidePaths = [
+      ...fs.readdirSync(bundledToolUsageRoot, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+        .map((entry) => entry.name),
+      ...fs.readdirSync(path.join(bundledToolUsageRoot, "memory_agent"), { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+        .map((entry) => `memory_agent/${entry.name}`),
+    ].sort()
+    expect(installedToolGuidePaths).toEqual(bundledToolGuidePaths)
+    for (const relativePath of bundledToolGuidePaths) {
+      expect(fs.readFileSync(path.join(socratesHome, "tool_usage", relativePath), "utf8"), relativePath)
+        .toBe(fs.readFileSync(path.join(bundledToolUsageRoot, relativePath), "utf8"))
+    }
     const readSearchToolDoc = expectStructuredToolDoc(socratesHome, "read_search.md")
+    expect(readSearchToolDoc).toBe(bundledReadSearch)
+    expect(readSearchToolDoc).not.toContain("STALE: Capability fallback is optional.")
     expect(readSearchToolDoc).toContain("governed socrates:// resources")
 	    expect(readSearchToolDoc).toContain("socrates://capabilities")
 	    const traceToolDoc = expectStructuredToolDoc(socratesHome, "trace_retrieve.md")
@@ -5459,16 +5466,23 @@ describe("WebSocket API", () => {
       const activeContextSection = store.runProjectDocsTool(project.id, primaryWorkspace.path as string, { operation: "read_section", area: "notes", sectionId: "active_context" })
       expect(activeContextSection.section?.sectionId).toBe("active_context")
       const notesPatch = store.runProjectDocsTool(project.id, primaryWorkspace.path as string, {
-        operation: "edit",
+        operation: "patch_section",
         area: "notes",
-        editMode: "append",
-        text: "- Memory tool smoke note.",
+        sectionId: "active_todos",
+        oldText: "- Active todos belong here.",
+        newText: "- Active todos belong here.\n- Memory tool smoke note.",
       })
       expect(notesPatch.changed).toBe(true)
       const projectNotesAfterPatch = fs.readFileSync(path.join(primaryWorkspace.path as string, ".socrates", "PROJECT_NOTES.md"), "utf8")
       expect(projectNotesAfterPatch).toContain("Memory tool smoke note")
       expect(projectNotesAfterPatch).toContain('updated_by: "project_docs"')
-      expect(projectNotesAfterPatch).toContain('last_edited_section: "document"')
+      expect(projectNotesAfterPatch).toContain('last_edited_section: "active_todos"')
+      expect(() => store.runProjectDocsTool(project.id, primaryWorkspace.path as string, {
+        operation: "edit",
+        area: "notes",
+        editMode: "append",
+        text: "- Shadow whole-document note.",
+      } as never)).toThrow(/section patches only/)
       expect(() =>
         store.runProjectDocsTool(project.id, primaryWorkspace.path as string, {
           operation: "patch_section",
@@ -5519,9 +5533,9 @@ describe("WebSocket API", () => {
       })
       expect(memorySectionPatch.section?.content).toContain("project_docs.read_index")
       const memoryReplace = store.runProjectDocsTool(project.id, primaryWorkspace.path as string, {
-        operation: "edit",
+        operation: "patch_section",
         area: "memory",
-        editMode: "replace",
+        sectionId: "legacy_content",
         oldText: "Durable recall key: WAKE-LEAN-42.",
         newText: "Durable recall key: WAKE-LEAN-43.",
       })
@@ -5542,25 +5556,18 @@ describe("WebSocket API", () => {
       expect(repoSectionPatch.section?.content).toContain("explicitly instructed")
       const repoDocsSearch = store.runRepoDocsTool(project.id, primaryWorkspace.path as string, { operation: "search", query: "durable", path: "REPO_RULES.md" })
       expect(repoDocsSearch.matches?.[0]?.path).toBe(".socrates/repo_docs/REPO_RULES.md")
-      const repoDocsPatch = store.runRepoDocsTool(project.id, primaryWorkspace.path as string, {
-        operation: "edit",
-        path: "REPO_RULES.md",
-        oldText: "Keep it short, current, and practical.",
-        newText: "Keep it short, current, practical, and easy for future agents to trust.",
-      })
-      expect(repoDocsPatch.changed).toBe(true)
       const repoRulesAfterPatch = fs.readFileSync(path.join(primaryWorkspace.path as string, ".socrates", "repo_docs", "REPO_RULES.md"), "utf8")
-      expect(repoRulesAfterPatch).toContain("future agents")
+      expect(repoRulesAfterPatch).toContain("explicitly instructed")
       expect(repoRulesAfterPatch).toContain('updated_by: "repo_docs"')
-      expect(repoRulesAfterPatch).toContain('last_edited_section: "document"')
+      expect(repoRulesAfterPatch).toContain('last_edited_section: "hard_rules"')
       expect(() =>
         store.runRepoDocsTool(project.id, primaryWorkspace.path as string, {
           operation: "edit",
           path: "REPO_RULES.md",
           oldText: "- ",
           newText: "- changed ",
-        }),
-      ).toThrow(/oldText matched more than once/)
+        } as never),
+      ).toThrow(/section patches only/)
       const indexedRows = handle.sqlite.prepare("SELECT COUNT(*) AS count FROM memory_doc_indexes WHERE project_id = ?").get(project.id) as { count: number }
       const sectionRows = handle.sqlite.prepare("SELECT COUNT(*) AS count FROM memory_doc_sections WHERE project_id = ? AND section_id IN ('handoff', 'hard_rules')").get(project.id) as { count: number }
       expect(indexedRows.count).toBeGreaterThanOrEqual(6)
@@ -6095,6 +6102,21 @@ describe("WebSocket API", () => {
               },
             },
           }
+          yield {
+            type: "model.tool_call.completed",
+            toolCall: {
+              toolCallId: "memory_edit_user_profile_shadow_section",
+              toolName: "edit_files",
+              input: {
+                target: "user_profile",
+                editMode: "replace",
+                sectionId: "stable_preferences",
+                oldText: "- No durable cross-project preferences captured yet.",
+                newText: '- No durable cross-project preferences captured yet.\n<!-- /socrates:section -->\n<!-- socrates:section id="shadow" kind="preferences" tags="shadow" -->\n## Shadow\n- Must never persist.\n<!-- /socrates:section -->',
+                rationale: "Exercise malformed-section rejection.",
+              },
+            },
+          }
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
@@ -6123,6 +6145,10 @@ describe("WebSocket API", () => {
       const toolUsageFile = path.join(socratesHome, "tool_usage", "read_search.md")
       const userProfileFile = path.join(socratesHome, "user_profile.md")
       await waitForFileText(userProfileFile, "Configured memory worker can update narrow user profile notes")
+      const userProfileContent = fs.readFileSync(userProfileFile, "utf8")
+      expect(userProfileContent).not.toContain("Must never persist.")
+      expect(userProfileContent.match(/<!-- socrates:section /g)).toHaveLength(memoryDocRequiredSections.user_profile.length)
+      expect(userProfileContent.match(/<!-- \/socrates:section -->/g)).toHaveLength(memoryDocRequiredSections.user_profile.length)
       const toolUsageContent = fs.readFileSync(toolUsageFile, "utf8")
       expectStructuredToolDoc(socratesHome, "read_search.md")
       expect(toolUsageContent).not.toContain("Configured memory worker can refine global tool guidance")
@@ -6139,6 +6165,8 @@ describe("WebSocket API", () => {
       expect(toolDocActions.count).toBe(0)
       const failedToolDocCall = handle.sqlite.prepare("SELECT COUNT(*) AS count FROM events WHERE type = 'tool.call.failed' AND payload_json LIKE '%memory_edit_tool_doc%'").get() as { count: number }
       expect(failedToolDocCall.count).toBeGreaterThan(0)
+      const failedShadowSectionCall = handle.sqlite.prepare("SELECT COUNT(*) AS count FROM events WHERE type = 'tool.call.failed' AND payload_json LIKE '%memory_edit_user_profile_shadow_section%'").get() as { count: number }
+      expect(failedShadowSectionCall.count).toBeGreaterThan(0)
       const profileAction = handle.sqlite.prepare("SELECT status FROM memory_agent_actions WHERE target_kind = 'user_profile'").get() as { status: string }
       expect(profileAction.status).toBe("applied")
       const profileSection = handle.sqlite.prepare("SELECT section_id AS sectionId FROM memory_doc_sections WHERE path = 'user_profile.md' AND section_id = 'profile_summary'").get() as { sectionId: string }
@@ -6610,6 +6638,7 @@ describe("WebSocket API", () => {
               input: {
                 target: "identity",
                 editMode: "replace",
+                sectionId: "core_identity",
                 oldText: "Socrates is a local-first project partner.",
                 newText: "Socrates is a local-first project partner with evidence-backed memory.",
                 rationale: "The backend memory-agent flow is now a durable identity capability.",
@@ -7314,8 +7343,9 @@ describe("WebSocket API", () => {
       expect(request.system).not.toContain("Semantic retrieval: not configured.")
       expect(request.system).not.toContain("Current date:")
       expect(request.system).toContain("If the current date or exact time matters, call current_time")
-      expect(request.system).toContain("Project notes include `active_context`")
-      expect(request.system).toContain("backend-owned `runtime_context` section")
+      expect(request.system).toContain("Base document URIs are read/search only")
+      expect(request.system).toContain("socrates://project/notes/active_context")
+      expect(request.system).toContain("Backend-owned sections remain read-only")
       expect(request.system).toContain("On the first assistant response in a new conversation")
       expect(latestUserContent(request.messages)).toBe("Use the context")
       expect(request.messages.some((message) => message.role === "developer" && message.content?.includes("runtime_socrates_docs_preflight"))).toBe(false)

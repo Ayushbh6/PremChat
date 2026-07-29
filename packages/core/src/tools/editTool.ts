@@ -40,16 +40,13 @@ const decideEditPolicy: SocratesTool<typeof editToolInputSchema._type, typeof ed
 
 const isSocratesOwnedWorkingPath = (path: string): boolean =>
   path.startsWith(".socrates/") ||
-  path === "socrates://project/memory" ||
-  path.startsWith("socrates://project/memory/") ||
-  path === "socrates://project/notes" ||
-  path.startsWith("socrates://project/notes/") ||
-  path.startsWith("socrates://project/repo-docs/")
+  /^socrates:\/\/project\/(?:memory|notes)\/[^/]+$/.test(path) ||
+  /^socrates:\/\/project\/repo-docs\/[^/]+\/[^/]+$/.test(path)
 
 export const editTool: SocratesTool<typeof editToolInputSchema._type, typeof editToolOutputSchema._type> = {
   name: "edit",
   description:
-    "Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
+    "Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. Durable Socrates memory, notes, and repo docs require an exact section URI; their base document URIs are read/search only. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.",
   inputSchema: editToolInputSchema,
   resultSchema: editToolOutputSchema,
   permission: "mutate",

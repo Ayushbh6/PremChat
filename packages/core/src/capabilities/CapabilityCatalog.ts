@@ -123,6 +123,7 @@ const toolDocumentationGuidance: Readonly<Record<string, readonly string[]>> = O
   ],
   "tool.edit": [
     "Read an existing target first. Targeted edits use one edits array; every match is resolved against the same original content, overlaps fail, and the write is atomic.",
+    "Durable Socrates documents require an exact section URI for edits; base document URIs are read/search only.",
     "The model never supplies dryRun. Approval previews are an internal runtime concern. Re-read a changed target when later work depends on its exact new contents.",
   ],
   "tool.apply_patch": [
@@ -149,6 +150,7 @@ const toolDocumentationGuidance: Readonly<Record<string, readonly string[]>> = O
     "When checking an opt-out, ordinary workspace-artifact restrictions do not suppress memory unless the user also scopes the restriction to Socrates memory, `.socrates`, internal state, or all changes.",
   ],
   "tool.edit_files": [
+    "Identity and user-profile replacements require the exact sectionId and section-local oldText; whole-document replacement is not supported.",
     "For `target: \"skill\"`, create a user-visible skill proposal only after exact evidence is inspected; the Skill Writer performs the final approved `SKILL.md` write.",
   ],
 })

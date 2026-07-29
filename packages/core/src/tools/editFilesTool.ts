@@ -5,7 +5,7 @@ import type { SocratesTool } from "./types"
 export const editFilesTool: SocratesTool<typeof editFilesToolInputSchema._type, typeof editFilesToolOutputSchema._type> = {
   name: "edit_files",
   description:
-    'Write global memory-agent targets through scoped names only. target is "identity", "user_profile", or "skill"; name is required for skill. Tool docs are read-only for models. No arbitrary filesystem paths are accepted. Use replace with sectionId and exact oldText/newText for a focused edit. Use move with exact sourceText, canonical destinationText, source/destination section ids, and an evidence rationale to atomically repair a clearly misplaced entry.',
+    'Write global memory-agent targets through scoped names only. Identity and user-profile replacements require sectionId plus exact section-local oldText/newText; whole-document replacements are invalid. Use move with exact sourceText, canonical destinationText, source/destination section ids, and evidence rationale. target="skill" creates only a user-approved Skill Writer proposal. Tool docs are read-only and arbitrary paths are never accepted.',
   inputSchema: editFilesToolInputSchema,
   resultSchema: editFilesToolOutputSchema,
   permission: "mutate",

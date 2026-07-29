@@ -22,7 +22,7 @@ canonical contracts and shared utilities
 
 No route, store, UI handler, Classic adapter, Flow adapter, worker, MCP integration, or provider may skip this chain.
 
-For the unified foreground resource surface, `read` and `search` own both workspace paths and authorized `socrates://` resources. `edit` owns ordinary workspace files plus explicitly writable `.socrates` resources through the same authority registry. Identity, user profile, generated tool guidance, and installed skill files are read-only to main Socrates. Identity/profile proposals go through `memory_note`; skill and MCP mutations go through the always-visible approval-gated `capability_manager`.
+For the unified foreground resource surface, `read` and `search` own both workspace paths and authorized `socrates://` resources. `edit` owns ordinary workspace files plus explicitly writable `.socrates` sections through the same authority registry. Durable document base URIs are read/search only; mutation requires the exact section URI, validation of the full prospective document, and atomic persistence. Identity, user profile, generated tool guidance, and installed skill files are read-only to main Socrates. Identity/profile proposals go through `memory_note`, and Memory Agent replacements require the exact section id; skill and MCP mutations go through the always-visible approval-gated `capability_manager`.
 
 One shared implementation does not require a process-global mutable singleton. Services may be instantiated or injected for isolation, testing, and concurrency, but every instance must use the same canonical implementation and contracts. Turn state, tool-call state, context handles, approvals, Terminal sessions, and model events remain request-scoped.
 
@@ -105,7 +105,7 @@ Perform every step in order:
 10. Add schema, executor, policy, provider-parity, documentation-generation, role-manifest, malformed-call, and integration tests.
 11. Run the architecture drift check and all affected Classic/Flow tests.
 
-The target generator must derive the existing tool-guide output under `apps/server/src/memory/defaults/primary/tool_usage/` or its accepted replacement from the catalog. Generated files must identify their source and reject manual drift.
+The target generator must derive the existing tool-guide output under `apps/server/src/memory/defaults/primary/tool_usage/` or its accepted replacement from the catalog. Generated files must identify their source and reject manual drift. Runtime installation must mirror that generated inventory and content exactly: overwrite every content mismatch and remove every non-catalog Markdown guide so stale or shadow guidance cannot remain visible.
 
 ### Tool Review Questions
 

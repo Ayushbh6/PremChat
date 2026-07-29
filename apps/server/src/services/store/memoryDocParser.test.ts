@@ -61,6 +61,21 @@ describe("memory doc parser", () => {
     expect(() => patchMemoryDocSection(next, projectProfile, "handoff", "project_docs.read_index", "project_docs.read_section")).toThrow(/matched more than once/)
   })
 
+  it("rejects section edits that would inject nested or orphan section markers", () => {
+    const content = buildStructuredMemoryDoc(projectProfile)
+    const originalHash = parseMemoryDoc(content, projectProfile).contentHash
+
+    expect(() => patchMemoryDocSection(
+      content,
+      projectProfile,
+      "handoff",
+      "- Restart-ready handoff facts belong here.",
+      '<!-- socrates:section id="shadow" kind="handoff" tags="shadow" -->\n## Shadow\n<!-- /socrates:section -->',
+    )).toThrow(/structurally invalid/)
+    expect(() => parseMemoryDoc(`${content}<!-- \/socrates:section -->\n`, projectProfile)).toThrow(/closing section marker without an open section/)
+    expect(parseMemoryDoc(content, projectProfile).contentHash).toBe(originalHash)
+  })
+
   it("wraps legacy markdown without losing the original text", () => {
     const filePath = path.join(tempDir(), ".socrates", "MEMORY.md")
     fs.mkdirSync(path.dirname(filePath), { recursive: true })

@@ -27,8 +27,8 @@ const testContext = (input: { identity?: string; notes?: string } = {}) => {
       ? { operation: "list", skills: [{ scope: "project", name: "build-protocol", description: "Follow the canonical build protocol.", enabled: true }], totalMatches: 1, truncation: { truncated: false, charLimit: 80_000, returnedLength: 1 } }
       : { operation: "read", skills: [], totalMatches: 1, content: "---\nname: build-protocol\ndescription: Follow the canonical build protocol.\n---", truncation: { truncated: false, charLimit: 80_000, returnedLength: 1 } },
     listResources: () => [],
-    runProjectDocsTool: (_projectId: string, _workspacePath: string, input: { operation: string; area: string; oldText?: string; newText?: string }) => {
-      if (input.operation === "edit" || input.operation === "patch_section") {
+    runProjectDocsTool: (_projectId: string, _workspacePath: string, input: { operation: string; area: string; sectionId?: string; oldText?: string; newText?: string }) => {
+      if (input.operation === "patch_section") {
         if (input.oldText !== notes) throw new Error("stale test edit")
         notes = input.newText ?? notes
       }
@@ -98,7 +98,7 @@ describe("governed Socrates resources", () => {
 
   it("edits governed project notes atomically after reading the exact URI", async () => {
     const { context, notes } = testContext()
-    const resourcePath = "socrates://project/notes"
+    const resourcePath = "socrates://project/notes/active_context"
     await readSocratesResource({ path: resourcePath }, context)
     const output = await editSocratesResource({
       path: resourcePath,
@@ -113,7 +113,7 @@ describe("governed Socrates resources", () => {
     const original = "A".repeat(20_000)
     const replacement = "B".repeat(30_000)
     const { context, notes } = testContext({ notes: original })
-    const resourcePath = "socrates://project/notes"
+    const resourcePath = "socrates://project/notes/active_context"
     await readSocratesResource({ path: resourcePath }, context)
     const output = await editSocratesResource({
       path: resourcePath,
@@ -133,5 +133,20 @@ describe("governed Socrates resources", () => {
       path: "socrates://identity",
       edits: [{ oldString: "identity", newString: "changed" }],
     }, context)).rejects.toMatchObject({ code: "resource_read_only" })
+  })
+
+  it("keeps durable base documents read-only and requires an exact editable section URI", async () => {
+    const { context, notes } = testContext()
+    const resourcePath = "socrates://project/notes"
+    await readSocratesResource({ path: resourcePath }, context)
+
+    await expect(editSocratesResource({
+      path: resourcePath,
+      edits: [{ oldString: "canonical", newString: "shadow" }],
+    }, context)).rejects.toMatchObject({
+      code: "resource_section_required",
+      recoverable: true,
+    })
+    expect(notes()).toBe("Keep the capability catalog canonical.")
   })
 })

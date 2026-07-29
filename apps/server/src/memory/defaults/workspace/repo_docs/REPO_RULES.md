@@ -25,8 +25,8 @@ This file records durable engineering rules for this workspace. Keep it short, c
 
 - Read current files before editing them.
 - Use targeted edits or structured patches for existing files.
-- Use governed `read`, `search`, and `edit` with `socrates://project/memory` or `socrates://project/notes` for project working state.
-- Use governed `read`, `search`, and `edit` with `socrates://project/repo-docs` for durable repo doctrine.
+- Use governed `read`/`search` on `socrates://project/memory` or `socrates://project/notes`, then edit one exact section URI for durable project state.
+- Use governed `read`/`search` on `socrates://project/repo-docs`, then edit one exact file/section URI for durable repo doctrine.
 - Do not claim success until the relevant command/tool confirms it.
 <!-- /socrates:section -->
 

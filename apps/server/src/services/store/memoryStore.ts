@@ -55,7 +55,6 @@ import type {
   SkillImportPreview,
   CommitSkillImportResponse,
 } from "@socrates/contracts"
-import { memoryDocRequiredSections } from "@socrates/contracts"
 import { SoulConfirmationAgent, type StableCachePreludeSnapshot } from "@socrates/core"
 import type { ModelProvider, ModelUsage, ProviderCredentialResolver } from "@socrates/providers"
 import { estimateTextTokens } from "@socrates/providers"
@@ -104,6 +103,7 @@ import {
   type SkillInfo,
 } from "./memorySkills"
 import {
+  assertValidStructuredMemoryDoc,
   ensureStructuredMemoryDoc,
   memoryDocTypeForEditFilesTarget,
   memoryDocTypeForRepoDoc,
@@ -397,8 +397,7 @@ export class MemoryStore extends StoreBase {
     migrateGlobalPrimaryFiles(this.socratesHome)
     migrateIdentityUserSectionsToProfile(this.socratesHome)
     removeRetiredOperatingPrinciplesFiles(this.socratesHome)
-    ensureBundledToolUsageDocs(path.join(this.socratesHome, "tool_usage"))
-    removeLegacyToolUsageDocs(path.join(this.socratesHome, "tool_usage"))
+    syncBundledToolUsageDocs(path.join(this.socratesHome, "tool_usage"))
     this.ensureAndIndexGlobalDocs()
     fs.mkdirSync(path.join(this.socratesHome, "skills"), { recursive: true })
     migrateUsefulPatternsToSkills(this.socratesHome)
@@ -1072,7 +1071,8 @@ export class MemoryStore extends StoreBase {
       this.assertProjectDocsSectionMutable(input.area, sectionId)
       const patched = patchMemoryDocSection(content, profile, sectionId, input.oldText ?? "", input.newText ?? "", input.replaceAll)
       const next = patched === content ? patched : stampMemoryDocFrontmatter(patched, { updatedAt: runtime.currentDateTime, updatedBy: "project_docs", lastEditedSection: sectionId })
-      fs.writeFileSync(documentPath, next)
+      assertValidStructuredMemoryDoc(next, profile)
+      writeFileAtomically(documentPath, next)
       const nextIndex = this.indexMemoryDocFile(documentPath, profile)
       const section = findMemoryDocSection(nextIndex, sectionId)
       return {
@@ -1111,39 +1111,13 @@ export class MemoryStore extends StoreBase {
         ...(matches.length === DEFAULT_SEARCH_LIMIT ? { warnings: [`${projectDocRelativePath(input.area)} search hit the match limit; narrow the query.`] } : {}),
       }
     }
-    let next = content
-    if (input.editMode === "append") {
-      const text = input.text ?? ""
-      next = `${content.trimEnd()}\n\n${text.trim()}\n`
-    } else {
-      const oldText = input.oldText ?? ""
-      const newText = input.newText ?? ""
-      const occurrences = oldText.length === 0 ? 0 : countOccurrences(content, oldText)
-      if (oldText.length === 0 || occurrences === 0) {
-        throw new SocratesError("project_docs_edit_failed", `oldText was not found in ${projectDocRelativePath(input.area)}.`, { recoverable: true })
-      }
-      if (occurrences > 1) {
-        throw new SocratesError("project_docs_edit_ambiguous", "oldText matched more than once. Retry with a longer oldText.", {
-          recoverable: true,
-          details: { occurrences, area: input.area },
-        })
-      }
-      next = content.replace(oldText, newText)
-    }
-    this.assertProjectDocsProtectedSectionsUnchanged(input.area, content, next, profile)
-    next = next === content ? next : stampMemoryDocFrontmatter(next, { updatedAt: runtime.currentDateTime, updatedBy: "project_docs", lastEditedSection: "document" })
-    fs.writeFileSync(documentPath, next)
-    const nextIndex = this.indexMemoryDocFile(documentPath, profile)
-    return {
-      operation: "edit",
-      area: input.area,
-      path: projectDocRelativePath(input.area),
-      changed: next !== content,
-      content: truncate(next, charLimit).text,
-      index: nextIndex,
-      runtime,
-      truncation: truncationFor(next, charLimit),
-    }
+    throw new SocratesError("project_docs_operation_invalid", "Durable project documents support reads, search, indexes, and section patches only.", {
+      recoverable: true,
+      details: {
+        operation: (input as { operation?: string; area?: string }).operation,
+        area: (input as { operation?: string; area?: string }).area,
+      },
+    })
   }
 
   private ensureProjectNotesRuntimeContext(projectId: string, workspacePath: string, generatedAt: string): void {
@@ -1155,14 +1129,13 @@ export class MemoryStore extends StoreBase {
     if (next === content) {
       return
     }
-    fs.writeFileSync(
-      notesPath,
-      stampMemoryDocFrontmatter(next, {
-        updatedAt: generatedAt,
-        updatedBy: "system",
-        lastEditedSection: PROJECT_NOTES_RUNTIME_CONTEXT_SECTION,
-      }),
-    )
+    const stamped = stampMemoryDocFrontmatter(next, {
+      updatedAt: generatedAt,
+      updatedBy: "system",
+      lastEditedSection: PROJECT_NOTES_RUNTIME_CONTEXT_SECTION,
+    })
+    assertValidStructuredMemoryDoc(stamped, profile)
+    writeFileAtomically(notesPath, stamped)
     this.indexMemoryDocFile(notesPath, profile)
   }
 
@@ -1172,22 +1145,6 @@ export class MemoryStore extends StoreBase {
         recoverable: true,
         details: { area, sectionId },
       })
-    }
-  }
-
-  private assertProjectDocsProtectedSectionsUnchanged(area: ProjectDocsArea, before: string, after: string, profile: MemoryDocProfile): void {
-    if (area !== "notes" || before === after) {
-      return
-    }
-    for (const sectionId of [PROJECT_NOTES_RUNTIME_CONTEXT_SECTION, "state_ledger"]) {
-      const beforeSection = sectionContentOrUndefined(before, profile, sectionId)
-      const afterSection = sectionContentOrUndefined(after, profile, sectionId)
-      if (beforeSection !== afterSection) {
-        throw new SocratesError("project_docs_system_section_protected", `${sectionId} is system-owned and cannot be changed by project_docs.`, {
-          recoverable: true,
-          details: { area, sectionId },
-        })
-      }
     }
   }
 
@@ -1212,15 +1169,15 @@ export class MemoryStore extends StoreBase {
     const section = formatProjectStateLedgerSection(input)
     const runtime = currentRuntimeTime()
     const next = replaceStateLedgerSection(removeAssistantStatusPreviewLines(content), section)
-    fs.writeFileSync(
-      notesPath,
-      stampMemoryDocFrontmatter(next, {
-        updatedAt: runtime.currentDateTime,
-        updatedBy: "system",
-        lastEditedSection: "state_ledger",
-      }),
-    )
-    this.indexMemoryDocFile(notesPath, projectDocProfile(projectId, "notes"))
+    const profile = projectDocProfile(projectId, "notes")
+    const stamped = stampMemoryDocFrontmatter(next, {
+      updatedAt: runtime.currentDateTime,
+      updatedBy: "system",
+      lastEditedSection: "state_ledger",
+    })
+    assertValidStructuredMemoryDoc(stamped, profile)
+    writeFileAtomically(notesPath, stamped)
+    this.indexMemoryDocFile(notesPath, profile)
   }
 
   runRepoDocsTool(projectId: string, workspacePath: string, input: RepoDocsToolInput): RepoDocsToolOutput {
@@ -1266,7 +1223,8 @@ export class MemoryStore extends StoreBase {
       const sectionId = input.sectionId as string
       const patched = patchMemoryDocSection(content, profile, sectionId, input.oldText ?? "", input.newText ?? "", input.replaceAll)
       const next = patched === content ? patched : stampMemoryDocFrontmatter(patched, { updatedAt: runtime.currentDateTime, updatedBy: "repo_docs", lastEditedSection: sectionId })
-      fs.writeFileSync(absolutePath, next)
+      assertValidStructuredMemoryDoc(next, profile)
+      writeFileAtomically(absolutePath, next)
       const index = this.indexMemoryDocFile(absolutePath, profile)
       const section = findMemoryDocSection(index, sectionId)
       return {
@@ -1327,34 +1285,10 @@ export class MemoryStore extends StoreBase {
       }
     }
 
-    const name = input.path as (typeof REPO_DOC_NAMES)[number]
-    const absolutePath = repoDocPath(docsRoot, name)
-    const content = fs.readFileSync(absolutePath, "utf8")
-    const oldText = input.oldText ?? ""
-    const newText = input.newText ?? ""
-    const occurrences = oldText.length === 0 ? 0 : countOccurrences(content, oldText)
-    if (oldText.length === 0 || occurrences === 0) {
-      throw new SocratesError("repo_docs_patch_failed", "oldText was not found in the selected repo doc.", { recoverable: true })
-    }
-    if (!input.replaceAll && occurrences > 1) {
-      throw new SocratesError("repo_docs_patch_ambiguous", "oldText matched more than once. Retry with a longer oldText or replaceAll=true.", {
-        recoverable: true,
-        details: { path: `.socrates/repo_docs/${name}`, occurrences },
-      })
-    }
-    const patched = input.replaceAll ? content.split(oldText).join(newText) : content.replace(oldText, newText)
-    const next = patched === content ? patched : stampMemoryDocFrontmatter(patched, { updatedAt: runtime.currentDateTime, updatedBy: "repo_docs", lastEditedSection: "document" })
-    fs.writeFileSync(absolutePath, next)
-    const index = this.indexMemoryDocFile(absolutePath, repoDocProfile(projectId, name))
-    return {
-      operation: "edit",
-      path: `.socrates/repo_docs/${name}`,
-      changed: next !== content,
-      content: truncate(next, charLimit).text,
-      index,
-      runtime,
-      truncation: truncationFor(next, charLimit),
-    }
+    throw new SocratesError("repo_docs_operation_invalid", "Durable repo documents support reads, search, indexes, and section patches only.", {
+      recoverable: true,
+      details: { operation: (input as { operation?: string }).operation, path: (input as { path?: string }).path },
+    })
   }
 
   runSoulTool(projectId: string, workspacePath: string | undefined, input: SoulToolInput): SoulToolOutput {
@@ -2797,13 +2731,10 @@ export class MemoryStore extends StoreBase {
     resolved: ResolvedEditFilesTarget,
   ): MemoryPatchProposal {
     if (!input.sectionId) {
-      return {
-        oldText: input.oldText ?? "",
-        newText: input.newText,
-        ...(input.rationale ? { rationale: input.rationale } : {}),
-        ...(input.sourceTurnIds ? { sourceTurnIds: input.sourceTurnIds } : {}),
-        ...(resolved.document ? { document: resolved.document } : {}),
-      }
+      throw new SocratesError("edit_files_section_required", "Identity and user-profile replacements require an exact sectionId.", {
+        recoverable: true,
+        details: { target: input.target },
+      })
     }
     if (resolved.targetKind === "skills") {
       throw new SocratesError("edit_files_section_not_supported", "sectionId is not supported for skill targets.", {
@@ -3727,13 +3658,13 @@ export class MemoryStore extends StoreBase {
   }
 
   private assertSkillWriterProjectDocsReadOnly(input: ProjectDocsToolInput): void {
-    if (input.operation === "edit" || input.operation === "patch_section") {
+    if (input.operation === "patch_section") {
       throw new SocratesError("skill_writer_project_docs_read_only", "Skill Writer may read project_docs but cannot write them.", { recoverable: true, details: { operation: input.operation } })
     }
   }
 
   private assertSkillWriterRepoDocsReadOnly(input: RepoDocsToolInput): void {
-    if (input.operation === "edit" || input.operation === "patch_section") {
+    if (input.operation === "patch_section") {
       throw new SocratesError("skill_writer_repo_docs_read_only", "Skill Writer may read repo_docs but cannot write them.", { recoverable: true, details: { operation: input.operation } })
     }
   }
@@ -3760,7 +3691,14 @@ export class MemoryStore extends StoreBase {
       updatedBy: "edit_files",
       lastEditedSection: lastEditedSection ?? "document",
     })
-    fs.writeFileSync(targetPath, next)
+    try {
+      assertValidStructuredMemoryDoc(next, globalMemoryDocProfile(this.socratesHome, "user_profile"))
+    } catch (error) {
+      const message = `User profile edit was rejected before persistence: ${error instanceof Error ? error.message : String(error)}`
+      this.rejectMemoryAction(action.actionId, message)
+      return { applied: false, actionId: action.actionId, error: message }
+    }
+    writeFileAtomically(targetPath, next)
     const afterHash = hashText(next)
     this.handle.db.update(memoryAgentActions).set({ status: "applied", afterHash, appliedAt: nowIso() }).where(eq(memoryAgentActions.id, action.actionId)).run()
     const notification = this.options.createNotification?.({
@@ -3810,6 +3748,20 @@ export class MemoryStore extends StoreBase {
     if (!preflight.ok) {
       this.rejectMemoryAction(action.actionId, preflight.error)
       return { applied: false, actionId: action.actionId, error: preflight.error }
+    }
+    try {
+      assertValidStructuredMemoryDoc(
+        stampMemoryDocFrontmatter(preflight.next, {
+          updatedAt: currentRuntimeTime().currentDateTime,
+          updatedBy: "edit_files",
+          lastEditedSection: lastEditedSection ?? "document",
+        }),
+        globalMemoryDocProfile(this.socratesHome, "identity"),
+      )
+    } catch (error) {
+      const message = `Identity edit was rejected before confirmation: ${error instanceof Error ? error.message : String(error)}`
+      this.rejectMemoryAction(action.actionId, message)
+      return { applied: false, actionId: action.actionId, error: message }
     }
 
     const confirmationId = createId("memconf")
@@ -3885,7 +3837,14 @@ export class MemoryStore extends StoreBase {
       updatedBy: "edit_files",
       lastEditedSection: lastEditedSection ?? "document",
     })
-    fs.writeFileSync(targetPath, next)
+    try {
+      assertValidStructuredMemoryDoc(next, globalMemoryDocProfile(this.socratesHome, "identity"))
+    } catch (error) {
+      const message = `Identity edit was rejected before persistence: ${error instanceof Error ? error.message : String(error)}`
+      this.rejectMemoryAction(action.actionId, message)
+      return { applied: false, actionId: action.actionId, error: message }
+    }
+    writeFileAtomically(targetPath, next)
     const afterHash = hashText(next)
     this.handle.db.update(memoryAgentActions).set({ status: "applied", afterHash, appliedAt: nowIso() }).where(eq(memoryAgentActions.id, action.actionId)).run()
     const notification = this.options.createNotification?.({
@@ -4045,7 +4004,7 @@ const editFilesMemoryDocProfile = (
   const target = resolved.targetKind === "soul" ? resolved.document ?? "identity" : resolved.targetKind === "user_profile" ? "user_profile" : "skill"
   return {
     docType: memoryDocTypeForEditFilesTarget(target),
-    ownerTool: resolved.targetKind,
+    ownerTool: resolved.targetKind === "skills" ? "skill_write" : "edit_files",
     scope: "global",
     path: relativePath,
     projectId: GLOBAL_MEMORY_AGENT_PROJECT_ID,
@@ -4153,42 +4112,25 @@ const bundledSkillsDir = (): string => {
   return found
 }
 
-const ensureBundledToolUsageDocs = (targetDir: string): void => {
+const syncBundledToolUsageDocs = (targetDir: string): void => {
   const sourceDir = bundledToolUsageDocsDir()
   fs.mkdirSync(targetDir, { recursive: true })
-  for (const sourcePath of listMarkdownFiles(sourceDir)) {
-    const name = path.relative(sourceDir, sourcePath)
+  const sourceFiles = new Map(
+    listMarkdownFiles(sourceDir).map((sourcePath) => [path.relative(sourceDir, sourcePath), sourcePath]),
+  )
+  for (const [name, sourcePath] of sourceFiles) {
     const targetPath = path.join(targetDir, name)
     const content = fs.readFileSync(sourcePath, "utf8")
-    fs.mkdirSync(path.dirname(targetPath), { recursive: true })
-    if (!fs.existsSync(targetPath) || shouldRefreshBundledToolUsageDoc(name, fs.readFileSync(targetPath, "utf8"))) {
-      fs.writeFileSync(targetPath, content)
+    const installed = readIfExists(targetPath)
+    if (installed === undefined || hashText(installed) !== hashText(content)) {
+      writeFileAtomically(targetPath, content)
     }
   }
-}
-
-const removeLegacyToolUsageDocs = (targetDir: string): void => {
-  for (const relativePath of [
-    "memory_docs.md",
-    "project_docs.md",
-    "repo_docs.md",
-    "skills.md",
-    "soul.md",
-    "user_profile.md",
-    "tool_docs.md",
-    "mcp_registry.md",
-    "list_project_resources.md",
-    path.join("memory_agent", "trace_retrieve_global.md"),
-    path.join("memory_agent", "skills.md"),
-    path.join("memory_agent", "soul.md"),
-    path.join("memory_agent", "user_profile.md"),
-    path.join("memory_agent", "tool_docs.md"),
-  ]) {
-    const filePath = path.join(targetDir, relativePath)
-    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-      fs.unlinkSync(filePath)
-    }
+  for (const targetPath of listMarkdownFiles(targetDir)) {
+    const name = path.relative(targetDir, targetPath)
+    if (!sourceFiles.has(name)) fs.unlinkSync(targetPath)
   }
+  removeEmptyDirectories(targetDir)
 }
 
 const ensureBundledRepoDocs = (targetDir: string): void => {
@@ -4436,14 +4378,6 @@ const runtimeContextSignature = (content: string): string | undefined => {
   return /^signature:\s*(.+?)\s*$/m.exec(section ?? "")?.[1]
 }
 
-const sectionContentOrUndefined = (content: string, profile: MemoryDocProfile, sectionId: string): string | undefined => {
-  try {
-    return parseMemoryDoc(content, profile).sections.find((section) => section.sectionId === sectionId)?.content
-  } catch {
-    return undefined
-  }
-}
-
 const yamlList = (items: string[], indent: string): string[] =>
   items.length > 0 ? items.map((item) => `${indent}- ${item}`) : [`${indent}- none`]
 
@@ -4566,55 +4500,6 @@ const globalToolDocProfile = (relativePath: string): MemoryDocProfile => ({
   indexTags: ["tool_usage"],
 })
 
-const shouldRefreshBundledToolUsageDoc = (name: string, content: string): boolean =>
-  isLegacyToolUsageSeed(name, content) || isOutdatedBundledToolUsageDoc(name, content) || !isStructuredToolUsageDoc(name, content)
-
-const isOutdatedBundledToolUsageDoc = (name: string, content: string): boolean =>
-  (["user_profile.md", path.join("memory_agent", "user_profile.md")].includes(name) && (!content.includes("turnId/messageId/event") || content.includes("trace handle"))) ||
-  (["trace_retrieve.md", path.join("memory_agent", "trace_retrieve.md")].includes(name) && !content.includes('mode: "lexical"')) ||
-  (name === "mcp_registry.md" && (content.includes("secretEnv") || !content.includes("secretBindings")))
-
-const isStructuredToolUsageDoc = (name: string, content: string): boolean => {
-  try {
-    const index = parseMemoryDoc(content, globalToolDocProfile(`tool_usage/${name}`))
-    if (index.warnings?.some((warning) => warning.startsWith("Missing required section") || warning.toLowerCase().includes("frontmatter"))) {
-      return false
-    }
-    const expected = memoryDocRequiredSections.tool_doc
-    const actual = index.sections.map((section) => section.sectionId)
-    return actual.length === expected.length && expected.every((sectionId, index) => actual[index] === sectionId) && !actual.includes("legacy_content")
-  } catch {
-    return false
-  }
-}
-
-const isLegacyToolUsageSeed = (name: string, content: string): boolean => {
-  const trimmed = content.trim()
-  if (
-    trimmed.includes("socrates_doc: tool_doc") &&
-    trimmed.includes("- What this tool guidance is for.") &&
-    trimmed.includes('id="legacy_content"')
-  ) {
-    return true
-  }
-  if (
-    name === "project_docs.md" &&
-    trimmed.includes("# project docs Usage Guide") &&
-    trimmed.includes("- What this tool guidance is for.") &&
-    !trimmed.includes('"operation": "patch_section"')
-  ) {
-    return true
-  }
-  if (trimmed.length > 500) {
-    return false
-  }
-  return (
-    (name === "trace_retrieve.md" && trimmed.includes("Use as an investigation tool: browse recent/project conversations without query")) ||
-    (name === "edit_apply_patch.md" && trimmed.includes("Use patch/edit for file writes and Terminal for execution")) ||
-    (name === "read_search.md" && trimmed.includes("Use bounded reads and targeted searches"))
-  )
-}
-
 const ensureFile = (filePath: string, content: string): void => {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   if (!fs.existsSync(filePath)) {
@@ -4641,6 +4526,30 @@ const listMarkdownFiles = (root: string): string[] => {
     }
     return entry.isFile() && entry.name.endsWith(".md") ? [absolutePath] : []
   })
+}
+
+const removeEmptyDirectories = (root: string): void => {
+  if (!fs.existsSync(root)) return
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const absolutePath = path.join(root, entry.name)
+    removeEmptyDirectories(absolutePath)
+    if (fs.readdirSync(absolutePath).length === 0) fs.rmdirSync(absolutePath)
+  }
+}
+
+const writeFileAtomically = (filePath: string, content: string): void => {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  const temporaryPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.socrates-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`,
+  )
+  try {
+    fs.writeFileSync(temporaryPath, content, "utf8")
+    fs.renameSync(temporaryPath, filePath)
+  } finally {
+    if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath)
+  }
 }
 
 const compileSearch = (query: string, _mode: "keyword_any"): { score: (text: string) => number } => {

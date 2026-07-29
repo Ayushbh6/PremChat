@@ -12,7 +12,7 @@ index_tags: [tool_usage]
 <!-- socrates:section id="purpose" kind="purpose" tags="tools" -->
 ## Purpose
 
-- `edit`: Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.
+- `edit`: Create or modify one governed resource or workspace file. Read an existing target in the current turn before editing it. Durable Socrates memory, notes, and repo docs require an exact section URI; their base document URIs are read/search only. For existing text, send one edits array; every oldString is matched against the same original version, overlapping edits are rejected, and the write is atomic. Set replaceAll only when every occurrence should change. Use content for new files, or content with overwrite: true only for a deliberate full rewrite. Identity, user profile, tool guidance, and installed skills are read-only here; propose identity/profile memory through memory_note and manage skills through capability_manager.
 - `apply_patch`: Apply a patch to one or more files in the active project workspace. Call this only after reading existing target files in the current turn. Use patchText with the structured *** Begin Patch format by default: *** Update File, @@ hunks, *** Add File, *** Delete File, and *** Move to. This format does not require unified-diff line counts. Read existing files before patching, deleting, or renaming them, and read a file again before another mutation after a successful edit or patch. Standard unified diffs with ---/+++/@@ headers are accepted only when you already have a valid diff. Use for multi-hunk or multi-file changes.
 <!-- /socrates:section -->
 
@@ -22,6 +22,7 @@ index_tags: [tool_usage]
 - Use `edit` when the active task requires its cataloged mutation/execution capability.
 - Use `apply_patch` when the active task requires its cataloged mutation/execution capability.
 - Read an existing target first. Targeted edits use one edits array; every match is resolved against the same original content, overlaps fail, and the write is atomic.
+- Durable Socrates documents require an exact section URI for edits; base document URIs are read/search only.
 - The model never supplies dryRun. Approval previews are an internal runtime concern. Re-read a changed target when later work depends on its exact new contents.
 - Use the structured Begin Patch format for multi-file or multi-hunk work. The model never supplies dryRun; approval preview and verified application are internal runtime phases.
 <!-- /socrates:section -->

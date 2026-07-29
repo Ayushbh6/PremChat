@@ -128,7 +128,7 @@ export const assertNotProjectNotesMutation = (workspacePath: string, targetPath:
   const area = relativePath === memoryPath ? "memory" : "notes"
   throw new SocratesError(
     "governed_resource_edit_required",
-    ".socrates/MEMORY.md and PROJECT_NOTES.md can only be edited through governed socrates://project/memory or socrates://project/notes resources. Read the exact URI, then use edit with targeted replacements.",
+    ".socrates/MEMORY.md and PROJECT_NOTES.md can only be edited through an exact governed section URI such as socrates://project/memory/handoff or socrates://project/notes/active_context. Base document URIs are read/search only.",
     {
       recoverable: true,
       details: { path: requestedPath ?? relativePath, tool: "edit", operation: "edit", area },
@@ -143,7 +143,7 @@ export const assertNotRepoDocsMutation = (workspacePath: string, targetPath: str
   }
   throw new SocratesError(
     "governed_resource_edit_required",
-    ".socrates/repo_docs/*.md can only be edited through governed socrates://project/repo-docs/<file> resources. Read the exact URI, then use edit with targeted replacements.",
+    ".socrates/repo_docs/*.md can only be edited through an exact governed socrates://project/repo-docs/<file>/<sectionId> URI. Base document URIs are read/search only.",
     {
       recoverable: true,
       details: { path: requestedPath ?? relativePath, tool: "edit", operation: "edit" },

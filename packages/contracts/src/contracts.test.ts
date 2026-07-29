@@ -1871,8 +1871,8 @@ describe("tool contracts", () => {
     ).toBe(true)
     expect(projectDocsToolInputSchema.safeParse({ operation: "read", area: "memory" }).success).toBe(true)
     expect(projectDocsToolInputSchema.safeParse({ operation: "search", area: "notes", query: "decision" }).success).toBe(true)
-    expect(projectDocsToolInputSchema.safeParse({ operation: "edit", area: "notes", editMode: "append", text: "- note" }).success).toBe(true)
-    expect(projectDocsToolInputSchema.safeParse({ operation: "edit", area: "memory", editMode: "replace", oldText: "old", newText: "new" }).success).toBe(true)
+    expect(projectDocsToolInputSchema.safeParse({ operation: "edit", area: "notes", editMode: "append", text: "- note" }).success).toBe(false)
+    expect(projectDocsToolInputSchema.safeParse({ operation: "edit", area: "memory", editMode: "replace", oldText: "old", newText: "new" }).success).toBe(false)
     expect(projectDocsToolInputSchema.safeParse({ operation: "edit", area: "notes", editMode: "replace", oldText: "old" }).success).toBe(false)
     expect(projectDocsToolInputSchema.safeParse({ operation: "read_index", area: "memory" }).success).toBe(true)
     expect(projectDocsToolInputSchema.safeParse({ operation: "read_section", area: "memory", sectionId: "handoff" }).success).toBe(true)
@@ -1880,7 +1880,7 @@ describe("tool contracts", () => {
     expect(projectDocsToolInputSchema.safeParse({ operation: "patch_section", area: "memory", oldText: "old", newText: "new" }).success).toBe(false)
     expect(currentTimeToolInputSchema.safeParse({}).success).toBe(true)
     expect(currentTimeToolOutputSchema.safeParse({ currentDate: "2026-06-19", currentDateTime: timestamp, timeZone: "Europe/Vienna", source: "system" }).success).toBe(true)
-    expect(editFilesToolInputSchema.safeParse({ target: "user_profile", editMode: "replace", oldText: "old", newText: "new" }).success).toBe(true)
+    expect(editFilesToolInputSchema.safeParse({ target: "user_profile", editMode: "replace", oldText: "old", newText: "new" }).success).toBe(false)
     expect(editFilesToolInputSchema.safeParse({ target: "user_profile", editMode: "replace", sectionId: "stable_preferences", oldText: "old", newText: "new" }).success).toBe(true)
     expect(
       editFilesToolInputSchema.safeParse({
@@ -1908,7 +1908,7 @@ describe("tool contracts", () => {
     expect(repoDocsToolInputSchema.safeParse({ operation: "read" }).success).toBe(true)
     expect(repoDocsToolInputSchema.safeParse({ operation: "read", path: "REPO_RULES.md" }).success).toBe(true)
     expect(repoDocsToolInputSchema.safeParse({ operation: "search", query: "contract", path: "CONTRACTS.md" }).success).toBe(true)
-    expect(repoDocsToolInputSchema.safeParse({ operation: "edit", path: "CORE_IDEA.md", oldText: "old", newText: "new" }).success).toBe(true)
+    expect(repoDocsToolInputSchema.safeParse({ operation: "edit", path: "CORE_IDEA.md", oldText: "old", newText: "new" }).success).toBe(false)
     expect(repoDocsToolInputSchema.safeParse({ operation: "read_index" }).success).toBe(true)
     expect(repoDocsToolInputSchema.safeParse({ operation: "read_section", path: "REPO_RULES.md", sectionId: "hard_rules" }).success).toBe(true)
     expect(repoDocsToolInputSchema.safeParse({ operation: "patch_section", path: "REPO_RULES.md", sectionId: "hard_rules", oldText: "old", newText: "new" }).success).toBe(true)
@@ -1932,7 +1932,7 @@ describe("tool contracts", () => {
         content: "# PROJECT_NOTES",
         truncation: { truncated: false, charLimit: 20_000, returnedLength: 15 },
       }).success,
-    ).toBe(true)
+    ).toBe(false)
     expect(projectsToolInputSchema.safeParse({ operation: "list_projects", limit: 10 }).success).toBe(true)
     expect(projectsToolInputSchema.safeParse({ operation: "list_conversations", projectId: project.id }).success).toBe(true)
     expect(projectsToolInputSchema.safeParse({ operation: "list_conversations" }).success).toBe(false)

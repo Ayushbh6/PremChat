@@ -256,6 +256,18 @@ export const parseMemoryDoc = (content: string, profile: MemoryDocProfile): Memo
   }
 }
 
+export const assertValidStructuredMemoryDoc = (content: string, profile: MemoryDocProfile): MemoryDocIndex => {
+  const index = parseMemoryDoc(content, profile)
+  const issues = structuredMemoryDocValidationIssues(index, profile.docType, content)
+  if (issues.length > 0) {
+    throw new SocratesError("memory_doc_invalid", `Structured document ${profile.path} is invalid: ${issues.join("; ")}`, {
+      recoverable: true,
+      details: { path: profile.path, issues },
+    })
+  }
+  return index
+}
+
 export const ensureStructuredMemoryDoc = (filePath: string, profile: MemoryDocProfile): void => {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   if (!fs.existsSync(filePath)) {
@@ -665,11 +677,16 @@ export const patchMemoryDocSection = (content: string, profile: MemoryDocProfile
   const nextSection = replaceAll ? currentSection.split(oldText).join(newText) : currentSection.replace(oldText, newText)
   lines.splice(section.lineStart, section.lineEnd - section.lineStart - 1, ...nextSection.split("\n"))
   const next = lines.join("\n")
-  const reparsed = parseMemoryDoc(next, profile)
-  if (!isValidStructuredMemoryDoc(reparsed, profile.docType)) {
+  try {
+    assertValidStructuredMemoryDoc(next, profile)
+  } catch (error) {
     throw new SocratesError("memory_doc_invalid_after_patch", "Section patch would leave the memory doc structurally invalid.", {
       recoverable: true,
-      details: { path: profile.path, sectionId, warnings: reparsed.warnings },
+      details: {
+        path: profile.path,
+        sectionId,
+        cause: error instanceof Error ? error.message : String(error),
+      },
     })
   }
   return next.endsWith("\n") ? next : `${next}\n`
@@ -735,16 +752,23 @@ export const memoryDocTypeForEditFilesTarget = (target: EditFilesTarget): Memory
   return "skill"
 }
 
-const isValidStructuredMemoryDoc = (index: MemoryDocIndex, docType: MemoryDocType, content?: string): boolean => {
-  if (index.warnings?.some((warning) => warning.startsWith("Missing required section") || warning.toLowerCase().includes("frontmatter"))) {
-    return false
-  }
-  if ((docType === "identity" || docType === "user_profile") && ((content ? primaryDocContainsLegacyContent(content) || primaryDocContainsOldBoilerplate(content) : false) || primaryDocContainsDuplicateLines(index) || primaryDocContainsSemanticDuplicates(index, docType) || primaryDocContainsExtraSectionHeadings(index, docType))) {
-    return false
-  }
+const isValidStructuredMemoryDoc = (index: MemoryDocIndex, docType: MemoryDocType, content?: string): boolean =>
+  structuredMemoryDocValidationIssues(index, docType, content).length === 0
+
+const structuredMemoryDocValidationIssues = (index: MemoryDocIndex, docType: MemoryDocType, content?: string): string[] => {
+  const issues = (index.warnings ?? []).filter((warning) => warning.startsWith("Missing required section") || warning.toLowerCase().includes("frontmatter"))
   const required = memoryDocRequiredSections[docType]
   const sectionIds = new Set(index.sections.map((section) => section.sectionId))
-  return required.every((sectionId) => sectionIds.has(sectionId))
+  for (const sectionId of required) {
+    if (!sectionIds.has(sectionId) && !issues.some((issue) => issue.includes(sectionId))) issues.push(`Missing required section ${sectionId}.`)
+  }
+  if (docType !== "identity" && docType !== "user_profile") return issues
+  if (content && primaryDocContainsLegacyContent(content)) issues.push("Primary document contains legacy content markers.")
+  if (content && primaryDocContainsOldBoilerplate(content)) issues.push("Primary document contains retired boilerplate.")
+  if (primaryDocContainsDuplicateLines(index)) issues.push("Primary document contains duplicate lines.")
+  if (primaryDocContainsSemanticDuplicates(index, docType)) issues.push("Primary document contains semantically duplicate entries.")
+  if (primaryDocContainsExtraSectionHeadings(index, docType)) issues.push("Primary document contains invalid section headings.")
+  return issues
 }
 
 const primaryDocContainsLegacyContent = (content: string): boolean => /id="legacy_content"|##\s+Legacy Content\b|#\s+Legacy Content\b/i.test(content)
@@ -821,40 +845,65 @@ const parseSections = (body: string, lineOffset: number): MemoryDocSection[] => 
   const lines = body.split(/\r?\n/)
   const sections: MemoryDocSection[] = []
   const seen = new Set<string>()
+  let active: { sectionId: string; kind: string; tags: string[]; openIndex: number } | undefined
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? ""
     const open = /^<!--\s*socrates:section\s+(.+?)\s*-->\s*$/.exec(line)
-    if (!open) {
+    const close = /^<!--\s*\/socrates:section\s*-->\s*$/.test(line)
+    if (open) {
+      if (active) {
+        throw new SocratesError("memory_doc_section_nested", `Socrates section ${active.sectionId} contains a nested section marker.`, {
+          recoverable: true,
+          details: { sectionId: active.sectionId, line: index + 1 + lineOffset },
+        })
+      }
+      const attributes = parseAttributes(open[1] ?? "")
+      const sectionId = attributes.id
+      if (!sectionId) {
+        throw new SocratesError("memory_doc_section_invalid", "Socrates section marker is missing an id.", { recoverable: true, details: { line: index + 1 + lineOffset } })
+      }
+      if (seen.has(sectionId)) {
+        throw new SocratesError("memory_doc_section_duplicate", `Duplicate Socrates section id ${sectionId}.`, { recoverable: true, details: { sectionId } })
+      }
+      seen.add(sectionId)
+      active = {
+        sectionId,
+        kind: attributes.kind || "general",
+        tags: (attributes.tags ?? "").split(",").map((tag) => tag.trim()).filter(Boolean),
+        openIndex: index,
+      }
       continue
     }
-    const attributes = parseAttributes(open[1] ?? "")
-    const sectionId = attributes.id
-    if (!sectionId) {
-      throw new SocratesError("memory_doc_section_invalid", "Socrates section marker is missing an id.", { recoverable: true, details: { line: index + 1 + lineOffset } })
+    if (!close) {
+      continue
     }
-    if (seen.has(sectionId)) {
-      throw new SocratesError("memory_doc_section_duplicate", `Duplicate Socrates section id ${sectionId}.`, { recoverable: true, details: { sectionId } })
+    if (!active) {
+      throw new SocratesError("memory_doc_section_orphan_close", "Structured document contains a closing section marker without an open section.", {
+        recoverable: true,
+        details: { line: index + 1 + lineOffset },
+      })
     }
-    seen.add(sectionId)
-    const closeIndex = lines.findIndex((candidate, candidateIndex) => candidateIndex > index && /^<!--\s*\/socrates:section\s*-->\s*$/.test(candidate))
-    if (closeIndex < 0) {
-      throw new SocratesError("memory_doc_section_unclosed", `Socrates section ${sectionId} is missing a closing marker.`, { recoverable: true, details: { sectionId } })
-    }
-    const contentLines = lines.slice(index + 1, closeIndex)
+    const contentLines = lines.slice(active.openIndex + 1, index)
     const content = contentLines.join("\n").trimEnd()
     sections.push({
-      sectionId,
-      kind: attributes.kind || "general",
-      tags: (attributes.tags ?? "").split(",").map((tag) => tag.trim()).filter(Boolean),
-      heading: firstHeading(content) ?? sectionId,
+      sectionId: active.sectionId,
+      kind: active.kind,
+      tags: active.tags,
+      heading: firstHeading(content) ?? active.sectionId,
       content,
-      lineStart: index + 1 + lineOffset,
-      lineEnd: closeIndex + 1 + lineOffset,
+      lineStart: active.openIndex + 1 + lineOffset,
+      lineEnd: index + 1 + lineOffset,
       contentHash: hashText(content),
       summary: summarizeSection(content),
       tokenEstimate: estimateTokens(content),
     })
-    index = closeIndex
+    active = undefined
+  }
+  if (active) {
+    throw new SocratesError("memory_doc_section_unclosed", `Socrates section ${active.sectionId} is missing a closing marker.`, {
+      recoverable: true,
+      details: { sectionId: active.sectionId },
+    })
   }
   return sections
 }

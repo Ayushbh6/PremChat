@@ -150,40 +150,21 @@ export const editSocratesResource = async (
   const dryRun = context.previewOnly ?? false
   if (!dryRun) {
     if (target.kind === "project") {
-      if (target.sectionId) {
-        context.store.runProjectDocsTool(context.projectId, context.workspacePath, {
-          operation: "patch_section",
-          area: target.area,
-          sectionId: target.sectionId,
-          oldText: current,
-          newText: next,
-        })
-      } else {
-        context.store.runProjectDocsTool(context.projectId, context.workspacePath, {
-          operation: "edit",
-          area: target.area,
-          editMode: "replace",
-          oldText: current,
-          newText: next,
-        })
-      }
+      context.store.runProjectDocsTool(context.projectId, context.workspacePath, {
+        operation: "patch_section",
+        area: target.area,
+        sectionId: target.sectionId,
+        oldText: current,
+        newText: next,
+      })
     } else {
-      if (target.sectionId) {
-        context.store.runRepoDocsTool(context.projectId, context.workspacePath, {
-          operation: "patch_section",
-          path: target.file,
-          sectionId: target.sectionId,
-          oldText: current,
-          newText: next,
-        })
-      } else {
-        context.store.runRepoDocsTool(context.projectId, context.workspacePath, {
-          operation: "edit",
-          path: target.file,
-          oldText: current,
-          newText: next,
-        })
-      }
+      context.store.runRepoDocsTool(context.projectId, context.workspacePath, {
+        operation: "patch_section",
+        path: target.file,
+        sectionId: target.sectionId,
+        oldText: current,
+        newText: next,
+      })
     }
     const persisted = await resolveResourceContent(input.path, context)
     if (persisted !== next) throw new SocratesError("edit_verification_failed", "Governed resource edit did not persist exactly.")
@@ -295,14 +276,16 @@ const capabilityContent = async (requestedId: string | undefined, context: Resou
 }
 
 const parseWritableTarget = (resourcePath: string):
-  | { kind: "project"; area: "memory" | "notes"; sectionId?: string }
-  | { kind: "repo"; file: RepoDocFile; sectionId?: string } => {
+  | { kind: "project"; area: "memory" | "notes"; sectionId: string }
+  | { kind: "repo"; file: RepoDocFile; sectionId: string } => {
   const [root, second, third, fourth] = parseSegments(resourcePath)
   if (root === "project" && (second === "memory" || second === "notes")) {
-    return { kind: "project", area: second, ...(third ? { sectionId: third } : {}) }
+    if (third) return { kind: "project", area: second, sectionId: third }
+    throw sectionRequired(resourcePath)
   }
   if (root === "project" && second === "repo-docs" && third && REPO_DOCS.has(third as RepoDocFile)) {
-    return { kind: "repo", file: third as RepoDocFile, ...(fourth ? { sectionId: fourth } : {}) }
+    if (fourth) return { kind: "repo", file: third as RepoDocFile, sectionId: fourth }
+    throw sectionRequired(resourcePath)
   }
   throw new SocratesError(
     "resource_read_only",
@@ -310,6 +293,12 @@ const parseWritableTarget = (resourcePath: string):
     { recoverable: true, details: { path: resourcePath } },
   )
 }
+
+const sectionRequired = (resourcePath: string): SocratesError => new SocratesError(
+  "resource_section_required",
+  "Durable Socrates documents are editable only through an exact section URI. Read the base document or index, then read and edit the selected section URI.",
+  { recoverable: true, details: { path: resourcePath } },
+)
 
 const parseSegments = (resourcePath: string): string[] => {
   if (!isSocratesResourcePath(resourcePath)) throw resourceMissing(resourcePath)
