@@ -2,6 +2,8 @@
 
 This document is the source of truth for the current Socrates repo structure. Socrates is a local-first coding agent with a web frontend, a backend runtime, a reusable agent core, provider-agnostic model access, and a clean workspace capability layer. `UNIFIED_SOCRATES_LIFECYCLE.md` owns the Classic/Flow lifecycle; Phase 1 removed the detached post-turn router and mutable main-agent goal-ledger modules.
 
+Implementation checkpoint (2026-07-30): global filesystem authority is now shared end to end. `packages/contracts/src/filesystemAccess.ts` owns the contract, `apps/server/src/services/store/accessStore.ts` owns durable settings and immutable turn snapshots, `packages/workspace/src/tools/common.ts` owns structured path enforcement, and `apps/web/src/components/chat/AccessControls.tsx` owns the shared current Classic/Flow header controls. The next structural migration is the direct global UI shell and canonical global current-goal pointer; it must reuse these owners and leave released project/Classic/Flow code as compatibility adapters until removal is safe.
+
 ## Current Shape
 
 Current product and supported distribution are the normal web frontend plus backend, with the NPM CLI launching the packaged web/server runtime. Runtime packaging is owned by root `scripts/runtime/`.

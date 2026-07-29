@@ -2,6 +2,8 @@
 
 This document defines product routes, page responsibilities, and the currently implemented Classic/Flow navigation. `FLOW_NORTH_STAR.md` owns the target product intent and `UNIFIED_SOCRATES_LIFECYCLE.md` owns the detailed lifecycle/cleanup boundary. `V2_FLOW_ARCHITECTURE.md` records released implementation and migration constraints. Phase 3 removed both model-driven router agents and converged Classic/Flow pre-turn semantics; historical phase reports remain baseline evidence only.
 
+Implementation checkpoint (2026-07-30): the current project-first Classic/Flow routes now share one header-visible `Paths | Access | Settings` control set and one durable global `Read only`/`Selected`/`Full access` authority. This document still describes the released migration UI below. The next UI phase replaces that entry/navigation layer with direct `Open` into one global Socrates and a goal-grouped exact-Q&A sidebar; it must reuse the implemented access state and shared lifecycle rather than introduce new UI-owned permissions or semantic paths.
+
 Socrates is project-first. Users do not start with a floating global chat. They enter a project, use project resources and instructions, then create or resume conversations inside that project.
 
 ## V1/V2 Product Boundary

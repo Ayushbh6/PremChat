@@ -150,6 +150,8 @@ Read-only mode denies model-initiated file mutation and Terminal execution. Sele
 
 This access phase does not create or claim an OS process sandbox. Terminal remains a local process with the permissions of the user who started Socrates. Its selected working directory, obvious outside-path preflight, and approval policy are transparent safety rails, not proof that arbitrary shell commands or subprocesses cannot access other host paths. A real macOS/Windows/Linux process-containment layer is a separate future decision and must not be introduced through this feature without explicit user approval.
 
+Implementation checkpoint (2026-07-30): `packages/contracts/src/filesystemAccess.ts` owns the shared access contract; `apps/server/src/services/store/accessStore.ts` owns the durable global state, canonical roots, revisions, and immutable turn snapshots; `packages/workspace/src/tools/common.ts` owns symlink-safe structured path resolution; `apps/web/src/components/chat/AccessControls.tsx` is the shared Classic/Flow control surface. Existing primary workspaces are imported non-destructively. Released `runtimeConfig.sandboxMode` is compatibility metadata only and must never become a second authority.
+
 Workspace folders remain real local surfaces and may contain `.socrates/` state during migration. Resource-scope creation and verification belong to `packages/workspace`. Do not edit a workspace root `.gitignore` automatically.
 
 ## 8. The Agent Core Must Be Provider-Agnostic

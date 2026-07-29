@@ -2,6 +2,8 @@
 
 This document is the product-intent authority for the target Socrates experience. `UNIFIED_SOCRATES_LIFECYCLE.md` defines the detailed technical lifecycle, `AGENT_REFACTOR_MANIFESTO.md` defines the agent-core replacement architecture, and `AGENT_CAPABILITY_WORKFLOW.md` defines the mandatory change procedure. `V2_FLOW_ARCHITECTURE.md`, `FLOW_CONVERGENCE_PHASE_*.md`, and the released Classic/project-first implementation remain migration evidence; they do not override this target.
 
+Implementation checkpoint (2026-07-30): the global filesystem-access foundation is complete. One durable `Read only`/`Selected`/`Full access` state, canonical selected roots, immutable per-turn snapshots, structured-tool enforcement, and shared Classic/Flow header controls now exist. The next product phase is the UI cutover described here: direct `Open` into one global Socrates, no required project/conversation entry, goal-grouped exact Q&A, and one canonical global current-goal pointer. The existing project-first routes and their current header placement remain migration UI until that cutover is proved end to end.
+
 ## User Promise
 
 The user opens one Socrates and starts talking. They do not first create a project, choose a conversation, manage a context window, or decide whether a request belongs to an old thread.
