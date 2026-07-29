@@ -146,7 +146,9 @@ user -> authorized resource scopes -> goal -> task -> exact exchange/evidence
 
 Released project and conversation rows remain traceable migration, audit, presentation, and rollback data. They may map to internal resource/index scopes while compatibility is required, but new semantic authority must not depend on a user-visible project hierarchy.
 
-Selected-path mode limits filesystem operations and indexing to explicit roots. Full-access mode expands filesystem scope only after explicit user choice, remains visible and revocable, and never bypasses approval, credential, destructive-action, message-send, purchase, or external-side-effect policy.
+Read-only mode denies model-initiated file mutation and Terminal execution. Selected-path mode limits structured filesystem operations, retrieval, and indexing to explicit roots. Full-access mode expands that application-level filesystem scope only after explicit user choice, remains visible and revocable, and never bypasses approval, credential, destructive-action, message-send, purchase, or external-side-effect policy.
+
+This access phase does not create or claim an OS process sandbox. Terminal remains a local process with the permissions of the user who started Socrates. Its selected working directory, obvious outside-path preflight, and approval policy are transparent safety rails, not proof that arbitrary shell commands or subprocesses cannot access other host paths. A real macOS/Windows/Linux process-containment layer is a separate future decision and must not be introduced through this feature without explicit user approval.
 
 Workspace folders remain real local surfaces and may contain `.socrates/` state during migration. Resource-scope creation and verification belong to `packages/workspace`. Do not edit a workspace root `.gitignore` automatically.
 

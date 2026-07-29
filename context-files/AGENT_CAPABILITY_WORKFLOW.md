@@ -118,6 +118,8 @@ The target generator must derive the existing tool-guide output under `apps/serv
 - Are the tool guide and role attachment generated and current?
 - Is there an absence test for any tool or schema path replaced by this change?
 
+For local Paths/Access work, distinguish deterministic application authorization from OS process containment. Read/search/edit/patch, retrieval, and indexing use the canonical selected-root authority. Terminal working-directory checks, obvious-path preflight, and approval are safety rails around a normal host process; they are not a sandbox guarantee. Do not add containers, VMs, native sandbox helpers, or third-party sandbox runtimes unless the user separately approves that expansion.
+
 ## 5. Adding Or Changing An Agent Role
 
 1. Confirm that the capability is genuinely model-driven. Prefer deterministic code for deterministic work.

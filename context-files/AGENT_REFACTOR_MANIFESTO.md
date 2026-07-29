@@ -182,6 +182,8 @@ A capability definition is the single source of truth. It must declare:
 - Evidence, usage, error, and audit persistence behavior.
 - Provider projection generated from the canonical schema.
 
+Within the current local Paths/Access phase, `sandbox` metadata names the catalogued application execution policy; it does not imply a container, VM, native helper, or OS process sandbox. Structured filesystem tools, retrieval, and indexing must enforce authorized roots deterministically. Terminal remains approval-controlled host execution, and command-text/path preflight must never be documented as process containment. Building true OS-specific containment is outside this phase and requires explicit user approval.
+
 Forbidden patterns include:
 
 - Separate runtime and model-input schemas for the same tool.

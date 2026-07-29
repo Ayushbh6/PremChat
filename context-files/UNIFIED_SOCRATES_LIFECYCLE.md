@@ -263,9 +263,11 @@ Explicit user memory opt-outs apply before indexing or enrichment. Deletion remo
 
 The target UI begins in the seamless goal view. Paths, access mode, and Settings control resource availability globally.
 
-- Selected-path mode limits filesystem tools and indexes to explicitly added roots.
+- Read-only mode permits governed inspection while denying model-initiated file mutation and Terminal execution.
+- Selected-path mode limits structured filesystem tools, retrieval, and indexes to explicitly added roots.
 - Full-access mode expands filesystem scope only after explicit user choice and remains visibly active and revocable.
 - Full access does not waive approval or external-side-effect policy.
+- Terminal is honest approval-controlled local execution, not an OS process sandbox. Selected-path command preflight catches obvious outside-path intent and always starts in an authorized working root, but an approved arbitrary command still runs with the host user's permissions; the UI and documentation must never claim stronger containment.
 - Connected mail, calendar, browser, cloud, or communication accounts remain separately permissioned resources.
 - A turn receives an immutable authorization snapshot; changing access during a running task affects the next safe operation or next turn according to policy and never rewrites evidence.
 

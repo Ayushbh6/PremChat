@@ -27,13 +27,14 @@ Landing page
 The header contains only the minimal global controls:
 
 ```text
-Paths | Access: Selected or Full | Settings
+Paths | Access: Read only, Selected, or Full | Settings
 ```
 
 - `Paths` manages the folders Socrates may use.
-- `Access` visibly switches between selected paths and explicit full-laptop filesystem access, with one-click revocation.
+- `Access` visibly switches among read-only work, selected paths, and explicit full-laptop filesystem access, with one-click revocation.
 - `Settings` opens models, providers, memory, connections, voice, appearance, privacy, and other user-level preferences.
 - Full filesystem access does not bypass approval, credential, destructive-action, purchase, message-send, or external-side-effect policies.
+- Selected paths are a deterministic application boundary for structured filesystem tools, retrieval, and indexing. Terminal remains approval-controlled local process execution under the user's account; command preflight and working-directory checks are safety rails, not an OS process sandbox.
 
 Projects may remain as migration metadata or internal resource/index scopes while released data is preserved. They are not a required user-facing navigation concept in the target product. A path, account, app connection, or other resource is an authorized capability scope; a goal is the unit of meaningful work.
 
