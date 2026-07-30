@@ -2,7 +2,7 @@
 
 Status: normative architecture authority for the agent-core refactor.
 
-Implementation checkpoint (2026-07-30): the shared `AgentDefinition`/`AgentInstance`/`AgentRuntime`/`ContextPipeline` foundation, shared `CapabilityCatalog`, Classic/Flow goal-memory-capability lifecycle, governed model-facing resource surface, and single foreground working/final loop are implemented. The catalog remains the sole owner of static tools, role attachment, provider projections, runtime MCP child registration, declared retrieval/workers/context/authorities, typed commands, generated inventories/guides, and CI drift enforcement. Read/search/trace projections share explicit output caps and offsets; detached draft/reconciliation/final calls and shadow per-batch steering are deleted and guarded against return. Global Paths/Access is also implemented through one durable state and immutable per-turn authorization snapshot shared by both views. The direct global no-project UI, goal-grouped sidebar, and canonical global current-goal pointer are the next product phase; catalogued migration entries are not permission to create parallel paths.
+Implementation checkpoint (2026-07-30): the shared `AgentDefinition`/`AgentInstance`/`AgentRuntime`/`ContextPipeline` foundation, shared `CapabilityCatalog`, global goal-memory-capability lifecycle, governed model-facing resource surface, and single foreground working/final loop are implemented. The catalog remains the sole owner of static tools, role attachment, provider projections, runtime MCP child registration, declared retrieval/workers/context/authorities, typed commands, generated inventories/guides, and CI drift enforcement. Read/search/trace projections share explicit output caps and offsets; detached draft/reconciliation/final calls and shadow per-batch steering are deleted and guarded against return. Global Paths/Access is also implemented through one durable state and immutable per-turn authorization snapshot. The accepted active product cutover makes `/welcome` -> **Open Socrates** -> `/chat` the primary shell, with goal-grouped exact exchanges and one canonical current-goal pointer. Released project/Flow records are one-time migration inputs; no active runtime bootstrap, scope, subscription, pointer, or persistence owner may remain Flow-based.
 
 This manifesto governs every change to Socrates agent orchestration, model-facing capabilities, tools, routing, retrieval, context management, provider execution, and worker-agent construction. Read it and `AGENT_CAPABILITY_WORKFLOW.md` completely before planning, reviewing, or implementing work in those areas. The workflow is the mandatory operational checklist for this manifesto. If an implementation or historical document conflicts with either authority, stop and resolve the conflict in the authority documents before continuing.
 
@@ -50,9 +50,11 @@ Automatic retrieval may rank and paginate candidates because it does not alter c
 
 ## Global Socrates And Goal-Centric Memory
 
-The target entry experience is one global Socrates. The user opens the landing page, chooses Open, and enters the seamless goal view without first creating a project or conversation. The header exposes Paths, a visible Selected/Full filesystem-access control, and Settings. The collapsible sidebar groups exact Q&A exchanges by goal and has no required project hierarchy.
+The target entry experience is one global Socrates. The user opens `/welcome`, chooses **Open Socrates**, and enters `/chat` without first creating a project or conversation. The fixed seamless header exposes Paths, visible Read only/Selected/Full filesystem access, and Settings; the fixed composer remains outside the middle-only scroll region. The collapsible sidebar opens on a flat goal list, replaces it with the selected goal's flat exact-exchange page, and provides a back control. It has no nested tree and no project or conversation navigation level.
 
-Paths, connected accounts, apps, and credentials are authorized resource scopes. Goals are coherent user outcomes. Tasks are individual user-request lifecycles inside goals. Released projects may remain migration metadata or internal scope coordinates, but they are not the target user mental model.
+The center projects exactly one current or explicitly selected historical exchange. History inspection is passive and cannot move the canonical current-goal pointer; a later send returns to the live tail before normal same-Socrates resolution. One persistent orb, one replace-in-place typed activity sentence, and one collapsed detailed work disclosure project the existing runtime rather than creating another orchestration path. The durably saved final answer becomes foreground only after atomic commit. `Live Work` and backend-authoritative `Live Goal` notes are movable, accessible presentation state only.
+
+Paths, connected accounts, apps, and credentials define authorization and autonomy; they are not resource binding or intent. Confirmed resources are separate stable records that goals and tasks may bind. Goals are coherent user outcomes. Tasks are individual user-request lifecycles inside goals. One durable global Socrates state owns the foreground-goal pointer, active root task, revision, and recovery sequence. Goals own capsules; root tasks own their exact exchange and work/evidence lineage. The released installation is preserved in one verified whole-state archive before a fresh compact database is initialized. Old work is not imported into the new ledger. New work never creates or requires a Flow, project, conversation, or repo-local `.socrates`, and transport sessions never own semantic state.
 
 The following is the non-negotiable foreground flow. It is the crux of Socrates:
 
@@ -92,7 +94,7 @@ Goal resolution is not a separate agent role. The same Socrates runtime and prom
 
 Normal goal resolution projects no more than three older goal capsules. Capability retrieval concurrently selects a compact set of relevant installed skills and MCP tools through the shared hybrid foundation; it never uses keyword-only prompt matching or dumps the registry. `read`/`search` over `socrates://capabilities` is the exact fallback, and Socrates must use it before declaring that an installed capability is unavailable.
 
-The main tool surface exposes one always-visible `capability_manager` for approval-gated skill and MCP mutation. Main Socrates reads identity, user profile, generated tool guidance, installed skills, project resources, and `.socrates` documents through one governed resource protocol. Durable project memory, notes, and repo-doc base URIs are read/search only; mutation requires an exact section URI, full prospective-document validation, and atomic persistence. Identity and user profile remain Memory-Agent-owned and can receive proposed changes only through `memory_note`; Memory Agent replacements require an exact section id, and generic edit never writes them or skill files. Installed tool guidance is an exact catalog-generated runtime projection: content drift is overwritten and non-catalog Markdown is removed.
+The main tool surface exposes one always-visible `capability_manager` for typed skill and MCP mutation. Main Socrates reads central identity/profile/knowledge, generated tool guidance, eligible global/resource skills and MCPs, and bound resource files through one governed protocol. Identity, profile, global rules, resource memory/rules, and repository facts are versioned database knowledge owned by the Memory Agent and direct-user Memory Center APIs; generic edit never writes them or skill files. Installed tool guidance is an exact catalog-generated runtime projection: content drift is overwritten and non-catalog Markdown is removed.
 
 There is no model-driven Memory Router in the critical path. Hybrid retrieval discovers candidates mechanically; its parallel memory query includes the current capsule when available. After goal binding, a changed goal or empty eligible first pass may trigger one targeted query through the same service before deterministic selection filters exact memory. Main Socrates may inspect deeper exact sources through the shared retrieval capability. Model-driven durable memory curation runs asynchronously through the same shared architecture when genuine judgment is required.
 
@@ -100,16 +102,9 @@ Every user message creates a task. A new goal is created only for a genuinely in
 
 Each goal owns exact canonical exchanges and evidence plus a versioned structured capsule containing its live objective, verified progress, current task, important decisions, blockers, open items, and exact source anchors. The capsule is not conversation compaction and never replaces exact history. The compact backend goal ledger stores the current-goal pointer and latest capsule references, not transcripts or evidence bodies.
 
-## How Socrates Uses Its Working Space
+## Working And Durable Knowledge
 
-Socrates uses its working space naturally, like a capable human assistant keeping useful notes while doing the work:
-
-- `.socrates/notes`: free-working space for plans, tasks, experiments, temporary scripts, and progress notes.
-- `.socrates/memory`: important project knowledge and decisions that future work needs.
-- `.socrates/repo_docs`: verified facts about how the repository works.
-- `memory_note`: something Socrates wants the asynchronous Global Memory Agent to consider for identity, user profile, cross-project memory, or a future skill.
-
-These surfaces support the work; they are not ceremonies. Socrates does not read or update every surface before or after every tool call. It records what a human assistant would need to continue correctly, uses the smallest correct surface, and leaves it alone when nothing worth preserving changed. Plans and task records may be free-form; fixed filenames are forbidden as a requirement.
+Temporary plans, probes, generated diagnostics, and task scratch files live under `~/.Socrates/work/<task-id>` and are not memory authority. Durable identity/profile/global rules and resource memory/rules/repository facts live as typed versioned knowledge in the canonical database. `memory_note` submits evidence-backed curation leads to the asynchronous Memory Agent, which may produce multiple typed actions or a pending skill proposal. Existing repository-local `.socrates` directories are left untouched and ignored by the new runtime.
 
 ## No Hidden Or Shadow Model Messages
 
@@ -182,7 +177,7 @@ A capability definition is the single source of truth. It must declare:
 - Evidence, usage, error, and audit persistence behavior.
 - Provider projection generated from the canonical schema.
 
-Within the implemented Paths/Access boundary, `sandbox` metadata names catalogued application execution policy; it is not filesystem authority and does not imply a container, VM, native helper, or OS process sandbox. The immutable per-turn global access snapshot owns `Read only`/`Selected`/`Full access` scope. Structured filesystem tools enforce canonical authorized roots deterministically and reject symlink escapes. Terminal remains approval-controlled host execution, and command-text/path preflight must never be documented as process containment. Building true OS-specific containment is a separate future decision and requires explicit user approval.
+Within Paths/Access, `sandbox` metadata is obsolete compatibility state and never authorization. The immutable per-task access snapshot owns `Read only`/`Selected`/`Full` autonomy. Structured read/search is global in every mode. Structured mutations are approval-gated in Read only, automatic only inside selected roots in Selected, and automatic in Full. Terminal `run/start` is approval-gated in Read only and Selected and automatic in Full; lifecycle inspection/control is automatic. Every Terminal launch passes through an enforceable macOS/Windows containment adapter that hard-denies the catastrophic protected set. Command-text/path preflight remains defense in depth and must never be documented as containment. If the adapter cannot enforce policy, automatic Full Terminal fails closed.
 
 Forbidden patterns include:
 
@@ -214,7 +209,7 @@ Role-specific requirements must not be implemented by forking the runtime.
 
 ### 5. Connect One Global Socrates Once
 
-The target global seamless view uses one prepared-context contract, one main agent definition, one capability manifest, one Terminal/approval/wait lifecycle, one exact-history policy, and one validated finalization contract. Released Classic, project, and Flow transports may retain migration adapters temporarily, but all must enter the same goal-centric lifecycle and none may remain a second semantic authority.
+The target global seamless view uses one prepared-context contract, one main agent definition, one capability manifest, one Terminal/approval/wait lifecycle, one exact-history policy, one normalized presentation selector, and one validated finalization contract. `/chat` restores global Socrates state directly; it receives no project or Flow bootstrap coordinate. The immutable task access snapshot supplies authorization; explicit resource bindings supply resource provenance. Legacy UI routes redirect to `/chat`, and released rows are accessible only from the preserved archive outside the active runtime. New work enters the canonical global task lifecycle directly.
 
 Do not reintroduce `focus_ledger` as a main-agent tool. Goal selection belongs to the same-Socrates turn-resolution phase over the current capsule and retrieved older capsules. Goal progress belongs to the validated final result applied to the already-bound canonical goal. Explicit user lifecycle actions remain typed backend commands.
 
@@ -265,7 +260,7 @@ Required gates are:
 7. Context tests for exact scoped selection, result-local release-only `R<n>` handling, automatic 170k oldest-head compaction, an approximately 70k exact whole-turn suffix, evidence preservation, and continuation recovery.
 8. Terminal tests for foreground execution, persistent start, input, output, stop, wait, cancellation, and restart cleanup.
 9. Goal/task lifecycle tests proving current, retrieved older goal, new, and clarify decisions without goal fragmentation.
-10. Global UI and compatibility-adapter tests proving one main runtime, goal-centric sidebar, Paths/access enforcement, and no required project entry.
+10. Global UI and cutover tests proving `/welcome` -> `/chat`, one global state/current pointer, byte-exact verified old-state archival, zero imported work history, direct task ownership for new work, no Flow-scoped client/runtime command, one main runtime, one normalized current/history/recovery selector, passive exact-history inspection with live-tail sends, a goal-only sidebar, fixed header/composer with middle-only scrolling, typed replace-in-place orb activity, accessible `Live Work`/`Live Goal` notes, Paths/access enforcement, restart recovery, and no required project entry.
 11. Packaged-runtime tests proving the supported launcher executes the just-built source revision.
 12. Real-provider acceptance runs only after deterministic gates pass and must prove the normal no-tool path is one goal-decision call plus one foreground final call.
 

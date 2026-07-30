@@ -1,8 +1,8 @@
-# Socrates Flow North Star
+# Global Socrates North Star
 
-This document is the product-intent authority for the target Socrates experience. `UNIFIED_SOCRATES_LIFECYCLE.md` defines the detailed technical lifecycle, `AGENT_REFACTOR_MANIFESTO.md` defines the agent-core replacement architecture, and `AGENT_CAPABILITY_WORKFLOW.md` defines the mandatory change procedure. `V2_FLOW_ARCHITECTURE.md`, `FLOW_CONVERGENCE_PHASE_*.md`, and the released Classic/project-first implementation remain migration evidence; they do not override this target.
+This document is the product-intent authority for the global Socrates experience. `UNIFIED_SOCRATES_LIFECYCLE.md` defines the detailed technical lifecycle, `AGENT_REFACTOR_MANIFESTO.md` defines the agent-core replacement architecture, and `AGENT_CAPABILITY_WORKFLOW.md` defines the mandatory change procedure. Legacy project/conversation records are migration evidence only and never override this target.
 
-Implementation checkpoint (2026-07-30): the global filesystem-access foundation is complete. One durable `Read only`/`Selected`/`Full access` state, canonical selected roots, immutable per-turn snapshots, structured-tool enforcement, and shared Classic/Flow header controls now exist. The next product phase is the UI cutover described here: direct `Open` into one global Socrates, no required project/conversation entry, goal-grouped exact Q&A, and one canonical global current-goal pointer. The existing project-first routes and their current header placement remain migration UI until that cutover is proved end to end.
+Implementation checkpoint (2026-07-30): the global UI shell and goal lifecycle are the accepted base, while persistence, resource knowledge, and access-policy convergence remain active implementation work. The production cutover first creates a verified whole-state archive of the released installation, then initializes a fresh compact canonical database. Only global identity, profile, accepted global rules, cross-project memory, user settings, selected roots, and global capabilities are carried forward. Released goals, projects, conversations, Flow records, messages, tools, Terminal history, and project-scoped memory/capabilities remain recoverable only in the archive and never enter the new active product.
 
 ## User Promise
 
@@ -21,9 +21,9 @@ Socrates remembers the user, resolves the authorized resources and earlier work,
 The target product has one primary seamless experience rather than separate project and conversation entry points.
 
 ```text
-Landing page
-  -> Open
-  -> Seamless Socrates
+/welcome
+  -> Open Socrates
+  -> /chat
 ```
 
 The header contains only the minimal global controls:
@@ -34,28 +34,55 @@ Paths | Access: Read only, Selected, or Full | Settings
 
 - `Paths` manages the folders Socrates may use.
 - `Access` visibly switches among read-only work, selected paths, and explicit full-laptop filesystem access, with one-click revocation.
-- `Settings` opens models, providers, memory, connections, voice, appearance, privacy, and other user-level preferences.
-- Full filesystem access does not bypass approval, credential, destructive-action, purchase, message-send, or external-side-effect policies.
-- Selected paths are a deterministic application boundary for structured filesystem tools, retrieval, and indexing. Terminal remains approval-controlled local process execution under the user's account; command preflight and working-directory checks are safety rails, not an OS process sandbox.
+- `Settings` navigates to the existing full `/settings` surface rather than opening a chat-owned drawer. That surface keeps provider, global MCP, model, voice, and related settings and exposes the existing `/memory` Memory Center through a visible **Memory Agent** action. The Memory Center does not own or imply MCP tool access: only Main Socrates accepts dynamic MCP capabilities. Memory Agent may propose a reusable skill from exact evidence, but the separate Skill Writer performs an approved skill write.
+- Access is an autonomy setting, not resource selection. Structured read/search is globally available in every mode, with selected and recent resources searched first. Selected roots mean only that structured writes inside those roots are approval-free; they never infer a project, bind a resource, inject rules, or limit retrieval.
+- Read only and Selected require approval for each Terminal `run` or `start`; Terminal `inspect`, `list`, and `stop` remain automatic. Full makes ordinary structured mutations, Terminal launches, capability changes, and external side effects automatic. Credentials and clarifications remain typed user-input waits.
+- Frontier handover always requires explicit approval in every access mode. Rejection removes Frontier for the rest of the current task.
+- A small catastrophic set is hard denied in every mode. Terminal launches use enforceable native platform containment; command preflight remains explanatory defense in depth and is never described as containment. If containment cannot be established, automatic Full Terminal fails closed.
 
 Projects may remain as migration metadata or internal resource/index scopes while released data is preserved. They are not a required user-facing navigation concept in the target product. A path, account, app connection, or other resource is an authorized capability scope; a goal is the unit of meaningful work.
 
 ## Goal-Centric Sidebar
 
-The left sidebar is collapsible and organized by goals, not projects or conversations.
+The left sidebar is collapsible and uses two replacement pages organized by goals, not a nested tree and not projects or conversations.
 
 ```text
-Current goal
-  exact Q&A pair
-  exact Q&A pair
-
-Earlier goal
-  exact Q&A pair
+Goals page                  select goal       Exchanges page
+Current goal             ---------------->   <- Goals
+Earlier goal                                  exact Q&A pair
+Completed goal                                exact Q&A pair
 ```
 
-The current goal opens first. Earlier goals remain searchable and expandable. Expanding a goal shows its exact user/assistant exchanges; a generated capsule never replaces the visible history.
+Opening the drawer always shows the flat goal list with the current goal first and searchable earlier/completed goals after it. Selecting a goal replaces the list with a flat page of that goal's exact user/assistant exchanges and task-owned work records; a fixed back control returns to goals. Goal rows never expand in place, and a generated capsule never replaces visible history. The new database begins with no goals; released work remains exact only in the verified cutover archive.
 
 The sidebar may group, search, pin, rename, or archive goals without changing the canonical messages inside them. The user may correct a mistaken grouping, but Socrates must normally organize work correctly without requiring that intervention.
+
+Selecting an earlier exchange is passive inspection. It changes only the displayed projection; it never moves the canonical current-goal pointer, reopens a completed goal, rebinds a task, or turns the inspected exchange into a new conversation. If the user submits while inspecting history, the UI returns to the canonical live tail and creates the new task there; the normal same-Socrates four-way decision then chooses current, a retrieved older goal, new, or clarify from authoritative context. The composer remains available while history is open so inspection does not become a dead end.
+
+## Focused Global Canvas
+
+`/chat` is one fixed-height viewport shell rather than a document page with visible header/footer bands:
+
+```text
+fixed seamless header: sidebar toggle                         Paths | Access | Settings
+middle-only scroll region: one exact user query + current work or one saved answer
+fixed composer: attachments, model/thinking, voice, send/stop
+```
+
+The header and composer remain in place while only the middle reading layer scrolls. The surfaces may use subtle background blending or translucency, but no decorative divider is required merely to prove that they are fixed. The canvas preserves enough bottom inset that long answers never disappear behind the composer. Narrow layouts keep the same hierarchy; panels and notes fold or overlay instead of shrinking the answer into an unusable column.
+
+Exactly one exchange is displayed at a time. The current user request is right-aligned, width-capped, and presentation-collapsed behind **Show more** when long without changing its exact stored text. A new request replaces the previous exchange on the live canvas; older exact exchanges remain available only through their goal in the sidebar.
+
+The living orb remains one persistent visual element across idle, routing, working, waiting, and settled states. During a live turn it becomes prominent and exactly one fixed-height human-facing activity sentence appears beneath it. New routing, memory gathering, capability lookup, thinking, tool, Terminal, wait, and finalization states replace that sentence in place; they never stack into a feed. The runtime supplies typed safe presentation state. The frontend may group parallel work into one sentence, but must not infer semantics from arbitrary provider text or show raw ids, secrets, malformed tool syntax, `undefined`, unrestricted hidden reasoning, or a counterfeit chain of thought.
+
+Detailed provider-visible work, tools, and evidence appear in one collapsed disclosure that can be expanded while work proceeds and after completion. Approval, credential, Terminal-input, clarification, and other user-action states retain their full interactive controls and are never reduced to the one-line sentence. The final answer enters only after validation and atomic persistence; it then becomes the foreground reading layer while the same orb fades into a pale, quiet background and the live sentence clears. Transitions preserve layout, focus, screen-reader announcements, and `prefers-reduced-motion`.
+
+Two lightweight movable poster notes remain visible above the canvas on desktop:
+
+- **Live Work** shows a safe concise projection of recent meaningful Socrates activity, such as files read or edited, tools used, Terminal state, and verified central knowledge updates. It never exposes secret values or raw unbounded output.
+- **Live Goal** shows the backend-authoritative current goal, current task, lifecycle state, and compact metadata. Inspecting history does not replace it with the historical exchange's label.
+
+The notes may be dragged only from explicit handles, moved with keyboard controls, raised in a deterministic stack, clamped after viewport changes, and stored under one versioned global presentation key. Their coordinates, open state, and z-order are frontend presentation state only. The canvas exposes no reset-notes control. On narrow screens they become accessible folded tabs or panels instead of covering the exchange or composer.
 
 ## Canonical Product Concepts
 
@@ -103,7 +130,7 @@ The model never receives the whole ledger. It receives the current goal capsule 
 
 ### Resource Scope
 
-Paths, connected accounts, apps, and credentials define what Socrates is authorized to access. Resource scope and goal organization are independent: one goal may use several paths or connections, and one path may support many goals.
+Paths, connected accounts, apps, and credentials define authorization and autonomy only. A resource is a separate, explicitly confirmed durable identity with a human label, canonical-location history, availability, and optional repository fingerprint. Exact user-supplied existing paths may bind immediately; discovered candidates require confirmation. One goal may bind several resources and one resource may support many goals. Task bindings record the exact location used; goal bindings carry active resources forward. Selected roots never become resources automatically.
 
 ## The Simple Goal Decision
 
@@ -249,7 +276,9 @@ The backend never invents semantic meaning. Socrates never owns persistence ids,
 The product reaches this North Star only when all of the following are true:
 
 - Opening Socrates enters one seamless global workspace without creating or selecting a project.
+- `/welcome` exposes one **Open Socrates** action and it enters `/chat`; `/seamless` is only a compatibility redirect into that same global shell.
 - Paths, access mode, and settings are the only persistent header controls needed to begin.
+- The header and composer stay fixed, only the middle reading layer scrolls, and exactly one current or deliberately selected historical exchange is visible.
 - Concrete work following a greeting creates or selects a work goal rather than General Conversation.
 - `Review today's email` followed by `reply to Gary` creates two tasks in one goal.
 - `Inspect the Memory Agent`, `improve it`, and `test it` remain one coherent goal.
@@ -263,7 +292,10 @@ The product reaches this North Star only when all of the following are true:
 - Automatic 170k oldest-head compaction preserves an approximately 70k newest whole-turn suffix and exact source recovery without interrupting the user.
 - Large current-turn tool results use release-only `R<n>` handles without mandatory classification or extra inference calls.
 - Goal capsules restore working state without replacing exact goal history.
-- The sidebar groups exact Q&A pairs by goal and contains no required project hierarchy.
+- The sidebar uses flat Goals and Exact exchanges replacement pages with a back control; it contains no nested goal tree or project/conversation level.
+- Historical exchange selection is passive, and a send from history returns to the live tail before normal semantic goal resolution.
+- Live work uses one replace-in-place activity sentence, one collapsed detail disclosure, and no stacked pseudo-thinking feed; the persisted final answer appears only after atomic commit.
+- `Live Work` and backend-authoritative `Live Goal` notes remain movable, keyboard accessible, responsive, secret-safe presentation projections and never become state authorities.
 - One agent runtime, capability catalog, tool contract, retrieval foundation, and finalization path serve every turn.
 - A normal no-tool request uses one goal-decision call and one foreground final call; tool-using work adds only the provider continuations genuinely required to consume tool results.
 - No shadow steering message, per-batch action ledger, detached reconciliation call, or detached final-formatting call reaches Socrates.
@@ -271,6 +303,15 @@ The product reaches this North Star only when all of the following are true:
 
 ## Migration Principle
 
-Released Classic, project, V2 transport, namespaced persistence, bridge, and workspace records must remain safe and recoverable during migration. They are not permission to preserve the old user model indefinitely.
+Released Classic, project, V2 transport, namespaced persistence, bridge, and workspace records must remain safe and recoverable during migration. Data preservation does not require preserving obsolete ownership models.
 
-Migration must be non-destructive and explicit. Existing project/workspace metadata can become internal resource scopes; existing conversations and Flow queries can be attached to canonical goals; existing exact messages and evidence remain unchanged. New production authority must converge on one global Socrates, one goal-centric history, and one turn lifecycle. Old routers, project-first navigation authority, view-specific semantic state, and parallel context systems must be removed after the replacement is proven.
+Migration is explicit, idempotent, and one-way into canonical global ownership:
+
+1. Create or restore the one global Socrates state independently of every project, conversation, and Flow.
+2. Import each released goal and capsule into the canonical global goal ledger while preserving its stable identity, lifecycle, timestamps, and source provenance.
+3. Import each exact exchange and its tools, approvals, Terminal lineage, usage, artifacts, errors, and evidence as one task-owned record without rewriting user or assistant content.
+4. Retain project/workspace coordinates only where they describe source provenance, retrieval/index scope, or the immutable per-turn access snapshot.
+5. Record an idempotent migration receipt before retiring the corresponding legacy owner. A failed migration leaves the legacy source untouched and is retryable.
+6. After migration succeeds, active `/chat`, HTTP, WebSocket, retrieval, compaction, Terminal, and recovery paths use only the canonical global state. They never create or require a hidden Flow.
+
+Legacy UI routes redirect into `/chat`; legacy data readers exist only inside the migrator and can be removed once the supported upgrade window closes. There is no permanent compatibility Flow, no copied live transcript, no dual-write period, and no second current-goal pointer. New production authority converges on one global Socrates, one goal-centric exact history, one root-task lifecycle, and one transport/recovery session layer that owns no semantic state.

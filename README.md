@@ -14,12 +14,12 @@
 
 ---
 
-Socrates is a local-first coding and investigation workspace that keeps long project work coherent across turns. You can chat, run local tools, inspect evidence, and continue a large session without losing context.
+Socrates is a local-first coding and investigation workspace that keeps long-running goals coherent across exact exchanges. You can work with local tools, inspect evidence, and return to any goal without making projects or conversations first.
 
 ## What Socrates Can Do
 
 - Start work in the browser with one command.
-- Maintain projects, conversations, and persistent session history.
+- Maintain global goals, exact Q&A history, and persistent recovery state.
 - Run shell, search, patch, file, git, and workspace tools safely.
 - Call AI models for coding, analysis, and planning in a provider-aware stack.
 - Stream live tool use, output, errors, and assistant responses.
@@ -30,15 +30,14 @@ Socrates is a local-first coding and investigation workspace that keeps long pro
 
 ## Current Project State
 
-- Current GitHub runtime release: **v0.1.19**.
-- Distribution: the public `@socrates-ai/cli@0.1.19` launcher already resolves the latest GitHub runtime via `npx`; launcher source is prepared at **0.1.20** for the security-key-authenticated npm publish.
+- Current GitHub runtime release: **v0.1.19**. The direct global Socrates cutover in this checkout is active development and is not a release claim.
 - Runtime availability for macOS 15+ (arm64/x64) and Windows x64.
-- The original cream **Classic View (V1)** welcome, projects, and project dashboard remain the default path. A project-scoped **Go to Flow View** control opens that same project's isolated V2 Flow; there is no global view chooser or second project directory.
-- Seamless View provides one persistent Flow per project, bounded foreground/parked goals, versioned capsules, pruned working context, and immutable retrievable evidence.
-- Classic and Flow share one canonical per-project goal ledger. A Classic conversation may contain many goals; each routed turn links to one goal, and **Open in Classic** gives an individual goal at most one preferred Classic home without splitting a Flow into surprise conversations.
-- Classic and V2 use the same providers, Socrates agent, tools, approvals, Terminals, MCP servers, skills, concurrent candidate retrieval, same-Socrates goal resolution, deterministic exact-memory selection, Global Memory Agent, workspace `.socrates/`, and global `~/.Socrates/` foundation.
-- The shared voice setting defaults to **Not configured**. Classic and Flow use the same explicit offline/OpenRouter choice; offline packs download only after the user presses Install. Transcripts append to the unsent draft and never auto-send.
-- V2 Voice V1 additionally exposes local Whisper `base.en`/`small.en`, the three allowlisted OpenRouter transcription models, and local Kokoro read-aloud; local failures never silently upload audio.
+- The product entry is `/welcome` with one **Open Socrates** action to `/chat`.
+- `/chat` is one global goal-centric shell: fixed `Paths | Access | Settings`, fixed composer, one current exact exchange, and a collapsible goal hierarchy of exact Q&A pairs.
+- One durable global Socrates state owns the foreground goal and active root task. Goals own versioned capsules; root tasks own messages, tools, Terminal lineage, usage, and evidence.
+- The same provider-neutral Socrates agent owns semantic goal choice, tools, typed interactions, Terminals, MCP servers, skills, deterministic exact-memory selection, central global/resource knowledge, and the Global Memory Agent. Repository-local `.socrates` is not a runtime authority.
+- Historical exchange selection is passive. The next send always returns to the canonical live tail before Socrates decides whether the request continues the current goal, resumes an older goal, creates a new goal, or needs clarification.
+- The shared voice setting defaults to **Not configured**. Offline packs download only after the user presses Install; transcripts append to the unsent draft and never auto-send.
 - Ollama can serve local chat models from the normal model picker when the local Ollama runtime is reachable.
 - Trace retrieval upgraded for broader match windows and exact quote context.
 - Duplicate tool-call handling added to avoid repeated identical retrieval passes in one turn.
@@ -74,7 +73,7 @@ Terminal 1:
 
 ```bash
 pnpm install
-SOCRATES_V2_FLOW_ENABLED=true pnpm --filter @socrates/server dev
+pnpm --filter @socrates/server dev
 ```
 
 Terminal 2:
@@ -105,7 +104,7 @@ Use `SOCRATES_HOME` to point the workspace to a custom root or `SOCRATES_DB_PATH
 
 ```text
 apps/
-  web/       Next.js interface, conversations, project views, settings
+  web/       Next.js global goal interface and settings
   server/    Fastify APIs, WebSockets, tool coordination, persistence
 
 packages/

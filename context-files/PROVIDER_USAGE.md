@@ -20,7 +20,7 @@ Later provider-adapter roadmap, historically called "V2" in this file:
   Add our own direct wrappers for major providers where we need deeper control.
 ```
 
-This provider-adapter roadmap is independent of the implemented experimental V2 Flow product. `V2 Flow` always means the separate never-ending, goal-routed product described in `V2_FLOW_ARCHITECTURE.md`; it does not mean that all direct provider wrappers must be completed first.
+The provider-adapter roadmap is independent of product navigation and goal organization.
 
 The non-negotiable architecture rule:
 
@@ -28,34 +28,24 @@ The non-negotiable architecture rule:
 The rest of Socrates must never depend directly on Vercel AI SDK.
 ```
 
-## V2 Flow Provider Reuse Boundary
+## Global Socrates Provider Reuse Boundary
 
-V2 Flow reuses `packages/providers`, credential-aware model resolution, normalized usage, token counting, Ollama chat, the existing embedding boundary, the same Socrates agent, same-main-model goal-resolution phase, deterministic exact-memory selection, and Socrates Context Compactor worker setting. It does not fork provider adapters merely because its transport orchestration is separate from V1.
+Global Socrates reuses `packages/providers`, credential-aware model resolution, normalized usage, token counting, Ollama chat, the embedding boundary, the same main agent, the same-main-model goal-resolution phase, deterministic exact-memory selection, and the Socrates Context Compactor worker setting. No route or goal owns a provider adapter.
 
-V2 Flow Q&A parents also reuse the shared per-project LanceDB retrieval lifecycle. Rows are scoped with `runtimeKind = "v2_flow"` and exact `flowId`, so lexical, semantic, and combined trace retrieval use the configured shared embedding provider without fake Classic conversations; raw inspect/audit and immutable evidence remain V2-owned.
+Each concurrent task produces its own provider/LLM call and isolated request context. One backend process may multiplex independent calls, but it never concatenates unrelated goals into one prompt. Goal resolution, foreground/Frontier, and context-compactor calls are individually persisted with matching usage/error telemetry. Goal resolution uses the `main_agent` role plus `phase = goal_resolution`; no router or context-distiller telemetry producer remains.
 
-The separation point is above the provider layer:
+Goal resolution is one strict zero-tool structured phase of the selected main Socrates, using the same provider, model, runtime settings, shared prompt core, and `AgentRuntime`; it has one repair and conservative current-or-clarify fallback. Goal-card and memory-candidate retrieval start concurrently before it, and deterministic memory selection runs after goal binding without a model call. Automatic oldest-head compaction uses the configured `socrates_context_compactor` worker selection rather than silently spending the foreground model; model-window budgeting still comes from the selected foreground model. The global Memory Agent remains shared.
 
-```text
-V1 Classic orchestration ─┐
-                         ├── shared ModelProvider and EmbeddingProvider plumbing
-V2 Flow orchestration ───┘
-```
+Ollama support exists to make local capability available to users with suitable models and hardware. It is not expected to make a small local model match a frontier hosted model in reasoning, tools, speed, or context size. Socrates preserves honest model-specific limits and graceful failure. Ollama remains the local chat/embedding runtime, not an assumed TTS engine; speech uses separate replaceable STT/TTS adapters.
 
-Each concurrent V1 conversation or V2 Flow turn produces its own provider/LLM call and request context. A single backend process may multiplex those independent calls, but it never concatenates unrelated projects or goals into one Socrates prompt. Same-Socrates goal-resolution, foreground/Frontier, and context-compactor calls are individually persisted with matching usage/error telemetry where available. Goal resolution uses the `main_agent` role plus `phase = goal_resolution`; no router or context-distiller telemetry producer remains.
-
-Goal resolution is one strict zero-tool structured phase of the selected main Socrates, using the same provider, model, runtime settings, shared prompt core, and `AgentRuntime`; it has one repair and conservative current-or-clarify fallback. Goal-card and memory-candidate retrieval start concurrently before it, and deterministic memory selection runs after goal binding without a model call. Automatic oldest-head compaction uses the configured `socrates_context_compactor` worker selection rather than silently spending the foreground model; model-window budgeting still comes from the selected foreground model. The global Memory Agent remains shared while Flow source references and runtime telemetry remain V2-scoped.
-
-Ollama support exists to make local capability available to users with suitable models and hardware. It is not expected to make a small local model match a frontier hosted model in reasoning, tools, speed, or context size. V2 must preserve honest model-specific limits and graceful failure. Ollama remains the local chat/embedding runtime, not an assumed TTS engine; V2 speech uses separate replaceable STT/TTS adapters.
-
-## Shared Speech Providers And V2 Voice V1
+## Shared Speech Providers And Global Voice
 
 Speech providers are independent from `ModelProvider` and `EmbeddingProvider`. A user may chat through Ollama while transcribing through OpenRouter, or chat through a hosted model while keeping speech offline.
 
-Classic and V2 share the lower-level Local Whisper and OpenRouter transcription adapters, but not their orchestration or persistence:
+Global Socrates and retained legacy transcription endpoints share the lower-level Local Whisper and OpenRouter adapters:
 
-- Classic and Flow read one shared explicit voice preference. It defaults to **Not configured**; the microphone guides the user to Settings until they choose a transcriber.
-- Classic sends a temporary WAV to the conversation-scoped transcription endpoint, appends the result to the unsent draft, and never creates V2 Flow/artifact/job state or auto-sends the text. V2 stores V2 speech artifacts/jobs, sends finalized transcripts through the same unified pre-turn lifecycle as typed text, and owns local Kokoro read-aloud.
+- The global composer reads one explicit voice preference. It defaults to **Not configured**; the microphone guides the user to Settings until they choose a transcriber.
+- Global Socrates stores governed speech artifacts/jobs, sends finalized transcripts through the same unified pre-turn lifecycle as typed text, and owns local Kokoro read-aloud. A retained legacy endpoint uses a temporary WAV and only updates its unsent draft.
 - Neither path silently switches from local to hosted transcription. Hosted selection requires the user's OpenRouter credential. Offline weights download only after the user presses Install in Settings, where exact sizes, verification status, paths, and removal are visible.
 
 The implemented provider set is:
@@ -82,7 +72,7 @@ Local STT is exact-pinned `@fugood/whisper.node@1.0.22` over `whisper.cpp` and d
 
 Local read aloud is exact-pinned `sherpa-onnx-node@1.13.4` running Kokoro-82M natively when available, with a compatible `sherpa-onnx-offline-tts` fallback. The runtime dependencies may be bundled, but Whisper and Kokoro weights are explicit user-installed packs with expected byte counts, SHA-256 verification, receipts, status, and removal APIs. A failed local call never falls through to OpenRouter unless the user explicitly chooses the cloud route.
 
-On the tested M3 Mac, the first native Whisper initialization took roughly 19-20 seconds because of cold model/Metal setup; later speed varies with model, platform, and hardware. This is an observed packaging check, not a latency guarantee. Granite Speech, Ollama audio models, hosted TTS, and direct Deepgram/OpenAI/Google speech adapters are outside V2 Voice V1.
+On the tested M3 Mac, the first native Whisper initialization took roughly 19-20 seconds because of cold model/Metal setup; later speed varies with model, platform, and hardware. This is an observed packaging check, not a latency guarantee. Granite Speech, Ollama audio models, hosted TTS, and direct Deepgram/OpenAI/Google speech adapters are outside the current voice contract.
 
 Vercel AI SDK is an implementation detail inside `packages/providers`. Native providers such as Ollama and official DeepSeek also live inside `packages/providers` behind the same Socrates `ModelProvider` interface.
 
@@ -262,15 +252,14 @@ current_time
 trace_retrieve
 tool_docs
 skills
-project_docs
-repo_docs
+knowledge
 soul
 user_profile
-list_project_resources
+resources
 mcp_registry
 ```
 
-The main-agent `memory_note` provider-visible schema stays tiny: `note` and optional `importance`. The backend attaches current-turn refs, source project/workspace metadata, and default project-local skill-scope hint; providers should not see a complicated source-ref contract authored by the model. `memory_notes` and `skill_write` are specialized-agent/internal tools, not normal first-call Socrates chat tools. Internal `memory_notes.mark_done` includes an `outcome` (`applied`, `already_represented`, `skipped`, or `proposed_skill`) plus a one-line `resolution` so the Memory Agent records what it applied, proposed, found already covered, or deliberately skipped.
+The main-agent `memory_note` provider-visible schema stays tiny: `note` and optional `importance`. The backend attaches exact task/message/evidence refs and confirmed resource bindings; providers should not see a complicated source-ref or scope contract authored by the model. `memory_notes` and `skill_write` are specialized-agent/internal tools, not normal first-call Socrates tools. Internal `memory_notes.mark_done` records whether the note was applied, already represented, skipped, or became a pending skill proposal.
 
 Memory-to-Skill-Writer handoff preserves exact approved source-turn ids. The Writer must inspect and cite them before `skill_write`; direct DeepSeek tool-loop and structured-final usage/cost for these agents are accounted through the same normalized provider events as main Socrates. The skill-learning eval uses official `deepseek-v4-flash` / `deepseek-v4-pro` with Off/High/Max, isolated state, dependency rebuilds before execution, and a hard pre-call budget reserve; raw private corpora/results remain local and gitignored. The completed 2026-07-10/11 composed E2E used Memory Pro/high plus Writer Flash/off: the earlier full path proved create plus v1 use, and the seeded continuation proved a meaningful cross-project handoff update, Writer v2, and actual main-agent `skills list` plus `describe` with 6/6 expected behavior concepts. The final run cost $0.027175; post-screenshot continuation spend was $0.174649, putting the user's $0.69 dashboard starting total at an estimated $0.864649, below the raised $1 account ceiling. This is a capability/value pass, not statistical production-reliability proof.
 
@@ -304,19 +293,19 @@ Provider-exposed reasoning or thinking text may be streamed as `model.reasoning.
 
 It should not be carried forward as semantic prompt context between later user queries.
 
-The next user query should normally receive previous final user/assistant dialogue, selected project context, retrieved memory/trace summaries when relevant, and current-turn tool results. It should not receive old reasoning streams just because they were available.
+The next user query receives the bound goal capsule, latest exact exchange, selected exact memory/evidence when relevant, and current-task tool results. It must not receive old reasoning streams merely because they were once available.
 
 Gemini thought signatures are not user-visible thinking text. They are opaque same-turn provider metadata for tool-call continuation, and follow the same no-future-turn-history rule.
 
 ## OpenRouter Routing, Caching, And Cost
 
-OpenRouter calls send a stable cache-affinity key derived from project and conversation identity:
+OpenRouter calls send a stable cache-affinity key derived from the canonical goal/task lineage:
 
 ```text
-project:<projectId>:conversation:<conversationId>
+goal:<goalId>:task-lineage:<rootTaskOrdinal>
 ```
 
-This key must not include turn ids, timestamps, model-call ids, or other volatile data. It is sent as both OpenRouter `session_id` and `prompt_cache_key` so repeated same-conversation calls have a stable provider/cache-affinity hint.
+This key must not include timestamps, model-call ids, or other volatile data. It is sent as both OpenRouter `session_id` and `prompt_cache_key` so continuations in the same goal lineage have a stable provider/cache-affinity hint.
 
 These fields are sent as top-level OpenRouter provider options. Do not nest them under `extraBody` when using `providerOptions.openrouter`; the OpenRouter AI SDK spreads `providerOptions.openrouter` into the request body directly.
 
@@ -692,7 +681,7 @@ For this reason, Ollama became the first direct local provider wrapper.
 
 ## Later Direct Provider Adapter Roadmap
 
-This section was historically called the `V2 Provider Plan`. It is a provider-layer migration roadmap, not the experimental V2 Flow product. After the main app works, Socrates can add direct wrappers for major providers independently of Flow work.
+This section was historically called the `V2 Provider Plan`. It is only a provider-layer migration roadmap. Socrates can add direct wrappers for major providers independently of product navigation or goal work.
 
 Likely order:
 

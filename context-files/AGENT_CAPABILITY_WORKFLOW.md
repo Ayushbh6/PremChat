@@ -22,7 +22,7 @@ canonical contracts and shared utilities
 
 No route, store, UI handler, Classic adapter, Flow adapter, worker, MCP integration, or provider may skip this chain.
 
-For the unified foreground resource surface, `read` and `search` own both workspace paths and authorized `socrates://` resources. `edit` owns ordinary workspace files plus explicitly writable `.socrates` sections through the same authority registry. Durable document base URIs are read/search only; mutation requires the exact section URI, validation of the full prospective document, and atomic persistence. Identity, user profile, generated tool guidance, and installed skill files are read-only to main Socrates. Identity/profile proposals go through `memory_note`, and Memory Agent replacements require the exact section id; skill and MCP mutations go through the always-visible approval-gated `capability_manager`.
+For the unified foreground resource surface, `read` and `search` own globally readable filesystem paths plus authorized `socrates://` resources. `edit` owns ordinary filesystem mutations under the access matrix. Central identity/profile/global-resource knowledge is read-only to main Socrates and changes through `memory_note` or direct-user typed version APIs. Generated tool guidance and installed skill files are also generic-edit denied; skill and MCP mutations go through the always-visible `capability_manager`.
 
 One shared implementation does not require a process-global mutable singleton. Services may be instantiated or injected for isolation, testing, and concurrency, but every instance must use the same canonical implementation and contracts. Turn state, tool-call state, context handles, approvals, Terminal sessions, and model events remain request-scoped.
 
@@ -43,6 +43,8 @@ The refactor must converge on these ownership boundaries:
 | Context preparation | One shared `ContextPipeline` with typed stages | Classic-, Flow-, or worker-owned hidden context assembly |
 | Model-visible message assembly | One documented allowlist owned by the shared context/runtime boundary | Per-batch action ledgers, synthetic user messages, detached checkpoints, or caller-owned prompt fragments |
 | Goal/task lifecycle | Canonical backend work store and typed transactions | Main-agent `focus_ledger` tool or `.socrates/FOCUS_LEDGER.md` |
+| Global state cutover | Shared global-state/goal/task contracts plus one verified whole-state archiver and fresh-state seeder | Transcript import, hidden compatibility Flows, frontend-created projects/Flows, route-local adoption rules, dual writes, or a second global owner/pointer |
+| Global exchange presentation | One pure web read-model selector over canonical snapshots, exact exchange pages, and typed events | Component-local current/history heuristics or another goal/task state machine |
 | Tool usage documentation | Generated from canonical capability definitions | Hand-maintained tool contract copies |
 | Provider tool schemas | Generated from canonical input schemas | Tool-name special cases or handwritten provider schemas |
 
@@ -103,7 +105,7 @@ Perform every step in order:
 8. Generate the tool usage Markdown and role/tool inventory. Do not hand-edit generated tool contract text.
 9. Update an agent prompt only when the model needs behavioral sequencing or judgment that cannot be expressed by the schema, description, role manifest, or runtime policy. Never paste the schema into the prompt.
 10. Add schema, executor, policy, provider-parity, documentation-generation, role-manifest, malformed-call, and integration tests.
-11. Run the architecture drift check and all affected Classic/Flow tests.
+11. Run the architecture drift check and all affected shared-runtime/global-Socrates tests.
 
 The target generator must derive the existing tool-guide output under `apps/server/src/memory/defaults/primary/tool_usage/` or its accepted replacement from the catalog. Generated files must identify their source and reject manual drift. Runtime installation must mirror that generated inventory and content exactly: overwrite every content mismatch and remove every non-catalog Markdown guide so stale or shadow guidance cannot remain visible.
 
@@ -118,7 +120,7 @@ The target generator must derive the existing tool-guide output under `apps/serv
 - Are the tool guide and role attachment generated and current?
 - Is there an absence test for any tool or schema path replaced by this change?
 
-For any Paths/Access change, preserve the implemented authority chain: `packages/contracts/src/filesystemAccess.ts` owns the shared contract; `apps/server/src/services/store/accessStore.ts` owns durable global state and immutable turn snapshots; `packages/workspace/src/tools/common.ts` resolves structured filesystem paths against that snapshot; both Classic and Flow receive the same snapshot through the shared runtime. `runtimeConfig.sandboxMode` is compatibility metadata only. Terminal working-directory checks, obvious-path preflight, and approval are safety rails around a normal host process; they are not a sandbox guarantee. Do not add another access store, project-only permission authority, container, VM, native sandbox helper, or third-party sandbox runtime unless the user separately approves that expansion.
+For any Paths/Access change, preserve one authority chain: `packages/contracts/src/filesystemAccess.ts` owns the shared contract; the canonical access store owns durable global state and immutable task snapshots; workspace operations consume that snapshot; every global Socrates task receives it through the shared runtime. `runtimeConfig.sandboxMode` is removed after cutover. Selected roots express structured-write autonomy only. Terminal policy and the native containment adapter are injected owners; preflight is never the containment boundary. Do not add another access store or project-only permission authority.
 
 ## 5. Adding Or Changing An Agent Role
 
@@ -180,7 +182,7 @@ When changing a prompt:
 1. Identify the owning `AgentDefinition`.
 2. Confirm whether the change belongs instead in a schema, capability description, runtime policy, context stage, or generated tool guide.
 3. Update the one canonical prompt only.
-4. Do not create Classic/Flow prompt copies.
+4. Do not create route-specific or view-specific prompt copies.
 5. Do not duplicate tool field lists or dynamic capability inventories in prose.
 6. Update focused prompt contract tests and behavioral integration tests.
 7. Regenerate prompt/capability snapshots where used and run drift validation.
@@ -198,7 +200,7 @@ persist exact user message immediately
   -> bind goal/task and deterministically select exact memory
   -> ContextPipeline assembles typed exact context
   -> main Socrates works through one shared runtime loop
-  -> inside that loop, normal tools and useful `.socrates`/memory reconciliation happen when needed
+  -> inside that loop, normal tools and useful typed knowledge proposals happen when needed
   -> the loop's last continuation returns answer + goal state + goal note
   -> atomic answer/task/goal/capsule persistence
   -> publication to the global seamless UI
@@ -213,9 +215,9 @@ Goal and memory candidates are retrieved concurrently, and the first memory quer
 
 Main Socrates then receives the bound capsule, latest exact exchange, exact selected memory/evidence, authorized resource state, and active Terminal/approval/wait state. It does not receive a bulk goal ledger. Goal capsules are structured live state with exact source anchors; they do not replace canonical goal history.
 
-After binding, there is one foreground working loop. Provider continuations needed to consume real tool results remain inside that loop. Do not add a draft call, detached reconciliation call, or final-formatting call. Reconciliation before answering is a stable-prompt responsibility of the same Socrates: update and verify `.socrates` only when important state changed, otherwise answer without ceremonial reads or writes.
+After binding, there is one foreground working loop. Provider continuations needed to consume real tool results remain inside that loop. Do not add a draft call, detached reconciliation call, or final-formatting call. Durable-knowledge proposals before answering are a stable-prompt responsibility of the same Socrates: submit evidence-backed `memory_note` entries only when important state changed, otherwise answer without ceremonial reads or writes.
 
-The model-visible input allowlist is part of the architecture contract. The runtime must reject uncatalogued prompt fragments and must never inject an action ledger after a tool batch, a synthetic user warning, or separate progress/final checkpoint messages. Backend counters and guards stay silent; real errors are returned in their tool results. Approved `R<n>` or `.socrates` notices are concise metadata appended to an existing result, never separate messages. A new model-visible content category requires explicit user approval and synchronized authority/CI changes.
+The model-visible input allowlist is part of the architecture contract. The runtime must reject uncatalogued prompt fragments and must never inject an action ledger after a tool batch, a synthetic user warning, or separate progress/final checkpoint messages. Backend counters and guards stay silent; real errors are returned in their tool results. Approved `R<n>` notices are concise metadata appended to an existing result, never separate messages. A new model-visible content category requires explicit user approval and synchronized authority/CI changes.
 
 Exact goal-history selection, stable standing context, Terminal continuation state, turn-local large-result release, automatic 170k compaction, finalization, and asynchronous enrichment are separate declared stages. Changing one requires tests proving the others retain their ordering and protected information.
 
@@ -232,6 +234,23 @@ Every context-stage change must satisfy the exact-source and model-projection ru
 9. Every tool result crosses one shared final model-output guard. Dynamic MCP responses are persisted exactly before a 4,000-token default/6,000-token maximum projection and use existing read/trace pagination; no child executor may bypass this guard.
 10. Compaction and release remain provenance-linked model projections; canonical exact sources are never overwritten and exact retrieval stays available.
 11. Tests must prove whole selected messages remain exact, protected active-request/pending/suffix state remains raw, completed tool batches are never split, stable anchors survive repeated compactions, handles reset each user turn, release receipts can recover exact evidence, and pagination can recover exact deferred content.
+
+### Global UI Cutover Procedure
+
+When changing the global entry, goal sidebar, central canvas, or legacy migration, perform these steps in order:
+
+1. Update shared contracts first for global Socrates state, active/latest root task fields, exact goal-exchange pages, stable ordinals, continuation lineage, and the transport-only command envelope. Do not define lookalike payloads in the route or frontend.
+2. Put released-state preservation in one injected server cutover service. It must maintenance-lock, WAL-checkpoint, integrity-check, copy the whole state, verify hashes, seed a temporary fresh canonical database with global knowledge/setup only, atomically swap, recover on failure, and never dual-write or import old work.
+3. Build the global read directly from canonical goals and task-owned exact records. Store working-root/project coordinates only as immutable access or source provenance. Route all new work and finalization through the global state/goal/task store; no active call receives or derives a Flow id.
+4. Derive `idle`, `live`, `final`, `history`, `recovery`, and `error` through the one pure frontend selector in `apps/web/src/lib/v2/flowPresentationState.ts` over canonical state. Components receive the normalized read model and may not rediscover foreground task/turn lineage from array order.
+5. Load exact history by goal as whole task exchanges with explicit earlier-page metadata. History selection remains client-only presentation state; a send returns to the live tail before invoking the ordinary typed send command and same-Socrates lifecycle.
+6. Keep `/welcome` -> **Open Socrates** -> `/chat` as the only required entry. Keep Paths, Access, Settings, and the composer outside the middle scroll region. The sidebar opens to flat Goals, replaces that page with the selected goal's flat Exact exchanges page, and provides a back control; never render nested exchanges, Projects, or Conversations.
+7. Map typed execution state into one secret-safe replace-in-place activity sentence and one expandable detail disclosure. Never expose hidden chain of thought, raw ids, raw Terminal output, or frontend-guessed semantic status. Preserve full approval, credential, clarification, and Terminal-input controls.
+8. Keep the orb mounted across states. Reveal the final answer only after its atomic commit is visible in canonical state, then recede the orb and clear the live sentence without changing layout. Honor reduced motion and live-region accessibility.
+9. Keep `Live Work` and backend-authoritative `Live Goal` as presentation projections. Store drag/z-order/fold state under one global client key, clamp/reset it deterministically, support keyboard motion, and fold notes at narrow widths.
+10. Update the canonical authority/product documents and their drift assertions in the same change. Leave released project/Classic/Flow descriptions explicitly labeled as migration evidence rather than rewriting history.
+11. Delete hidden-container code, Flow-scoped active APIs/subscriptions/storage keys, and any dual owner after the importer is covered. Absence tests must fail on their return.
+12. Verify contracts, importer/store/routes, selector/components, viewport/responsive/accessibility behavior, isolated restart/recovery, and real provider journeys in that order. Do not use the user's normal Socrates home or app data.
 
 ## 10. Dynamic MCP Changes
 
@@ -307,7 +326,7 @@ Every change selects and records the applicable rows:
 | Retrieval | Source, chunking, ranking, filtering, fallback, inspect, and rebuild tests |
 | Context stage | Ordering, token bounds, protected anchors, recovery, and evidence retention |
 | Model-input assembly | Exact allowlist, stable-prefix order, no synthetic user messages, no per-batch ledger, and expected provider-call count |
-| Main Socrates | Global UI plus compatibility integration using the same definition and manifest |
+| Main Socrates | `/welcome` -> `/chat`, one global state/current pointer, verified old-state archive plus fresh canonical seed, direct task ownership without Flow scope, exact goal-exchange pages, one normalized presentation selector, passive history/live-tail send, fixed shell, typed orb activity, movable-note accessibility, and the same definition and manifest |
 | Terminal/wait | Run, start, input, output, wait, stop, cancel, restart, and cleanup |
 | Dynamic MCP | Discovery, schema, role, execution, credential, removal, and telemetry |
 | Packaging | Runtime source revision, clean archive, and launcher smoke test |
@@ -328,6 +347,9 @@ A change is complete only when all answers are yes:
 - Is every model-visible message category explicitly allowlisted, with no synthetic user turn, per-batch action ledger, or detached reconciliation/final call?
 - Were all affected old paths deleted rather than left dormant?
 - Do the global seamless UI and every released compatibility adapter share the main definition, tools, utilities, exact-history policy, and runtime?
+- Does `/chat` restore one global Socrates state whose `foregroundGoalId` is the only pointer, expose canonical goals and task-owned exact evidence, create new work without any Flow scope, and avoid project selection, dual writes, hidden containers, or another store?
+- Is one selector authoritative for current/history/recovery presentation, with passive history and every send returning to the live tail before semantic routing?
+- Do the fixed shell, one-exchange canvas, replace-in-place activity, final-answer commit gate, and `Live Work`/`Live Goal` notes pass desktop, narrow, keyboard, reduced-motion, restart, and secret-safety checks?
 - Does the critical path contain only parallel candidate retrieval, same-Socrates goal resolution, deterministic memory selection, and the main Socrates loop—with no router-agent shadow path?
 - Does every causally dependent follow-up become another task in the current goal instead of a new goal?
 - Did every canonical selected message remain exact, and did every automatic model-projection change preserve its required whole-turn suffix, provenance, exact recovery, and dispatch ceiling?
