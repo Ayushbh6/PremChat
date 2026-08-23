@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest"
 import {
   apiResponseSchema,
   socratesFinalAnswerSchema,
-  soulConfirmationAgentOutputSchema,
   approveMemorySkillProposalResponseSchema,
   approvalDecideCommandSchema,
   approvalRequestedEventSchema,
@@ -190,7 +189,7 @@ import {
   conversationToolRunSchema,
   editToolOutputSchema,
 } from "./index"
-import * as v2Flow from "./v2Flow"
+import * as socrates from "./socrates"
 
 const timestamp = "2026-05-13T21:30:00.000Z"
 
@@ -881,8 +880,8 @@ describe("http contracts", () => {
     expect(updateConversationRequestSchema.safeParse({ title: "" }).success).toBe(false)
     expect(updateConversationResponseSchema.safeParse({ conversation }).success).toBe(true)
     expect(deleteConversationResponseSchema.safeParse({ deletedConversationId: conversation.id }).success).toBe(true)
-    expect(getConversationDeletionImpactResponseSchema.safeParse({ linkedToFlow: true }).success).toBe(true)
-    expect(getConversationDeletionImpactResponseSchema.safeParse({ linkedToFlow: true, turnCount: 3 }).success).toBe(false)
+    expect(getConversationDeletionImpactResponseSchema.safeParse({ linkedToGoal: true }).success).toBe(true)
+    expect(getConversationDeletionImpactResponseSchema.safeParse({ linkedToGoal: true, turnCount: 3 }).success).toBe(false)
     const notification = {
       id: "note_1",
       projectId: project.id,
@@ -2104,21 +2103,12 @@ describe("tool contracts", () => {
         goalFinalization: { state: "completed", note: "Done." },
       }).success,
     ).toBe(false)
-    expect(
-      soulConfirmationAgentOutputSchema.safeParse({
-        decision: "yes",
-        reason: "The identity edit is narrow, durable, and supported by the supplied evidence.",
-      }).success,
-    ).toBe(true)
-    expect(soulConfirmationAgentOutputSchema.safeParse({ decision: "maybe", reason: "Ambiguous." }).success).toBe(false)
   })
 })
 
-describe("V2 Flow standalone contracts", () => {
-  const flow = {
-    id: "v2flow_1",
-    projectId: "proj_1",
-    status: "active",
+describe("global Socrates standalone contracts", () => {
+  const state = {
+    id: "global",
     foregroundGoalId: "v2goal_1",
     revision: 3,
     lastEventSequence: 12,
@@ -2128,8 +2118,6 @@ describe("V2 Flow standalone contracts", () => {
 
   const goal = {
     id: "v2goal_1",
-    flowId: flow.id,
-    projectId: flow.projectId,
     ordinal: 1,
     title: "Build the seamless view",
     kind: "work",
@@ -2152,41 +2140,37 @@ describe("V2 Flow standalone contracts", () => {
     contextWindowTokens: 120_000,
   }
 
-  it("keeps V2 commands isolated from the V1 command union", () => {
+  it("keeps Socrates commands isolated from the V1 command union", () => {
     const command = {
       id: "v2cmd_1",
-      schemaVersion: 2,
+      schemaVersion: 3,
       timestamp,
-      projectId: flow.projectId,
-      flowId: flow.id,
-      type: "v2.message.send",
+      type: "socrates.message.send",
       payload: {
         clientMessageId: "v2msg_client_1",
-        content: "Continue the seamless Flow implementation.",
+        content: "Continue the seamless Socrates implementation.",
         foregroundGoalIdAtCompose: goal.id,
         runtimeConfig,
       },
     }
 
-    expect(v2Flow.v2ClientCommandSchema.safeParse(command).success).toBe(true)
+    expect(socrates.socratesClientCommandSchema.safeParse(command).success).toBe(true)
     expect(clientCommandSchema.safeParse(command).success).toBe(false)
     expect(
-      v2Flow.v2MessageSendCommandSchema.safeParse({
+      socrates.socratesMessageSendCommandSchema.safeParse({
         ...command,
         payload: { ...command.payload, content: "x".repeat(10_001) },
       }).success,
     ).toBe(false)
   })
 
-  it("validates the one-flow snapshot and strict goal-routing shapes", () => {
-    expect(v2Flow.v2FlowSchema.safeParse(flow).success).toBe(true)
-    expect(v2Flow.v2FlowSchema.safeParse({ ...flow, conversationId: "classic_1" }).success).toBe(false)
-    expect(v2Flow.v2GoalSchema.safeParse(goal).success).toBe(true)
+  it("validates the one-state snapshot and strict goal-routing shapes", () => {
+    expect(socrates.socratesStateSchema.safeParse(state).success).toBe(true)
+    expect(socrates.socratesStateSchema.safeParse({ ...state, conversationId: "classic_1" }).success).toBe(false)
+    expect(socrates.socratesGoalSchema.safeParse(goal).success).toBe(true)
     expect(
-      v2Flow.v2GoalRoutingRunSchema.safeParse({
+      socrates.socratesGoalRoutingRunSchema.safeParse({
         id: "v2route_1",
-        flowId: flow.id,
-        projectId: flow.projectId,
         turnId: "v2turn_1",
         messageId: "v2msg_1",
         foregroundGoalId: goal.id,
@@ -2201,10 +2185,8 @@ describe("V2 Flow standalone contracts", () => {
       }).success,
     ).toBe(true)
     expect(
-      v2Flow.v2GoalRoutingRunSchema.safeParse({
+      socrates.socratesGoalRoutingRunSchema.safeParse({
         id: "v2route_2",
-        flowId: flow.id,
-        projectId: flow.projectId,
         turnId: "v2turn_2",
         messageId: "v2msg_2",
         candidateGoalIds: [],
@@ -2216,11 +2198,9 @@ describe("V2 Flow standalone contracts", () => {
     ).toBe(false)
   })
 
-  it("requires an explicit cursor only while earlier Flow messages remain", () => {
+  it("requires an explicit cursor only while earlier messages remain", () => {
     const message = {
       id: "v2msg_1",
-      flowId: flow.id,
-      projectId: flow.projectId,
       goalId: goal.id,
       ordinal: 101,
       role: "user",
@@ -2231,7 +2211,7 @@ describe("V2 Flow standalone contracts", () => {
       completedAt: timestamp,
     }
     const snapshot = {
-      flow,
+      state,
       foregroundGoal: goal,
       goals: [goal],
       latestCapsules: [],
@@ -2240,49 +2220,168 @@ describe("V2 Flow standalone contracts", () => {
       canonicalToolCalls: [],
       activeTerminals: [],
       pendingApprovals: [],
+      pendingCredentialRequests: [],
       lastEventSequence: 12,
     }
-    expect(v2Flow.v2FlowSnapshotSchema.safeParse(snapshot).success).toBe(true)
-    expect(v2Flow.v2FlowSnapshotSchema.safeParse({
+    expect(socrates.socratesSnapshotSchema.safeParse(snapshot).success).toBe(true)
+    expect(socrates.socratesSnapshotSchema.safeParse({
       ...snapshot,
       messageWindow: { hasEarlier: true },
     }).success).toBe(false)
-    expect(v2Flow.v2ListFlowMessagesResponseSchema.safeParse({
+    expect(socrates.socratesListMessagesResponseSchema.safeParse({
       messages: [message],
       messageWindow: { hasEarlier: false },
     }).success).toBe(true)
-    expect(v2Flow.v2ListFlowMessagesResponseSchema.safeParse({
+    expect(socrates.socratesListMessagesResponseSchema.safeParse({
       messages: [message],
       messageWindow: { hasEarlier: false, beforeOrdinal: 101 },
     }).success).toBe(false)
   })
 
+  it("keeps global state, task lineage, and exact goal exchanges strict", () => {
+    const longQuestion = `Inspect this exact request:\n${"q".repeat(12_000)}`
+    const userMessage = {
+      id: "v2msg_user_1",
+      goalId: goal.id,
+      turnId: "v2turn_root_1",
+      ordinal: 1,
+      role: "user",
+      kind: "standard",
+      content: longQuestion,
+      status: "completed",
+      createdAt: timestamp,
+      completedAt: timestamp,
+    }
+    const assistantMessage = {
+      ...userMessage,
+      id: "v2msg_assistant_1",
+      turnId: "v2turn_continuation_1",
+      ordinal: 2,
+      role: "assistant",
+      content: "The exact final answer.",
+      parentMessageId: userMessage.id,
+    }
+    const task = {
+      id: "v2task_1",
+      goalId: goal.id,
+      rootTurnId: "v2turn_root_1",
+      currentTurnId: "v2turn_continuation_1",
+      status: "completed",
+      runtimeConfig,
+      waitingOnTerminalIds: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      completedAt: timestamp,
+    }
+    const exchange = {
+      taskId: "worktask_1",
+      runtimeTaskId: task.id,
+      goalId: goal.id,
+      sourceRuntime: "socrates",
+      ordinal: 1,
+      rootTurnId: task.rootTurnId,
+      currentTurnId: task.currentTurnId,
+      turnIds: [task.rootTurnId, task.currentTurnId],
+      status: task.status,
+      userMessage,
+      assistantMessage,
+      startedAt: timestamp,
+      updatedAt: timestamp,
+      completedAt: timestamp,
+    }
+    const failure = {
+      source: "main_agent",
+      code: "model_provider_error",
+      message: "The usage limit has been reached.",
+      recoverable: true,
+      occurredAt: timestamp,
+    }
+    const failedExchange = {
+      ...exchange,
+      status: "failed",
+      assistantMessage: undefined,
+      failure,
+    }
+    const snapshot = {
+      state,
+      foregroundGoal: goal,
+      goals: [goal],
+      latestCapsules: [],
+      messages: [userMessage, assistantMessage],
+      messageWindow: { hasEarlier: false },
+      latestTask: task,
+      canonicalToolCalls: [],
+      activeTerminals: [],
+      pendingApprovals: [],
+      pendingCredentialRequests: [],
+      lastEventSequence: 12,
+    }
+
+    expect(socrates.socratesGoalExchangeSchema.safeParse(exchange).success).toBe(true)
+    expect(socrates.socratesGoalExchangeSchema.safeParse(failedExchange).success).toBe(true)
+    expect(socrates.socratesGoalExchangeSchema.safeParse({ ...exchange, failure }).success).toBe(false)
+    expect(socrates.socratesGoalExchangeSchema.safeParse({
+      ...exchange,
+      turnIds: [task.rootTurnId],
+    }).success).toBe(false)
+    expect(socrates.socratesGoalExchangeSchema.safeParse({
+      ...exchange,
+      assistantMessage: { ...assistantMessage, turnId: task.rootTurnId },
+    }).success).toBe(false)
+    expect(socrates.socratesGoalExchangeSchema.safeParse({
+      ...exchange,
+      userMessage: { ...userMessage, turnId: task.currentTurnId },
+    }).success).toBe(false)
+    expect(socrates.socratesListGoalExchangesResponseSchema.safeParse({
+      exchanges: [exchange],
+      exchangeWindow: { totalExchanges: 30, hasEarlier: true, beforeOrdinal: 1 },
+    }).success).toBe(true)
+    expect(socrates.socratesListGoalExchangesResponseSchema.safeParse({
+      exchanges: [exchange],
+      exchangeWindow: { totalExchanges: 1, hasEarlier: false, beforeOrdinal: 1 },
+    }).success).toBe(false)
+    expect(socrates.socratesSnapshotSchema.safeParse(snapshot).success).toBe(true)
+    expect(socrates.socratesSnapshotSchema.safeParse({ ...snapshot, activeTask: task }).success).toBe(false)
+    expect(socrates.socratesSnapshotSchema.safeParse({
+      ...snapshot,
+      globalGoalWindow: { totalGoals: 40, hasEarlier: true, beforeCursor: "opaque_cursor" },
+    }).success).toBe(true)
+    expect(socrates.socratesListGlobalGoalsRequestSchema.parse({ limit: "20" })).toEqual({ limit: 20 })
+    expect(socrates.socratesListGlobalGoalsResponseSchema.safeParse({
+      goals: [goal],
+      goalWindow: { totalGoals: 40, hasEarlier: true, beforeCursor: "opaque_cursor" },
+    }).success).toBe(true)
+    expect(socrates.socratesListGlobalGoalsResponseSchema.safeParse({
+      goals: [goal],
+      goalWindow: { totalGoals: 40, hasEarlier: true },
+    }).success).toBe(false)
+    expect(exchange.userMessage.content).toBe(longQuestion)
+  })
+
   it("represents durable Terminal suspension and restart-safe ready tasks honestly", () => {
-    expect(v2Flow.v2TurnStatusSchema.safeParse("suspended").success).toBe(true)
-    expect(v2Flow.v2AgentTaskStatusSchema.safeParse("ready").success).toBe(true)
+    expect(socrates.socratesTurnStatusSchema.safeParse("suspended").success).toBe(true)
+    expect(socrates.socratesAgentTaskStatusSchema.safeParse("ready").success).toBe(true)
   })
 
-  it("keeps Flow deletion responses minimal and strict", () => {
-    expect(v2Flow.v2DeleteTurnResponseSchema.safeParse({ deletedTurnId: "v2turn_1" }).success).toBe(true)
-    expect(v2Flow.v2DeleteGoalResponseSchema.safeParse({ deletedGoalId: "v2goal_2", fallbackGoalId: "v2goal_1" }).success).toBe(true)
-    expect(v2Flow.v2DeleteGoalResponseSchema.safeParse({ deletedGoalId: "v2goal_2", fallbackGoalId: "v2goal_1", records: 14 }).success).toBe(false)
+  it("keeps deletion responses minimal and strict", () => {
+    expect(socrates.socratesDeleteTurnResponseSchema.safeParse({ deletedTurnId: "v2turn_1" }).success).toBe(true)
+    expect(socrates.socratesDeleteGoalResponseSchema.safeParse({ deletedGoalId: "v2goal_2", fallbackGoalId: "v2goal_1" }).success).toBe(true)
+    expect(socrates.socratesDeleteGoalResponseSchema.safeParse({ deletedGoalId: "v2goal_2", fallbackGoalId: "v2goal_1", records: 14 }).success).toBe(false)
   })
 
-  it("keeps historical router telemetry readable while namespacing current Flow events", () => {
-    expect(v2Flow.v2ModelCallRoleSchema.safeParse("memory_router").success).toBe(true)
-    expect(v2Flow.v2ModelCallRoleSchema.safeParse("frontier_agent").success).toBe(true)
+  it("keeps historical router telemetry readable while namespacing current Socrates events", () => {
+    expect(socrates.socratesModelCallRoleSchema.safeParse("memory_router").success).toBe(true)
+    expect(socrates.socratesModelCallRoleSchema.safeParse("frontier_agent").success).toBe(true)
     const envelope = {
       id: "v2evt_compaction_1",
-      schemaVersion: 2,
+      schemaVersion: 3,
       timestamp,
-      projectId: flow.projectId,
-      flowId: flow.id,
       goalId: goal.id,
       turnId: "v2turn_1",
     }
-    expect(v2Flow.v2ServerEventSchema.safeParse({
+    expect(socrates.socratesServerEventSchema.safeParse({
       ...envelope,
-      type: "v2.context.compaction.completed",
+      type: "socrates.context.compaction.completed",
       payload: {
         snapshotId: "ctxcmp_1",
         inputTokensEstimate: 80_000,
@@ -2291,9 +2390,9 @@ describe("V2 Flow standalone contracts", () => {
         sizeClass: "preferred",
       },
     }).success).toBe(true)
-    expect(v2Flow.v2ServerEventSchema.safeParse({
+    expect(socrates.socratesServerEventSchema.safeParse({
       ...envelope,
-      type: "v2.agent.handover",
+      type: "socrates.agent.handover",
       payload: {
         toolCallId: "v2tcall_1",
         stepIndex: 2,
@@ -2306,9 +2405,9 @@ describe("V2 Flow standalone contracts", () => {
   })
 
   it("locks speech to the accepted offline engines and OpenRouter STT allowlist", () => {
-    for (const modelId of v2Flow.V2_OPENROUTER_STT_MODEL_IDS) {
+    for (const modelId of socrates.SOCRATES_OPENROUTER_STT_MODEL_IDS) {
       expect(
-        v2Flow.v2CreateSpeechJobRequestSchema.safeParse({
+        socrates.socratesCreateSpeechJobRequestSchema.safeParse({
           kind: "transcription",
           engine: "openrouter",
           modelId,
@@ -2317,7 +2416,7 @@ describe("V2 Flow standalone contracts", () => {
       ).toBe(true)
     }
     expect(
-      v2Flow.v2CreateSpeechJobRequestSchema.safeParse({
+      socrates.socratesCreateSpeechJobRequestSchema.safeParse({
         kind: "transcription",
         engine: "openrouter",
         modelId: "openai/whisper-1",
@@ -2325,7 +2424,7 @@ describe("V2 Flow standalone contracts", () => {
       }).success,
     ).toBe(false)
     expect(
-      v2Flow.v2CreateSpeechJobRequestSchema.safeParse({
+      socrates.socratesCreateSpeechJobRequestSchema.safeParse({
         kind: "transcription",
         engine: "local_whisper",
         modelId: "tiny.en",
@@ -2333,7 +2432,7 @@ describe("V2 Flow standalone contracts", () => {
       }).success,
     ).toBe(false)
     expect(
-      v2Flow.v2CreateSpeechJobRequestSchema.safeParse({
+      socrates.socratesCreateSpeechJobRequestSchema.safeParse({
         kind: "synthesis",
         engine: "local_kokoro",
         modelId: "kokoro-82m",
@@ -2346,16 +2445,14 @@ describe("V2 Flow standalone contracts", () => {
   it("validates first-class feedback and secret-safe credential commands", () => {
     const envelope = {
       id: "v2cmd_credential_1",
-      schemaVersion: 2,
+      schemaVersion: 3,
       timestamp,
-      projectId: flow.projectId,
-      flowId: flow.id,
       turnId: "v2turn_4",
     }
     expect(
-      v2Flow.v2CredentialInputSubmitCommandSchema.safeParse({
+      socrates.socratesCredentialInputSubmitCommandSchema.safeParse({
         ...envelope,
-        type: "v2.credential.input.submit",
+        type: "socrates.credential.input.submit",
         payload: {
           credentialRequestId: "v2credential_1",
           turnId: "v2turn_4",
@@ -2365,16 +2462,16 @@ describe("V2 Flow standalone contracts", () => {
       }).success,
     ).toBe(true)
     expect(
-      v2Flow.v2CredentialInputSubmitCommandSchema.safeParse({
+      socrates.socratesCredentialInputSubmitCommandSchema.safeParse({
         ...envelope,
-        type: "v2.credential.input.submit",
+        type: "socrates.credential.input.submit",
         payload: { credentialRequestId: "v2credential_1", turnId: "v2turn_4", decision: "cancelled", value: "nope" },
       }).success,
     ).toBe(false)
     expect(
-      v2Flow.v2FeedbackSubmitCommandSchema.safeParse({
+      socrates.socratesFeedbackSubmitCommandSchema.safeParse({
         ...envelope,
-        type: "v2.feedback.submit",
+        type: "socrates.feedback.submit",
         payload: { messageId: "v2msg_assistant_1", turnId: "v2turn_4", rating: "thumbs_up" },
       }).success,
     ).toBe(true)

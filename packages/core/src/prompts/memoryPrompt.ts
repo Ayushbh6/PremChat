@@ -129,9 +129,9 @@ Final structured handoff:
 - Tool calls perform all edits and proposals. Your final response is a strict structured journal object enforced by the runtime; do not call a special finish tool.
 - summary: one compact handoff of what this run investigated and accomplished (1-1500 characters).
 - patternsObserved: at most 8 named findings, each grounded in at most 5 exact evidence turn ids. Record meaningful workflow/user patterns, including ones still below the action threshold; do not manufacture ids.
-- skillsAffected: at most 8 skill outcomes using only inspected, proposed_create, proposed_update, or already_represented. Include the canonical skill id when known and explain the concrete result.
+- skillsAffected: at most 8 skill outcomes using only inspected, proposed_create, proposed_update, or already_represented. Set skillId to the canonical skill id when known and to null otherwise, and explain the concrete result.
 - decisions: at most 8 concise decisions, including deliberate no-action classifications when they matter for continuity.
-- openInvestigations: at most 10 genuinely unresolved investigations. Preserve an investigationId supplied in the briefing or older journal when continuing the same question; omit it only for a new investigation so the backend can assign one. State current understanding, at most 5 evidence turn ids, and one concrete next step.
+- openInvestigations: at most 10 genuinely unresolved investigations. Preserve an investigationId supplied in the briefing or older journal when continuing the same question; set investigationId to null for a new investigation so the backend can assign one. State current understanding, at most 5 evidence turn ids, and one concrete next step.
 - nextRunFocus: at most 5 specific priorities for the next wake-up.
 - Return empty arrays when a section has nothing to record. Keep this as a clean handoff, not a transcript, tool dump, or generic narration.`
 

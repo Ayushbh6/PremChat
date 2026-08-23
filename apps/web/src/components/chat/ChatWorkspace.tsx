@@ -22,12 +22,6 @@ import {
 import { ActivityCenter } from "./ActivityCenter";
 import { WorkspaceTopbar } from "./WorkspaceTopbar";
 import { AccessControls } from "./AccessControls";
-import { ContinueInSeamlessButton } from "@/components/v2/ContinueInSeamlessButton";
-import {
-  consumeViewHandoff,
-  handoffAttachmentsToFiles,
-  type ViewHandoffEnvelope,
-} from "@/lib/v2/viewHandoff";
 
 interface ChatWorkspaceProps {
   projectId: string;
@@ -195,7 +189,6 @@ export function ChatWorkspace({ projectId, conversationId }: ChatWorkspaceProps)
   const [error, setError] = useState<string | null>(null);
   const [draftText, setDraftText] = useState("");
   const [draftAttachments, setDraftAttachments] = useState<MessageAttachment[]>([]);
-  const [pendingViewHandoff, setPendingViewHandoff] = useState<ViewHandoffEnvelope | null>(null);
   const activeTurnIdRef = useRef<string | null>(null);
   const liveStepsRef = useRef<LiveActivityStep[]>([]);
   const previousAwaitingTerminalInputRef = useRef(false);
@@ -222,21 +215,19 @@ export function ChatWorkspace({ projectId, conversationId }: ChatWorkspaceProps)
     const updateMedia = () => setIsMobileView(media.matches);
     updateMedia();
     media.addEventListener("change", updateMedia);
+    const restoreTimer = window.setTimeout(() => {
+      const storedDockHeight = Number.parseInt(window.localStorage.getItem(dockHeightKey) ?? "", 10);
+      if (Number.isFinite(storedDockHeight)) setTerminalDockHeight(storedDockHeight);
+      const storedDockOpen = window.localStorage.getItem(dockOpenKey);
+      if (storedDockOpen === "true" || storedDockOpen === "false") setIsTerminalDockOpen(storedDockOpen === "true");
+      const storedDockActive = window.localStorage.getItem(dockActiveKey);
+      if (storedDockActive) setActiveDockTerminalId(storedDockActive);
+    }, 0);
 
-    const storedDockHeight = Number.parseInt(window.localStorage.getItem(dockHeightKey) ?? "", 10);
-    if (Number.isFinite(storedDockHeight)) {
-      setTerminalDockHeight(storedDockHeight);
-    }
-    const storedDockOpen = window.localStorage.getItem(dockOpenKey);
-    if (storedDockOpen === "true" || storedDockOpen === "false") {
-      setIsTerminalDockOpen(storedDockOpen === "true");
-    }
-    const storedDockActive = window.localStorage.getItem(dockActiveKey);
-    if (storedDockActive && storedDockActive.length > 0) {
-      setActiveDockTerminalId(storedDockActive);
-    }
-
-    return () => media.removeEventListener("change", updateMedia);
+    return () => {
+      window.clearTimeout(restoreTimer);
+      media.removeEventListener("change", updateMedia);
+    };
   }, [conversationId, dockActiveKey, dockHeightKey, dockOpenKey, projectId]);
 
   useEffect(() => {
@@ -879,39 +870,6 @@ export function ChatWorkspace({ projectId, conversationId }: ChatWorkspaceProps)
     }
   };
 
-  useEffect(() => {
-    const handoff = consumeViewHandoff("classic", projectId, conversationId);
-    if (!handoff) return;
-    setDraftText(handoff.text);
-    setPendingViewHandoff(handoff);
-    if (handoff.attachments.length > 0) {
-      void handoffAttachmentsToFiles(handoff.attachments)
-        .then((files) => api.uploadConversationAttachments(projectId, conversationId, files))
-        .then((result) => setDraftAttachments(result.attachments))
-        .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not transfer draft attachments."));
-    }
-  }, [conversationId, projectId]);
-
-  useEffect(() => {
-    if (!pendingViewHandoff?.model || models.length === 0) return;
-    const model = findModelSelection(
-      models,
-      pendingViewHandoff.model.providerId,
-      pendingViewHandoff.model.modelId,
-      pendingViewHandoff.model.authMode ?? "api_key",
-    );
-    if (!model) {
-      setPendingViewHandoff(null);
-      return;
-    }
-    const thinking = model.thinkingOptions.find((option) => option.id === pendingViewHandoff.thinkingOptionId)
-      ?? selectDefaultThinkingOption(model);
-    setSelectedModel(model);
-    setSelectedThinkingOption(thinking);
-    writeComposerModelPreference(composerModelKey, model, thinking);
-    setPendingViewHandoff(null);
-  }, [composerModelKey, models, pendingViewHandoff]);
-
   const handleSend = async (content: string, attachments: MessageAttachment[]) => {
     if (!selectedModel || !selectedThinkingOption) {
       setError("Choose a model before sending.");
@@ -1304,15 +1262,6 @@ export function ChatWorkspace({ projectId, conversationId }: ChatWorkspaceProps)
             rejectingSkillActionId={rejectingSkillActionId}
           />
           <AccessControls />
-          <ContinueInSeamlessButton
-            projectId={projectId}
-            conversationId={conversationId}
-            hasPersistedTurns={(conversationData?.messages.length ?? 0) > 0}
-            draftText={draftText}
-            attachments={draftAttachments}
-            selectedModel={selectedModel}
-            selectedThinkingOption={selectedThinkingOption}
-          />
           {hasTerminals ? (
             <button
               type="button"

@@ -13,8 +13,7 @@ const SKIPPED_MEMORY_SECTION_IDS = new Set(["always_apply_rules", "global_always
 const LOW_PRIORITY_MEMORY_SECTION_IDS = new Set(["runtime_context", "legacy_content", "scratch_notes", "completed_archive"])
 
 type CanonicalTurnRow = {
-  runtimeKind: "classic" | "v2_flow"
-  flowId: string
+  runtimeKind: "classic" | "socrates"
   goalId: string
   projectId: string
   conversationId: string
@@ -43,7 +42,6 @@ type CanonicalMemorySectionRow = {
 
 type CanonicalGoalRow = {
   projectId: string
-  flowId: string
   goalId: string
   title: string
   status: string
@@ -95,7 +93,6 @@ export const loadCanonicalTraceRows = (handle: DatabaseHandle, projectId: string
            )
        )
        SELECT 'classic' AS runtimeKind,
-              '' AS flowId,
               nt.*,
               um.content AS userContent,
               am.content AS assistantContent
@@ -107,11 +104,10 @@ export const loadCanonicalTraceRows = (handle: DatabaseHandle, projectId: string
     )
     .all(projectId, ...VISIBLE_CONVERSATION_STATUSES, ...INDEXED_TURN_STATUSES, ...(turnId ? [turnId] : [])) as CanonicalTurnRow[]
 
-  const v2Rows = handle.sqlite
+  const socratesRows = handle.sqlite
     .prepare(
       `WITH numbered_v2_turns AS (
          SELECT t.id AS turnId,
-                t.flow_id AS flowId,
                 COALESCE(t.goal_id, '') AS goalId,
                 t.status AS turnStatus,
                 t.started_at AS startedAt,
@@ -120,16 +116,14 @@ export const loadCanonicalTraceRows = (handle: DatabaseHandle, projectId: string
                 t.cancelled_at AS cancelledAt,
                 COALESCE(t.user_message_id, root_turn.user_message_id) AS userMessageId,
                 t.assistant_message_id AS assistantMessageId,
-                f.project_id AS projectId,
-                COALESCE('Seamless Flow · ' || NULLIF(TRIM(g.title), ''), 'Seamless Flow') AS conversationTitle,
+                t.project_id AS projectId,
+                COALESCE('Socrates · ' || NULLIF(TRIM(g.title), ''), 'Socrates') AS conversationTitle,
                 t.ordinal AS turnNumber
          FROM v2_turns t
-         INNER JOIN v2_flows f ON f.id = t.flow_id
          LEFT JOIN v2_goals g ON g.id = t.goal_id
          LEFT JOIN v2_agent_tasks task ON task.current_turn_id = t.id
          LEFT JOIN v2_turns root_turn ON root_turn.id = task.root_turn_id
-         WHERE f.project_id = ?
-           AND f.status IN ('active', 'archived')
+         WHERE t.project_id = ?
            AND t.status IN (${placeholders})
            AND NOT EXISTS (
              SELECT 1 FROM v2_classic_message_links legacy_link
@@ -137,8 +131,8 @@ export const loadCanonicalTraceRows = (handle: DatabaseHandle, projectId: string
                AND legacy_link.source_runtime = 'classic'
            )
        )
-       SELECT 'v2_flow' AS runtimeKind,
-              '' AS conversationId,
+       SELECT 'socrates' AS runtimeKind,
+              'global-socrates' AS conversationId,
               nt.*,
               um.content AS userContent,
               am.content AS assistantContent
@@ -150,7 +144,7 @@ export const loadCanonicalTraceRows = (handle: DatabaseHandle, projectId: string
     )
     .all(projectId, ...INDEXED_TURN_STATUSES, ...(turnId ? [turnId] : [])) as CanonicalTurnRow[]
 
-  return [...classicRows, ...v2Rows].flatMap((row) => traceChunksForTurn(row))
+  return [...classicRows, ...socratesRows].flatMap((row) => traceChunksForTurn(row))
 }
 
 export const loadCanonicalMemoryRows = (handle: DatabaseHandle, projectId: string): RetrievalIndexRow[] => {
@@ -176,17 +170,17 @@ export const loadCanonicalMemoryRows = (handle: DatabaseHandle, projectId: strin
 
 export const loadCanonicalGoalRows = (handle: DatabaseHandle, projectId: string, goalId?: string): RetrievalIndexRow[] => {
   const rows = handle.sqlite.prepare(
-    `SELECT g.project_id AS projectId,
-            g.flow_id AS flowId,
+    `SELECT source.project_id AS projectId,
             g.id AS goalId,
             g.title,
             g.status,
             g.summary,
             c.summary AS capsuleSummary,
             g.updated_at AS updatedAt
-     FROM v2_goals g
+     FROM (SELECT DISTINCT project_id, goal_id FROM v2_turns WHERE goal_id IS NOT NULL) source
+     INNER JOIN v2_goals g ON g.id = source.goal_id
      LEFT JOIN v2_goal_capsules c ON c.goal_id = g.id AND c.status = 'active'
-     WHERE g.project_id = ?
+     WHERE source.project_id = ?
        AND g.status <> 'archived'
        ${goalId ? "AND g.id = ?" : ""}
      ORDER BY g.last_active_at DESC, g.id`,
@@ -226,7 +220,6 @@ const traceChunksForTurn = (row: CanonicalTurnRow): RetrievalIndexRow[] => {
     priority: 1,
     scope: "project" as const,
     runtimeKind: row.runtimeKind,
-    flowId: row.flowId,
     goalId: row.goalId,
     surface: "" as const,
     fileName: "" as const,
@@ -275,7 +268,6 @@ const memoryChunksForSection = (activeProjectId: string, row: CanonicalMemorySec
     priority: LOW_PRIORITY_MEMORY_SECTION_IDS.has(row.sectionId) ? 0.65 : 1,
     scope,
     runtimeKind: "memory" as const,
-    flowId: "",
     goalId: "",
     surface: mapped.surface,
     fileName: mapped.fileName,
@@ -311,7 +303,6 @@ const goalCardRow = (row: CanonicalGoalRow): RetrievalIndexRow => {
     priority: 1,
     scope: "project",
     runtimeKind: "goal",
-    flowId: row.flowId,
     goalId: row.goalId,
     surface: "",
     fileName: "",
@@ -407,7 +398,6 @@ const capabilityCardRows = (input: {
     priority: 1,
     scope: input.scope === "path" ? "project" : "global",
     runtimeKind: "capability",
-    flowId: "",
     goalId: "",
     surface: "",
     fileName: "",

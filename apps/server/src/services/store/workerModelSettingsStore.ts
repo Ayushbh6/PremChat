@@ -33,13 +33,6 @@ export const DEFAULT_WORKER_MODEL_SETTINGS: Record<WorkerModelRole, Omit<WorkerM
     modelId: "deepseek/deepseek-v4-flash",
     thinkingEnabled: false,
   },
-  title_generator: {
-    workerId: "title_generator",
-    providerId: "openrouter",
-    authMode: "api_key",
-    modelId: "meta-llama/llama-4-maverick",
-    thinkingEnabled: false,
-  },
   frontier: {
     workerId: "frontier",
     providerId: "openrouter",
@@ -54,7 +47,6 @@ const workerOrder: WorkerModelRole[] = [
   "skill_writer",
   "socrates_context_compactor",
   "memory_context_compactor",
-  "title_generator",
   "frontier",
 ]
 

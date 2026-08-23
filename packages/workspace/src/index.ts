@@ -14,6 +14,13 @@ export {
   runWorkspaceBash,
   WorkspaceShellSession,
 } from "./tools/bashTool"
+export {
+  macosSandboxProfile,
+  nativeTerminalContainmentAvailability,
+  requireNativeTerminalContainment,
+  type TerminalContainment,
+  type TerminalContainmentAvailability,
+} from "./tools/terminalContainment"
 export { applyPatchWorkspace } from "./tools/patchHelpers"
 export { FileFreshnessTracker } from "./tools/fileFreshness"
 export { applyTextEdits, editWorkspace, __editToolTest } from "./tools/editTool"

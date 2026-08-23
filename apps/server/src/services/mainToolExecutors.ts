@@ -28,6 +28,7 @@ export type MainToolRuntimeAdapter = Readonly<{
   traceScope: (context: Parameters<ToolExecutors["trace_retrieve"]>[1]) => {
     presentedConversationId: string
     goalId?: string
+    projectId?: string
   }
   runSkills: (input: SkillsToolInput, context: Parameters<ToolExecutors["read"]>[1]) => Promise<SkillsToolOutput>
   createMemoryNote: NonNullable<ToolExecutors["memory_note"]>
@@ -55,7 +56,12 @@ export const createMainToolExecutors = (input: MainToolExecutorsInput): ToolExec
   }
   return {
     read: (toolInput, context) => isSocratesResourcePath(toolInput.path)
-      ? readSocratesResource(toolInput, { ...withFreshness(context), store: input.store, ...(input.mcpRuntime ? { mcpRuntime: input.mcpRuntime } : {}) })
+      ? readSocratesResource(toolInput, {
+          ...withFreshness(context),
+          store: input.store,
+          ...(input.mcpRuntime ? { mcpRuntime: input.mcpRuntime } : {}),
+          ...(input.exposeMcpServer ? { onMcpCapabilityRead: input.exposeMcpServer } : {}),
+        })
       : readWorkspacePath(toolInput, withFreshness(context)),
     search: (toolInput, context) => toolInput.path && isSocratesResourcePath(toolInput.path)
       ? searchSocratesResources(toolInput, { store: input.store, projectId: input.projectId, workspacePath: context.workspacePath, ...(input.mcpRuntime ? { mcpRuntime: input.mcpRuntime } : {}) })
@@ -81,7 +87,7 @@ export const createMainToolExecutors = (input: MainToolExecutorsInput): ToolExec
       const scope = input.runtime.traceScope(context)
       if (!scope.goalId) throw new SocratesError("trace_goal_context_unavailable", "The current goal context is unavailable.", { recoverable: true })
       return input.store.retrieveUnifiedMainToolTraces({
-        projectId: input.projectId,
+        projectId: scope.projectId ?? input.projectId,
         presentedConversationId: scope.presentedConversationId,
         goalId: scope.goalId,
         currentTurnId: input.turnId,

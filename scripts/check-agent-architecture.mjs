@@ -27,8 +27,6 @@ const executionOwners = [
   { id: "skill-writer", path: "apps/server/src/services/store/skillWriterAgentRunner.ts", definitionId: "skill-writer", status: "canonical" },
   { id: "global-memory", path: "apps/server/src/services/store/memoryAgentRunner.ts", definitionId: "global-memory", status: "canonical" },
   { id: "context-compressor", path: "packages/core/src/agent/CompressorAgent.ts", definitionId: "socrates-context-compactor,memory-context-compactor", status: "canonical" },
-  { id: "title-generator", path: "packages/core/src/agent/TitleGeneratorAgent.ts", definitionId: "title-generator", status: "canonical" },
-  { id: "soul-confirmation", path: "packages/core/src/agent/SoulConfirmationAgent.ts", definitionId: "soul-confirmation", status: "canonical" },
 ]
 
 const roleMatrix = definitions.map((definition) => {
@@ -115,13 +113,40 @@ for (const path of [
   }
 }
 for (const path of [
-  "context-files/FLOW_NORTH_STAR.md",
+  "context-files/GLOBAL_SOCRATES_NORTH_STAR.md",
   "context-files/AGENT_CAPABILITY_WORKFLOW.md",
 ]) {
   const source = await readFile(resolve(root, path), "utf8")
   for (const marker of ["oldest completed tool-exchange prefix", "pending operations", "stable canonical turn/task ordinals"]) {
     if (!source.includes(marker)) throw new Error(`Compaction authority ${path} is missing required contract marker: ${marker}.`)
   }
+}
+
+const globalUiAuthorityContracts = new Map([
+  ["AGENTS.md", ["/welcome", "/chat", "Live Work", "Live Goal", "verified whole-state archive", "foregroundGoalId", "resource provenance"]],
+  ["MEMORY.md", ["Open Socrates", "/chat", "passively selected", "live tail", "Do not import released goals", "foreground goal", "Tasks own exact"]],
+  ["context-files/REPO_RULES.md", ["Open Socrates", "/chat", "Historical selection is passive", "canonical live tail", "verified whole-state archive", "foreground goal", "task access snapshot"]],
+  ["context-files/GLOBAL_SOCRATES_NORTH_STAR.md", ["Open Socrates", "/chat", "Focused Global Canvas", "Live Work", "Live Goal", "fresh compact canonical database", "current-goal pointer", "task-owned"]],
+  ["context-files/UNIFIED_SOCRATES_LIFECYCLE.md", ["Global Bootstrap And Fresh-State Cutover", "Global Presentation And Exact Exchange History", "live tail", "Live Work", "Live Goal", "foreground goal", "resource provenance"]],
+  ["context-files/AGENT_REFACTOR_MANIFESTO.md", ["Open Socrates", "/chat", "passive", "live tail", "fresh compact database", "foreground-goal pointer", "resource provenance"]],
+  ["context-files/AGENT_CAPABILITY_WORKFLOW.md", ["Global UI Cutover Procedure", "exact exchange pages", "passive history", "live tail", "Live Work", "Live Goal", "foregroundGoalId", "cutover service"]],
+  ["context-files/APP_FLOW.md", ["The /chat shell", "Open Socrates", "/chat", "live tail", "Live Work", "Live Goal", "foregroundGoalId", "root task"]],
+  ["context-files/FRONTEND_BACKEND_CONTRACT.md", ["Product coordinates", "/api/socrates/", "SocratesGoalExchange", "live tail", "Live Work", "foreground goal", "current goal pointer", "root task"]],
+  ["context-files/REPO_STRCUTURE.md", ["Global web shell", "GlobalSocratesStore", "/chat", "GoalSidebar.tsx", "LiveNotes.tsx", "compact schema", "Released work history is not imported"]],
+])
+for (const [path, markers] of globalUiAuthorityContracts) {
+  const source = await readFile(resolve(root, path), "utf8")
+  for (const marker of markers) {
+    if (!source.includes(marker)) throw new Error(`Global UI authority ${path} is missing required contract marker: ${marker}.`)
+  }
+}
+
+const socratesPrompt = await readFile(resolve(root, "packages/core/src/prompts/socratesPrompt.ts"), "utf8")
+if (!socratesPrompt.includes("local-first, goal-centered")) {
+  throw new Error("Canonical Socrates prompt is missing the global goal-centered product marker.")
+}
+if (/\bproject-first\b/i.test(socratesPrompt)) {
+  throw new Error("Canonical Socrates prompt still contains the retired project-first product framing.")
 }
 
 assertUnique(definitions.map((definition) => definition.id), "Agent definition ids")
@@ -201,12 +226,15 @@ for (const retiredMarker of [
   if (mainAgentSource.includes(retiredMarker)) throw new Error(`Retired hidden main-loop message remains: ${retiredMarker}.`)
 }
 const directDeveloperMessagePushes = [...mainAgentSource.matchAll(/messages\.push\(\{\s*role:\s*"developer"/g)]
+const resolvedContextInsertions = [...mainAgentSource.matchAll(/insertBeforeLatestUserMessage\(messages,\s*\{\s*role:\s*"developer"/g)]
 if (
-  directDeveloperMessagePushes.length !== 1
+  directDeveloperMessagePushes.length !== 0
+  || resolvedContextInsertions.length !== 1
+  || !mainAgentSource.includes('const insertBeforeLatestUserMessage = (messages: ModelMessage[], context: ModelMessage): void =>')
   || !mainAgentSource.includes("renderResolvedTurnContext(resolvedTurnContext)")
   || !mainAgentSource.includes("renderFilesystemAuthorization(input.filesystemAuthorization)")
 ) {
-  throw new Error("Main Socrates may directly append only the declared resolved-turn and filesystem-access context developer message.")
+  throw new Error("Main Socrates must insert exactly one declared resolved-turn and filesystem-access developer context immediately before the latest exact user request.")
 }
 
 for (const capability of capabilities) {
@@ -227,12 +255,12 @@ const expectedCommands = [
   "access.mode.update", "access.path.add", "access.path.update", "access.path.remove",
   "chat.message.send", "chat.turn.cancel", "chat.conversation.subscribe", "chat.conversation.unsubscribe",
   "approval.decide", "credential.input.submit", "terminal.stop", "terminal.input", "terminal.resize", "terminal.rename", "feedback.submit",
-  "v2.flow.subscribe", "v2.flow.unsubscribe", "v2.message.send", "v2.routing.clarification.respond", "v2.focus.update",
-  "v2.turn.cancel", "v2.approval.decide", "v2.feedback.submit", "v2.credential.input.submit",
-  "v2.terminal.stop", "v2.terminal.input", "v2.terminal.resize", "v2.terminal.rename",
+  "socrates.subscribe", "socrates.unsubscribe", "socrates.message.send", "socrates.routing.clarification.respond", "socrates.goal.update",
+  "socrates.turn.cancel", "socrates.approval.decide", "socrates.feedback.submit", "socrates.credential.input.submit",
+  "socrates.terminal.stop", "socrates.terminal.input", "socrates.terminal.resize", "socrates.terminal.rename",
 ].sort()
 if (JSON.stringify(commands.map((command) => command.executorBinding).sort()) !== JSON.stringify(expectedCommands)) {
-  throw new Error("Typed user-command inventory drifted from the global, Classic, and Flow protocol boundary.")
+  throw new Error("Typed user-command inventory drifted from the global Socrates and retained legacy protocol boundary.")
 }
 
 const productionRoots = [
@@ -271,7 +299,7 @@ for (const owner of executionOwners) {
 }
 const discoveredExecutionOwners = productionSources
   .filter(({ path, source }) =>
-    /export class (?:Socrates|Compressor|GoalRouter|MemoryRouter|TitleGenerator|SoulConfirmation)Agent\b/.test(source)
+    /export class (?:Socrates|Compressor|GoalRouter|MemoryRouter)Agent\b/.test(source)
     || /export const run(?:MemoryAgent|SkillWriter)Turn\b/.test(source),
   )
   .map(({ path }) => relativePath(path))
@@ -316,8 +344,6 @@ for (const { path, source } of await readSources(auxiliaryFiles)) {
 }
 
 for (const migratedCaller of [
-  "packages/core/src/agent/TitleGeneratorAgent.ts",
-  "packages/core/src/agent/SoulConfirmationAgent.ts",
   "packages/core/src/agent/CompressorAgent.ts",
   "apps/server/src/services/store/memoryAgentRunner.ts",
 ]) {

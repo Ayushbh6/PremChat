@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUp, Brain, ChevronDown, EyeOff, FileText, ImagePlus, LoaderCircle, Mic, Square, Sparkles, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   MAX_INLINE_MESSAGE_CHARS,
   MAX_MESSAGE_ATTACHMENTS,
@@ -11,6 +11,7 @@ import {
 } from "@socrates/contracts";
 import { socratesApiBaseUrl } from "@/lib/api";
 import { composerVoicePresentation, type ComposerVoiceStatus } from "@/lib/speech/composer";
+import { canSubmitChatComposer } from "../../lib/chatComposerSubmission";
 
 export interface ComposerAttachment {
   id: string;
@@ -79,6 +80,8 @@ export function ChatComposer<TAttachment extends ComposerAttachment = MessageAtt
   const modelMenuRef = useRef<HTMLDivElement | null>(null);
   const thinkingMenuRef = useRef<HTMLDivElement | null>(null);
   const previousVoiceStatusRef = useRef(voiceStatus);
+  const modelMenuId = useId();
+  const thinkingMenuId = useId();
   const content = value ?? internalContent;
   const attachments = controlledAttachments ?? internalAttachments;
   const setAttachments = (update: TAttachment[] | ((current: TAttachment[]) => TAttachment[])) => {
@@ -98,12 +101,21 @@ export function ChatComposer<TAttachment extends ComposerAttachment = MessageAtt
   };
   const voiceInputActive = voiceStatus !== "idle";
   const voicePresentation = composerVoicePresentation(voiceStatus, voiceStatusLabel);
-  const canSend = (content.trim().length > 0 || attachments.length > 0) && !isSending && !isUploading && !voiceInputActive && isConnected && Boolean(selectedModel);
+  const canSend = canSubmitChatComposer({
+    content,
+    attachmentCount: attachments.length,
+    isSending,
+    isUploading,
+    voiceInputActive,
+    isConnected,
+    hasSelectedModel: Boolean(selectedModel),
+  });
   const selectedModelHasNoVision = selectedModel?.capabilities?.vision === false;
   const selectedModelKey = selectedModel ? modelKey(selectedModel) : "none";
   const selectedModelLabel = selectedModel ? `${selectedModel.label} · ${selectedModel.providerLabel}` : models.length === 0 ? "Connect provider" : "Model";
   const visionWarningKey = `${warningResetKey ?? "default"}:${selectedModelKey}`;
-  const shouldShowVisionWarning = selectedModelHasNoVision && dismissedVisionWarningKey !== visionWarningKey;
+  const hasImageAttachment = attachments.some((attachment) => attachment.kind === "image");
+  const shouldShowVisionWarning = selectedModelHasNoVision && hasImageAttachment && dismissedVisionWarningKey !== visionWarningKey;
   const modelGroups = groupModels(models);
   const voiceRecording = voiceStatus === "recording";
   const voiceTranscribing = voiceStatus === "transcribing";
@@ -173,7 +185,7 @@ export function ChatComposer<TAttachment extends ComposerAttachment = MessageAtt
 
   const handleSend = async () => {
     const nextContent = content.trim();
-    if ((!nextContent && attachments.length === 0) || isSending || isUploading || voiceInputActive) {
+    if (!canSend) {
       return;
     }
     try {
@@ -221,7 +233,7 @@ export function ChatComposer<TAttachment extends ComposerAttachment = MessageAtt
           </button>
         </div>
       )}
-      <div className={`relative rounded-xl border bg-white shadow-sm ${isDraggingOver ? "border-brand-teal-dark ring-2 ring-teal-100" : "border-gray-200"}`}>
+      <div className={`relative rounded-xl border bg-white shadow-sm transition-colors focus-within:border-brand-teal-dark focus-within:ring-2 focus-within:ring-teal-100 ${isDraggingOver ? "border-brand-teal-dark ring-2 ring-teal-100" : "border-gray-200"}`}>
         {voiceActivityLabel && (
           <VoiceActivityStatus key={voiceStatus} label={voiceActivityLabel} isRecording={voiceRecording} />
         )}
@@ -235,6 +247,7 @@ export function ChatComposer<TAttachment extends ComposerAttachment = MessageAtt
             {attachments.map((attachment) => (
               <div key={attachment.id} className="relative h-16 w-24 shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
                 {attachment.kind === "image" ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- Local attachment URLs are runtime-authenticated and not image-optimizer inputs.
                   <img
                     src={attachment.url ? `${socratesApiBaseUrl()}${attachment.url}` : attachment.uri}
                     alt={attachment.fileName}
@@ -285,13 +298,13 @@ export function ChatComposer<TAttachment extends ComposerAttachment = MessageAtt
             }
           }}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
+            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault();
               void handleSend();
             }
           }}
         />
-        <div className="absolute bottom-2.5 left-3 flex items-center gap-2">
+        <div className="absolute bottom-2.5 left-3 right-14 flex min-w-0 items-center gap-1 sm:right-16 sm:gap-2">
           <input
             ref={fileInputRef}
             type="file"
@@ -307,7 +320,7 @@ export function ChatComposer<TAttachment extends ComposerAttachment = MessageAtt
           />
           <button
             type="button"
-            className="inline-flex size-9 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-brand-text-light transition-colors hover:bg-gray-100 hover:text-brand-text-dark disabled:opacity-60"
+            className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-brand-text-light transition-colors hover:bg-gray-100 hover:text-brand-text-dark disabled:opacity-60"
             disabled={isSending || isUploading || voiceInputActive || !onUploadAttachments}
             aria-label="Attach image, text file, or Agent Skill ZIP"
             title="Attach image, text file, or Agent Skill ZIP"
@@ -315,23 +328,25 @@ export function ChatComposer<TAttachment extends ComposerAttachment = MessageAtt
           >
             <ImagePlus className="size-4" />
           </button>
-          <div ref={modelMenuRef} className="relative">
+          <div ref={modelMenuRef} className="relative min-w-0">
             <button
               type="button"
-              className="inline-flex h-9 max-w-28 items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 text-sm font-medium text-brand-text-dark transition-colors hover:bg-gray-100 sm:max-w-72"
+              className="inline-flex h-9 min-w-0 max-w-20 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-2.5 text-sm font-medium text-brand-text-dark transition-colors hover:bg-gray-100 sm:max-w-72 sm:gap-2 sm:px-3"
               title={selectedModelLabel}
               disabled={voiceInputActive}
+              aria-expanded={isModelMenuOpen}
+              aria-controls={modelMenuId}
               onClick={() => {
                 setIsModelMenuOpen((current) => !current);
                 setIsThinkingMenuOpen(false);
               }}
             >
-              <Sparkles className="size-4 text-brand-teal-dark" />
+              <Sparkles className="size-4 shrink-0 text-brand-teal-dark" aria-hidden="true" />
               <span className="truncate">{selectedModelLabel}</span>
-              <ChevronDown className="size-4 text-brand-text-light" />
+              <ChevronDown className="size-4 shrink-0 text-brand-text-light" aria-hidden="true" />
             </button>
             {isModelMenuOpen && (
-              <div className="absolute bottom-12 left-0 z-20 max-h-80 w-72 overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-xl">
+              <div id={modelMenuId} className="absolute -left-12 bottom-12 z-20 max-h-80 w-[calc(100vw-1.5rem)] max-w-72 overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-xl sm:left-0 sm:w-72">
                 {models.length === 0 && (
                   <div className="px-3 py-2 text-sm text-brand-text-light">Connect a provider in Settings.</div>
                 )}
@@ -364,22 +379,24 @@ export function ChatComposer<TAttachment extends ComposerAttachment = MessageAtt
             )}
           </div>
 
-          <div ref={thinkingMenuRef} className="relative">
+          <div ref={thinkingMenuRef} className="relative min-w-0">
             <button
               type="button"
-              className="inline-flex h-9 items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 text-sm font-medium text-brand-text-dark transition-colors hover:bg-gray-100"
+              className="inline-flex h-9 min-w-0 max-w-20 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-2.5 text-sm font-medium text-brand-text-dark transition-colors hover:bg-gray-100 sm:max-w-48 sm:gap-2 sm:px-3"
               disabled={!selectedModel || voiceInputActive}
+              aria-expanded={isThinkingMenuOpen}
+              aria-controls={thinkingMenuId}
               onClick={() => {
                 setIsThinkingMenuOpen((current) => !current);
                 setIsModelMenuOpen(false);
               }}
             >
-              <Brain className="size-4 text-brand-teal-dark" />
-              <span>{selectedThinkingOption?.label ?? "Thinking"}</span>
-              <ChevronDown className="size-4 text-brand-text-light" />
+              <Brain className="size-4 shrink-0 text-brand-teal-dark" aria-hidden="true" />
+              <span className="truncate">{selectedThinkingOption?.label ?? "Thinking"}</span>
+              <ChevronDown className="size-4 shrink-0 text-brand-text-light" aria-hidden="true" />
             </button>
             {isThinkingMenuOpen && selectedModel && (
-              <div className="absolute bottom-12 left-0 z-20 w-48 rounded-xl border border-gray-200 bg-white p-2 shadow-xl">
+              <div id={thinkingMenuId} className="absolute bottom-12 right-0 z-20 w-48 rounded-xl border border-gray-200 bg-white p-2 shadow-xl">
                 {selectedModel.thinkingOptions.map((option) => (
                   <button
                     key={option.id}
@@ -404,7 +421,7 @@ export function ChatComposer<TAttachment extends ComposerAttachment = MessageAtt
           {onVoiceToggle && (
             <button
               type="button"
-              className={`inline-flex size-9 items-center justify-center rounded-full border text-brand-text-light transition-colors hover:text-brand-text-dark disabled:opacity-60 ${
+              className={`inline-flex size-9 shrink-0 items-center justify-center rounded-full border text-brand-text-light transition-colors hover:text-brand-text-dark disabled:opacity-60 ${
                 voiceRecording
                   ? "border-brand-teal-dark bg-teal-50 text-brand-teal-dark ring-2 ring-teal-100"
                   : voiceTranscribing

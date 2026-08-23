@@ -8,11 +8,11 @@ import { SocratesError } from "@socrates/shared"
 import { z } from "zod"
 import { fail, ok, toApiError } from "../http"
 import {
-  V2_OPENROUTER_STT_MODELS,
+  SOCRATES_OPENROUTER_STT_MODELS,
   type LocalWhisperTranscriber,
   type OpenRouterTranscriber,
   type SpeechTranscription,
-} from "../services/v2/speech"
+} from "../services/socrates/speech"
 
 const MAX_SPEECH_UPLOAD_BYTES = 50 * 1024 * 1024
 const paramsSchema = z
@@ -22,7 +22,7 @@ const localQuerySchema = z
   .object({ engine: z.literal("local_whisper"), modelId: z.enum(["base.en", "small.en"]) })
   .strict()
 const hostedQuerySchema = z
-  .object({ engine: z.literal("openrouter"), modelId: z.enum(V2_OPENROUTER_STT_MODELS) })
+  .object({ engine: z.literal("openrouter"), modelId: z.enum(SOCRATES_OPENROUTER_STT_MODELS) })
   .strict()
 const querySchema = z.discriminatedUnion("engine", [localQuerySchema, hostedQuerySchema])
 const SUPPORTED_WAV_TYPES = new Set(["audio/wav", "audio/x-wav", "audio/wave"])

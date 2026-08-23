@@ -110,6 +110,7 @@ export function WorkspaceConnectionDialog({
     <Modal
       title={title}
       description={description}
+      onClose={isBusy ? undefined : onCancel}
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onCancel} disabled={isBusy}>

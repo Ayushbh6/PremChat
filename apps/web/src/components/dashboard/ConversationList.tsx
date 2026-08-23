@@ -14,7 +14,7 @@ interface ConversationListProps {
   conversations: Conversation[];
   isSavingAction: boolean;
   onRename: (conversationId: string, title: string) => Promise<void>;
-  onGetDeletionImpact: (conversationId: string) => Promise<{ linkedToFlow: boolean }>;
+  onGetDeletionImpact: (conversationId: string) => Promise<{ linkedToGoal: boolean }>;
   onDelete: (conversationId: string, scope: "classic_only" | "everywhere") => Promise<void>;
 }
 
@@ -28,7 +28,7 @@ export function ConversationList({
 }: ConversationListProps) {
   const [conversationToRename, setConversationToRename] = useState<Conversation | null>(null);
   const [conversationToDelete, setConversationToDelete] = useState<Conversation | null>(null);
-  const [linkedToFlow, setLinkedToFlow] = useState(false);
+  const [linkedToGoal, setLinkedToGoal] = useState(false);
   const [isCheckingDeletion, setIsCheckingDeletion] = useState(false);
   const [deletionImpactError, setDeletionImpactError] = useState<string | undefined>();
   const [query, setQuery] = useState("");
@@ -44,14 +44,14 @@ export function ConversationList({
 
   const prepareDelete = async (conversation: Conversation) => {
     setConversationToDelete(conversation);
-    setLinkedToFlow(false);
+    setLinkedToGoal(false);
     setDeletionImpactError(undefined);
     setIsCheckingDeletion(true);
     try {
       const impact = await onGetDeletionImpact(conversation.id);
-      setLinkedToFlow(impact.linkedToFlow);
+      setLinkedToGoal(impact.linkedToGoal);
     } catch {
-      setDeletionImpactError("Could not check Flow history.");
+      setDeletionImpactError("Could not check canonical goal history.");
     } finally {
       setIsCheckingDeletion(false);
     }
@@ -109,7 +109,7 @@ export function ConversationList({
       )}
       {conversationToDelete && (
         <DeleteConversationDialog
-          linkedToFlow={linkedToFlow}
+          linkedToGoal={linkedToGoal}
           isChecking={isCheckingDeletion}
           impactError={deletionImpactError}
           isDeleting={isSavingAction}

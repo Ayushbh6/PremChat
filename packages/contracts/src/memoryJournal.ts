@@ -26,7 +26,7 @@ export const memoryAgentJournalOutputSchema = z
       .array(
         z
           .object({
-            skillId: z.string().min(1).max(256).optional(),
+            skillId: z.string().min(1).max(256).nullable(),
             action: memoryJournalSkillActionSchema,
             note: z.string().min(1).max(1_000),
           })
@@ -38,7 +38,7 @@ export const memoryAgentJournalOutputSchema = z
       .array(
         z
           .object({
-            investigationId: z.string().min(1).max(200).optional(),
+            investigationId: z.string().min(1).max(200).nullable(),
             title: z.string().min(1).max(200),
             currentUnderstanding: z.string().min(1).max(1_500),
             evidenceTurnIds: z.array(z.string().min(1).max(200)).max(5),

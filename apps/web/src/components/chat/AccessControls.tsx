@@ -2,7 +2,7 @@
 
 import { FolderOpen, Settings, Shield, ShieldAlert, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { FilesystemAccessMode, FilesystemAccessState } from "@socrates/contracts";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
@@ -14,12 +14,29 @@ const modeLabel: Record<FilesystemAccessMode, string> = {
   full: "Full access",
 };
 
-export function AccessControls() {
+interface AccessControlsProps {
+  variant?: "default" | "seamless";
+  onOpenSettings?: () => void;
+}
+
+export function AccessControls({ variant = "default", onOpenSettings }: AccessControlsProps) {
   const [access, setAccess] = useState<FilesystemAccessState | null>(null);
   const [isPathsOpen, setIsPathsOpen] = useState(false);
   const [isFullConfirmationOpen, setIsFullConfirmationOpen] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const loadAccess = useCallback(async () => {
+    setIsBusy(true);
+    setError(null);
+    try {
+      setAccess(await api.getFilesystemAccess());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load filesystem access.");
+    } finally {
+      setIsBusy(false);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -108,53 +125,85 @@ export function AccessControls() {
 
   const activeRootCount = access?.roots.filter((root) => root.status === "active").length ?? 0;
   const full = access?.mode === "full";
+  const seamless = variant === "seamless";
+  const controlClassName = seamless
+    ? "inline-flex h-9 items-center gap-2 rounded-full border border-transparent bg-transparent px-2.5 text-xs font-medium text-brand-text-light transition-colors hover:bg-white/45 hover:text-brand-text-dark focus-visible:bg-white/55 focus-visible:text-brand-text-dark focus-visible:outline-none"
+    : "inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 bg-white px-3 text-xs font-medium text-brand-text-light shadow-sm hover:bg-gray-50 hover:text-brand-text-dark";
 
   return (
     <>
-      <div className="ml-2 flex shrink-0 items-center gap-2" aria-label="Filesystem access controls">
+      <div className={seamless ? "flex shrink-0 items-center gap-0.5" : "ml-2 flex shrink-0 items-center gap-2"} aria-label="Filesystem access controls">
         <button
           type="button"
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 bg-white px-3 text-xs font-medium text-brand-text-light shadow-sm hover:bg-gray-50 hover:text-brand-text-dark"
+          className={`${controlClassName} ${error && !access ? "text-red-700" : ""}`}
           onClick={() => setIsPathsOpen(true)}
-          title="Choose paths Socrates can use"
+          aria-label={error && !access
+            ? "Paths unavailable. Open to retry"
+            : `Paths, ${activeRootCount} selected`}
+          title={error && !access ? "Paths are unavailable — open to retry" : "Choose paths Socrates can use"}
         >
-          <FolderOpen className="size-4" aria-hidden="true" />
+          {error && !access ? <ShieldAlert className="size-4" aria-hidden="true" /> : <FolderOpen className="size-4" aria-hidden="true" />}
           <span className="hidden sm:inline">Paths</span>
-          <span className="rounded-full bg-gray-100 px-1.5 py-0.5 font-mono text-[10px]">{activeRootCount}</span>
+          <span className="rounded-full bg-gray-100 px-1.5 py-0.5 font-mono text-[10px]">{error && !access ? "!" : activeRootCount}</span>
         </button>
         <label
-          className={`inline-flex h-9 items-center gap-2 rounded-md border px-2.5 text-xs font-medium shadow-sm ${
-            full ? "border-orange-300 bg-orange-50 text-orange-700" : "border-gray-200 bg-white text-brand-text-light"
+          className={`inline-flex h-9 items-center gap-2 px-2.5 text-xs font-medium ${seamless ? "rounded-full transition-colors hover:bg-white/45" : "rounded-md border shadow-sm"} ${
+            full
+              ? seamless ? "border border-orange-200/70 bg-orange-50/55 text-orange-700" : "border-orange-300 bg-orange-50 text-orange-700"
+              : seamless ? "border border-transparent bg-transparent text-brand-text-light" : "border-gray-200 bg-white text-brand-text-light"
           }`}
         >
           {full ? <ShieldAlert className="size-4" aria-hidden="true" /> : <Shield className="size-4" aria-hidden="true" />}
           <span className="hidden lg:inline">Access</span>
-          <select
-            aria-label="Filesystem access mode"
-            className="max-w-24 bg-transparent text-xs font-medium outline-none"
-            value={access?.mode ?? "selected"}
-            disabled={!access || isBusy}
-            onChange={(event) => void updateMode(event.target.value as FilesystemAccessMode)}
-          >
-            <option value="read_only">{modeLabel.read_only}</option>
-            <option value="selected">{modeLabel.selected}</option>
-            <option value="full">{modeLabel.full}</option>
-          </select>
+          {access ? (
+            <select
+              aria-label="Filesystem access mode"
+              className="max-w-24 bg-transparent text-xs font-medium outline-none"
+              value={access.mode}
+              disabled={isBusy}
+              onChange={(event) => void updateMode(event.target.value as FilesystemAccessMode)}
+            >
+              <option value="read_only">{modeLabel.read_only}</option>
+              <option value="selected">{modeLabel.selected}</option>
+              <option value="full">{modeLabel.full}</option>
+            </select>
+          ) : (
+            <span role={error ? "status" : undefined}>{error ? "Unavailable" : "Loading…"}</span>
+          )}
         </label>
-        <Link
-          href="/settings"
-          className="inline-flex size-9 items-center justify-center rounded-md border border-gray-200 bg-white text-brand-text-light shadow-sm hover:bg-gray-50 hover:text-brand-text-dark"
-          title="Settings"
-          aria-label="Settings"
-        >
-          <Settings className="size-4" aria-hidden="true" />
-        </Link>
+        {onOpenSettings ? (
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className={seamless
+              ? "inline-flex h-9 items-center gap-2 rounded-full border border-transparent bg-transparent px-2.5 text-xs font-medium text-brand-text-light transition-colors hover:bg-white/45 hover:text-brand-text-dark focus-visible:bg-white/55 focus-visible:text-brand-text-dark focus-visible:outline-none"
+              : "inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 bg-white px-3 text-xs font-medium text-brand-text-light shadow-sm hover:bg-gray-50 hover:text-brand-text-dark"}
+            title="Settings"
+            aria-label="Settings"
+          >
+            <Settings className="size-4" aria-hidden="true" />
+            <span className="hidden sm:inline">Settings</span>
+          </button>
+        ) : (
+          <Link
+            href="/settings"
+            className={seamless
+              ? "inline-flex h-9 items-center gap-2 rounded-full border border-transparent bg-transparent px-2.5 text-xs font-medium text-brand-text-light transition-colors hover:bg-white/45 hover:text-brand-text-dark focus-visible:bg-white/55 focus-visible:text-brand-text-dark focus-visible:outline-none"
+              : "inline-flex size-9 items-center justify-center rounded-md border border-gray-200 bg-white text-brand-text-light shadow-sm hover:bg-gray-50 hover:text-brand-text-dark"}
+            title="Settings"
+            aria-label="Settings"
+          >
+            <Settings className="size-4" aria-hidden="true" />
+            {seamless ? <span className="hidden sm:inline">Settings</span> : null}
+          </Link>
+        )}
       </div>
 
       {isPathsOpen ? (
         <Modal
           title="Paths"
           description="Selected paths are the folders structured file tools can read and change. Choose one working path for relative paths and Terminal cwd."
+          onClose={isBusy ? undefined : () => setIsPathsOpen(false)}
           footer={(
             <>
               <Button variant="outline" onClick={() => setIsPathsOpen(false)}>Done</Button>
@@ -194,7 +243,12 @@ export function AccessControls() {
                 No paths selected. Add a folder before using Selected access.
               </div>
             )}
-            {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
+            {error ? (
+              <div className="flex items-center justify-between gap-3" role="alert">
+                <p className="text-sm text-red-700">{error}</p>
+                <Button variant="outline" onClick={() => void loadAccess()} disabled={isBusy}>Retry</Button>
+              </div>
+            ) : null}
             <p className="text-xs leading-5 text-brand-text-light">
               Terminal runs locally as your user. Selected paths checks its requested working directory, but it is not an operating-system sandbox.
             </p>
@@ -206,6 +260,7 @@ export function AccessControls() {
         <Modal
           title="Enable Full access?"
           description="Socrates will be able to use structured file tools at any path your local user can access. Terminal remains approval-controlled, and destructive, credential, and sensitive-path safeguards stay enabled."
+          onClose={isBusy ? undefined : () => setIsFullConfirmationOpen(false)}
           footer={(
             <>
               <Button variant="outline" onClick={() => setIsFullConfirmationOpen(false)} disabled={isBusy}>Cancel</Button>

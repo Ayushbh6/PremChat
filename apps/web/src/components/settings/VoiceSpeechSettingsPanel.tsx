@@ -2,7 +2,7 @@
 
 import { Mic2, ShieldCheck, Volume2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { V2SpeechPackManager } from "@/components/v2/V2SpeechPackManager";
+import { SocratesSpeechPackManager } from "@/components/socrates/SocratesSpeechPackManager";
 import {
   readSpeechReadAloudId,
   readSpeechTranscriberId,
@@ -45,7 +45,7 @@ export function VoiceSpeechSettingsPanel() {
           Voice &amp; speech
         </h2>
         <p className="mt-1 text-sm text-brand-text-light">
-          One explicit voice preference is shared by Classic and Flow. Socrates never downloads a model or changes to a hosted service automatically.
+          One explicit voice preference is shared across Socrates. Socrates never downloads a model or changes to a hosted service automatically.
         </p>
       </div>
 
@@ -77,7 +77,7 @@ export function VoiceSpeechSettingsPanel() {
             <Volume2 className="size-4 text-teal-600" aria-hidden="true" />
             Read aloud
           </span>
-          <span className="mt-1 block text-xs text-brand-text-light">Controls local speech generation for completed Flow responses.</span>
+          <span className="mt-1 block text-xs text-brand-text-light">Controls local speech generation for completed Socrates responses.</span>
           <select
             className="mt-3 h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-brand-text-dark outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
             value={readAloudId}
@@ -102,7 +102,7 @@ export function VoiceSpeechSettingsPanel() {
         </span>
       </div>
 
-      <V2SpeechPackManager headingId="settings-offline-speech-packs" />
+      <SocratesSpeechPackManager headingId="settings-offline-speech-packs" />
     </section>
   );
 }

@@ -58,8 +58,6 @@ export {
   phaseOneAgentDefinitions,
   skillWriterAgentDefinition,
   socratesMainAgentDefinition,
-  soulConfirmationAgentDefinition,
-  titleGeneratorAgentDefinition,
   type DynamicSystemPromptContext,
 } from "./agent/agentDefinitions"
 export type { ActiveGoalCard, GoalCandidateCard } from "./agent/goalContext"
@@ -68,18 +66,6 @@ export {
   prepareTurnContext,
   renderResolvedTurnContext,
 } from "./agent/prepareTurnContext"
-export {
-  TitleGeneratorAgent,
-  type TitleGeneratorAgentInput,
-  type TitleGeneratorAgentModelSettings,
-  type TitleGeneratorAgentResult,
-} from "./agent/TitleGeneratorAgent"
-export {
-  SoulConfirmationAgent,
-  type SoulConfirmationAgentInput,
-  type SoulConfirmationAgentModelSettings,
-  type SoulConfirmationAgentResult,
-} from "./agent/SoulConfirmationAgent"
 export {
   DEFAULT_COMPRESSOR_MODEL,
   DEFAULT_COMPRESSOR_FALLBACK_MODEL,
@@ -115,8 +101,6 @@ export {
 export { buildSocratesDynamicContext, buildSocratesSystemPrompt, socratesBasePrompt, type SocratesPromptContext } from "./prompts/socratesPrompt"
 export { buildMemoryAgentSystemPrompt, memoryAgentBasePrompt, type MemoryAgentPromptContext } from "./prompts/memoryPrompt"
 export { buildSkillWriterSystemPrompt, skillWriterBasePrompt, type SkillWriterPromptContext } from "./prompts/skillWriterPrompt"
-export { TITLE_GENERATOR_SYSTEM_PROMPT } from "./prompts/titleGeneratorPrompt"
-export { SOUL_CONFIRMATION_AGENT_SYSTEM_PROMPT, buildSoulConfirmationUserContent } from "./prompts/soulConfirmationPrompt"
 export type { SocratesGoalResolutionCandidate } from "./prompts/socratesGoalResolutionPrompt"
 export {
   SOCRATES_COMPRESSOR_SYSTEM_PROMPT,
@@ -148,5 +132,5 @@ export type {
 export { canonicalProviderInputSchema, projectModelTool } from "./capabilities/providerProjection"
 export type { ApprovalDecision, ApprovalRequest, FileFreshnessTracker, ToolExecutorContext, ToolExecutors, ToolLifecycleEvent } from "./tools/types"
 export * from "./retrieval"
-export * from "./v2"
+export * from "./socrates"
 export { SOCRATES_SURFACES, renderSocratesSurfaceMap, socratesSurface, type SocratesSurface } from "@socrates/contracts"

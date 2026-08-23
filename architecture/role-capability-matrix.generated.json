@@ -80,42 +80,9 @@
       ]
     },
     {
-      "definitionId": "title-generator",
-      "role": "title_generator",
-      "capabilityIds": [
-        "worker.title_generator",
-        "context.stable_prompt",
-        "context.exact_messages",
-        "context.tool_definitions",
-        "context.automatic_compaction",
-        "runtime.structured_repair"
-      ],
-      "dynamicCapabilityPrefixes": [],
-      "modelTools": []
-    },
-    {
-      "definitionId": "soul-confirmation",
-      "role": "soul_confirmation",
-      "capabilityIds": [
-        "worker.soul_confirmation",
-        "context.stable_prompt",
-        "context.exact_messages",
-        "context.tool_definitions",
-        "context.automatic_compaction",
-        "runtime.structured_repair"
-      ],
-      "dynamicCapabilityPrefixes": [],
-      "modelTools": []
-    },
-    {
       "definitionId": "global-memory",
       "role": "global_memory",
       "capabilityIds": [
-        "tool.current_time",
-        "tool.trace_retrieve.global",
-        "tool.projects",
-        "tool.read",
-        "tool.search",
         "tool.memory_notes",
         "tool.read_memory_journal",
         "tool.edit_files",
@@ -128,11 +95,6 @@
       ],
       "dynamicCapabilityPrefixes": [],
       "modelTools": [
-        "current_time",
-        "trace_retrieve",
-        "projects",
-        "read",
-        "search",
         "memory_notes",
         "read_memory_journal",
         "edit_files"

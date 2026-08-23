@@ -14,6 +14,7 @@ import type { CapabilitySet } from "../capabilities/CapabilityCatalog"
 import type { ToolExecutors } from "../tools/types"
 import type { AgentStructuredOutputSchema } from "./AgentDefinition"
 import { ContextPipeline, type AgentContextPipeline } from "./ContextPipeline"
+import { assertCompleteModelStep } from "./socratesFinalOutput"
 
 type AgentRuntimeBaseInput = {
   provider: ModelProvider
@@ -106,6 +107,7 @@ type RuntimeLoopState = {
   messages: ModelMessage[]
   usages: ModelUsage[]
   usedToolCalls: number
+  terminalText?: string
 }
 
 export class AgentRuntime {
@@ -130,6 +132,10 @@ export class AgentRuntime {
       return { mode: "text", output, toolCalls: state.usedToolCalls, usages: state.usages }
     }
     const structuredInput = input as AgentRuntimeStructuredInput<TOutput>
+    if (structuredInput.completion.mode === "streaming_tools_structured_final") {
+      const output = parseStreamedStructuredFinal(structuredInput, state.terminalText ?? "")
+      return { mode: structuredInput.completion.mode, output, toolCalls: state.usedToolCalls, usages: state.usages }
+    }
     const output = await generateStructuredFinal(structuredInput, state, this.contextPipeline)
     return { mode: structuredInput.completion.mode, output, toolCalls: state.usedToolCalls, usages: state.usages }
   }
@@ -164,12 +170,20 @@ const runToolLoop = async <TOutput>(
     : [{ role: "user", content: input.userContent ?? "" }]
   const usages: ModelUsage[] = []
   let usedToolCalls = 0
+  let step = 0
+  const isStreamingStructured = input.completion.mode === "streaming_tools_structured_final"
 
-  while (usedToolCalls < input.maxToolCalls) {
+  while (isStreamingStructured || usedToolCalls < input.maxToolCalls) {
     const assistantParts: ModelMessagePart[] = []
     const toolCalls: NativeToolCall[] = []
     let answerText = ""
-    const tools = input.capabilitySet.modelDefinitions()
+    let finishReason: string | undefined
+    const streamedToolCallIds = new Set<string>()
+    const completedToolCallIds = new Set<string>()
+    const tools = usedToolCalls < input.maxToolCalls ? input.capabilitySet.modelDefinitions() : []
+    const structuredOutputSchema = isStreamingStructured
+      ? (input as AgentRuntimeStructuredInput<TOutput>).completion.schema
+      : undefined
     const prepared = await contextPipeline.prepare({
       provider: input.provider,
       providerId: input.providerId,
@@ -178,12 +192,29 @@ const runToolLoop = async <TOutput>(
       system: input.system,
       messages,
       tools,
+      ...(structuredOutputSchema === undefined ? {} : { structuredOutputSchema }),
       ...(input.contextCompression ? { compression: input.contextCompression } : {}),
     })
     messages = prepared.messages
-    for await (const event of streamModel(input, messages, tools)) {
+    const modelCallId = input.createModelCall?.({
+      messages: prepared.messages,
+      estimatedTokens: prepared.estimatedTokens,
+      tokenCount: prepared.tokenCount,
+      tools,
+      attempt: step + 1,
+    }) ?? createId("mcall")
+    for await (const event of streamModel(input, messages, tools, modelCallId, structuredOutputSchema)) {
       if (event.type === "model.answer.delta") answerText += event.text
+      if (event.type === "model.reasoning.completed") {
+        assistantParts.push({
+          type: "reasoning",
+          text: event.text,
+          ...(event.providerMetadata ? { providerMetadata: event.providerMetadata } : {}),
+        })
+      }
+      if (event.type === "model.tool_call.streaming") streamedToolCallIds.add(event.toolCallId)
       if (event.type === "model.tool_call.completed") {
+        completedToolCallIds.add(event.toolCall.toolCallId)
         toolCalls.push({
           toolCallId: event.toolCall.toolCallId,
           toolName: event.toolCall.toolName,
@@ -191,10 +222,30 @@ const runToolLoop = async <TOutput>(
           ...(event.toolCall.providerMetadata ? { providerMetadata: event.toolCall.providerMetadata } : {}),
         })
       }
+      if (event.type === "model.completed") finishReason = event.finishReason
     }
-    if (toolCalls.length === 0) break
+    assertCompleteModelStep({
+      streamedToolCallIds,
+      completedToolCallIds,
+      ...(finishReason ? { finishReason } : {}),
+    })
+    if (toolCalls.length === 0) {
+      return {
+        messages,
+        usages,
+        usedToolCalls,
+        ...(isStreamingStructured ? { terminalText: answerText } : {}),
+      }
+    }
     if (answerText.trim()) assistantParts.push({ type: "text", text: answerText })
     const allowed = toolCalls.slice(0, input.maxToolCalls - usedToolCalls)
+    if (allowed.length === 0) {
+      throw new SocratesError(
+        "agent_tool_budget_exhausted",
+        "The model requested another tool after this agent exhausted its tool-call budget.",
+        { recoverable: true },
+      )
+    }
     assistantParts.push(...allowed.map(toAssistantToolPart))
     const results = []
     for (const toolCall of allowed) {
@@ -213,6 +264,7 @@ const runToolLoop = async <TOutput>(
         output: result.output,
       })),
     })
+    step += 1
   }
   return { messages, usages, usedToolCalls }
 
@@ -220,6 +272,8 @@ const runToolLoop = async <TOutput>(
     runtimeInput: AgentRuntimeTextInput | AgentRuntimeStructuredInput<TOutput>,
     currentMessages: ModelMessage[],
     tools: ReturnType<CapabilitySet["modelDefinitions"]>,
+    modelCallId: string,
+    structuredOutputSchema: unknown,
   ): AsyncIterable<ModelEvent> {
     for await (const event of runtimeInput.provider.stream({
       providerId: runtimeInput.providerId,
@@ -228,7 +282,8 @@ const runToolLoop = async <TOutput>(
       messages: currentMessages,
       runtimeConfig: runtimeInput.runtimeConfig,
       tools,
-      modelCallId: createId("mcall"),
+      ...(structuredOutputSchema === undefined ? {} : { structuredOutputSchema }),
+      modelCallId,
       sessionId: runtimeInput.sessionId,
       ...(runtimeInput.cacheKey ? { cacheKey: runtimeInput.cacheKey } : {}),
       ...(runtimeInput.providerRouting ? { providerRouting: runtimeInput.providerRouting } : {}),
@@ -243,6 +298,36 @@ const runToolLoop = async <TOutput>(
       yield event
     }
   }
+}
+
+const parseStreamedStructuredFinal = <TOutput>(
+  input: AgentRuntimeStructuredInput<TOutput>,
+  text: string,
+): TOutput => {
+  const trimmed = text.trim()
+  let value: unknown
+  try {
+    value = JSON.parse(trimmed)
+  } catch {
+    throw new SocratesError(
+      "structured_agent_output_invalid",
+      "The shared agent loop ended without a complete JSON final object.",
+      { recoverable: true, details: { outputPreview: trimmed.slice(0, 2_000) } },
+    )
+  }
+  const parsed = input.completion.schema.safeParse(value)
+  if (parsed.success) return parsed.data
+  throw new SocratesError(
+    "structured_agent_output_invalid",
+    "The shared agent loop final object failed validation.",
+    {
+      recoverable: true,
+      details: {
+        validation: parsed.error.flatten(),
+        outputPreview: trimmed.slice(0, 2_000),
+      },
+    },
+  )
 }
 
 const generateTextFinal = async (

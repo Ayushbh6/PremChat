@@ -36,10 +36,13 @@ import type {
   StructuredModelResult,
 } from "../types"
 import { normalizeProviderUsage } from "../usage"
+import { schemaToJsonSchema } from "../jsonSchema"
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 type ProviderOptions = Record<string, Record<string, JsonValue>>
 type StreamObjectOptions = Parameters<typeof streamObject>[0]
+
+const OPENROUTER_STRUCTURED_FINAL_TOOL = "socrates_submit_structured_final"
 
 export class AiSdkProvider implements ModelProvider {
   constructor(private readonly credentials: ProviderCredentialResolver = envProviderCredentialResolver) {}
@@ -105,12 +108,32 @@ export class AiSdkProvider implements ModelProvider {
     try {
       yield { type: "model.started", ...(request.modelCallId ? { modelCallId: request.modelCallId } : {}) }
 
+      const projectedStructuredToolStream = request.providerId === "openrouter"
+        && request.structuredOutputSchema !== undefined
+        && Boolean(request.tools?.length)
+      const projectedTools = request.tools && request.tools.length > 0
+        ? {
+            ...toAiTools(request.tools),
+            ...(projectedStructuredToolStream
+              ? {
+                  [OPENROUTER_STRUCTURED_FINAL_TOOL]: tool({
+                    description: "Submit Socrates' complete terminal response after all required capability tools have finished.",
+                    inputSchema: request.structuredOutputSchema as never,
+                  }),
+                }
+              : {}),
+          }
+        : undefined
+
       const result = streamText({
         model: this.createModel(request),
-        system: request.system,
+        system: projectedStructuredToolStream
+          ? appendStructuredOutputToolContract(request.system, request.structuredOutputSchema)
+          : request.system,
         messages: toAiModelMessages(request.messages, request.providerId),
-        ...(request.tools && request.tools.length > 0 ? { tools: toAiTools(request.tools) as never } : {}),
-        ...(request.structuredOutputSchema === undefined
+        ...(projectedTools ? { tools: projectedTools as never } : {}),
+        ...(projectedStructuredToolStream ? { toolChoice: "required" as const } : {}),
+        ...(request.structuredOutputSchema === undefined || projectedStructuredToolStream
           ? {}
           : { output: Output.object({ schema: request.structuredOutputSchema as never }) }),
         providerOptions: this.createProviderOptions(request),
@@ -171,6 +194,7 @@ export class AiSdkProvider implements ModelProvider {
           yield { type: "model.answer.delta", text: part.text }
         }
         if (part.type === "tool-input-start") {
+          if (part.toolName === OPENROUTER_STRUCTURED_FINAL_TOOL) continue
           streamingToolInputs.set(part.id, { toolName: part.toolName, text: "" })
           yield { type: "model.tool_call.streaming", toolCallId: part.id, toolName: part.toolName, argsText: "" }
         }
@@ -184,6 +208,10 @@ export class AiSdkProvider implements ModelProvider {
         if (part.type === "tool-call") {
           for (const event of flushReasoning()) {
             yield event
+          }
+          if (part.toolName === OPENROUTER_STRUCTURED_FINAL_TOOL) {
+            yield { type: "model.answer.delta", text: JSON.stringify(part.input) }
+            continue
           }
           yield {
             type: "model.tool_call.completed",
@@ -372,6 +400,13 @@ export class AiSdkProvider implements ModelProvider {
     return apiKey ? { authMode: "api_key", apiKey } : undefined
   }
 }
+
+const appendStructuredOutputToolContract = (system: string, schema: unknown): string => [
+  system,
+  "",
+  `When no capability tool call remains, call ${OPENROUTER_STRUCTURED_FINAL_TOOL} exactly once with the complete terminal response matching this JSON Schema. Never answer in plain text and never call it before required capability tools finish.`,
+  JSON.stringify(schemaToJsonSchema(schema)),
+].join("\n")
 
 const missingProviderCredential = (providerId: ModelRequest["providerId"]): SocratesError =>
   new SocratesError("provider_credential_missing", `${providerId} API key is not configured.`, {

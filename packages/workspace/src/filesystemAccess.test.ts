@@ -30,7 +30,7 @@ const snapshot = (root: string, mode: FilesystemAuthorizationSnapshot["mode"] = 
 })
 
 describe("filesystem access authorization", () => {
-  it("allows authorized existing and new paths while rejecting absolute and symlink escapes", () => {
+  it("allows global exact paths while canonicalizing absolute and symlink targets", () => {
     const allowed = tempRoot("allowed")
     const outside = tempRoot("outside")
     fs.writeFileSync(path.join(allowed, "inside.txt"), "inside")
@@ -41,8 +41,8 @@ describe("filesystem access authorization", () => {
     const canonicalAllowed = fs.realpathSync.native(allowed)
     expect(resolveAuthorizedPath(context, "inside.txt")).toBe(path.join(canonicalAllowed, "inside.txt"))
     expect(resolveAuthorizedPath(context, "new/nested.txt")).toBe(path.join(canonicalAllowed, "new/nested.txt"))
-    expect(() => resolveAuthorizedPath(context, path.join(outside, "outside.txt"))).toThrowError(/selected in the header/)
-    expect(() => resolveAuthorizedPath(context, path.join(allowed, "escape", "outside.txt"))).toThrowError(/selected in the header/)
+    expect(resolveAuthorizedPath(context, path.join(outside, "outside.txt"))).toBe(fs.realpathSync.native(path.join(outside, "outside.txt")))
+    expect(resolveAuthorizedPath(context, path.join(allowed, "escape", "outside.txt"))).toBe(fs.realpathSync.native(path.join(outside, "outside.txt")))
   })
 
   it("supports bounded read and search across another selected absolute root", async () => {

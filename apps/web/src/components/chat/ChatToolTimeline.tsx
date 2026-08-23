@@ -1,5 +1,5 @@
 import { ChevronDown, SquareTerminal } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ToolActivityRow } from "./ToolActivityRow";
 import type { PendingApproval, PendingCredentialInput, ToolTimelineItem } from "./ToolTimelineTypes";
 
@@ -19,12 +19,14 @@ export function ChatToolTimeline({ tools, approvals = [], credentialRequests = [
   );
   const hasFailedWork = tools.some((tool) => tool.status === "failed" || tool.status === "rejected" || tool.status === "cancelled");
   const hasPendingCredential = credentialRequests.some((request) => request.status === "pending");
-  const [isOpen, setIsOpen] = useState(hasPendingApproval || hasActiveWork || hasFailedWork || hasPendingCredential);
-  useEffect(() => {
-    if (hasPendingApproval || hasActiveWork || hasFailedWork || hasPendingCredential) {
-      setIsOpen(true);
-    }
-  }, [hasActiveWork, hasFailedWork, hasPendingApproval, hasPendingCredential]);
+  const autoOpen = hasPendingApproval || hasActiveWork || hasFailedWork || hasPendingCredential;
+  const autoOpenKey = [
+    ...tools.map((tool) => `${tool.toolCallId}:${tool.phase ?? "settled"}:${tool.status}`),
+    ...approvals.map((approval) => `${approval.approvalId}:${approval.status}`),
+    ...credentialRequests.map((request) => `${request.credentialRequestId}:${request.status}`),
+  ].join("|");
+  const [manualOpen, setManualOpen] = useState<{ key: string; value: boolean } | null>(null);
+  const isOpen = manualOpen?.key === autoOpenKey ? manualOpen.value : autoOpen;
   const summary = useMemo(() => summarizeToolGroup(tools, approvals), [tools, approvals]);
   const shouldShowDetails = isOpen || hasPendingApproval || hasActiveWork || hasPendingCredential;
 
@@ -37,7 +39,7 @@ export function ChatToolTimeline({ tools, approvals = [], credentialRequests = [
       <button
         type="button"
         className="group flex w-full items-center gap-3 rounded-lg px-1 py-1.5 text-left text-sm text-brand-text-light hover:bg-gray-50"
-        onClick={() => setIsOpen((current) => !current)}
+        onClick={() => setManualOpen({ key: autoOpenKey, value: !shouldShowDetails })}
         aria-expanded={shouldShowDetails}
       >
         <SquareTerminal className="size-4 shrink-0 text-brand-text-light" />

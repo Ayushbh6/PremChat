@@ -53,6 +53,7 @@ export function FileUploadDialog({
     <Modal
       title="Add project files"
       description="Upload PDFs, documents, text files, images, or other local resources for this project."
+      onClose={isUploading ? undefined : onCancel}
       footer={
         <>
           <Button type="button" variant="outline" onClick={onCancel} disabled={isUploading}>

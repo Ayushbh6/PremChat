@@ -6,6 +6,7 @@ import {
 } from "@socrates/contracts"
 import { createId, SocratesError } from "@socrates/shared"
 import type { SocratesTool } from "./types"
+import { decideAccess } from "./accessPolicy"
 
 export const capabilityManagerTool: SocratesTool<CapabilityManagerToolInput, CapabilityManagerToolOutput> = {
   name: "capability_manager",
@@ -16,8 +17,12 @@ export const capabilityManagerTool: SocratesTool<CapabilityManagerToolInput, Cap
   permission: "mutate",
   executeLane: "mutation",
   category: "mcp",
-  decidePolicy: (input) => {
+  decidePolicy: (input, context) => {
     if (input.operation === "mcp_check" || input.operation === "skill_preview_import") return { type: "auto" }
+    if ((!context.filesystemAuthorization && context.runtimeConfig?.approvalMode === "approve_all") ||
+      decideAccess({ authorization: context.filesystemAuthorization, action: "capability_change" }) === "automatic") {
+      return { type: "auto" }
+    }
     return {
       type: "approval_required",
       request: {

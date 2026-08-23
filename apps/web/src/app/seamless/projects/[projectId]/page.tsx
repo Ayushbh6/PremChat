@@ -1,10 +1,5 @@
-import { SeamlessProjectRoute } from "@/components/v2/SeamlessProjectRoute";
+import { redirect } from "next/navigation";
 
-export default async function SeamlessProjectPage({
-  params,
-}: {
-  params: Promise<{ projectId: string }>;
-}) {
-  const { projectId } = await params;
-  return <SeamlessProjectRoute key={projectId} projectId={projectId} />;
+export default function LegacySeamlessProjectPage() {
+  redirect("/chat");
 }

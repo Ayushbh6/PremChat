@@ -11,6 +11,7 @@ type UnifiedTraceAuthority = {
   presentedConversationId: string
   goalId: string
   currentTurnId: string
+  projectIds?: readonly string[]
 }
 
 export const retrieveUnifiedMainToolTraces = async (
@@ -20,6 +21,7 @@ export const retrieveUnifiedMainToolTraces = async (
   ) => Promise<TraceRetrieveGlobalToolOutput>,
   input: {
     projectId: string
+    projectIds?: readonly string[]
     presentedConversationId: string
     goalId: string
     currentTurnId: string
@@ -27,11 +29,13 @@ export const retrieveUnifiedMainToolTraces = async (
   },
 ): Promise<TraceRetrieveMainToolOutput> => {
   const request = traceRetrieveMainToolInputSchema.parse(input.request)
-  const output = await retrieveGlobal(toGlobalInput(input.projectId, request), {
+  const projectIds = [...new Set([input.projectId, ...(input.projectIds ?? [])])]
+  const output = await retrieveGlobal(toGlobalInput(projectIds, request), {
     scope: request.operation === "inspect" ? "project" : request.scope ?? "project",
     presentedConversationId: input.presentedConversationId,
     goalId: input.goalId,
     currentTurnId: input.currentTurnId,
+    projectIds,
   })
   return {
     results: output.results.map(({ projectTitle: _projectTitle, turnId: _turnId, ...result }) => result),
@@ -42,7 +46,7 @@ export const retrieveUnifiedMainToolTraces = async (
 }
 
 const toGlobalInput = (
-  projectId: string,
+  projectIds: readonly string[],
   request: TraceRetrieveMainToolInput,
 ): TraceRetrieveGlobalToolInput => {
   if (request.operation === "inspect") {
@@ -56,9 +60,10 @@ const toGlobalInput = (
       ...(request.charLimit ? { charLimit: request.charLimit } : {}),
     }
   }
+  const selectedProjects = [...new Set(projectIds)]
   const common = {
-    scope: "project" as const,
-    projectId,
+    scope: selectedProjects.length > 1 ? "all_projects" as const : "project" as const,
+    projectId: selectedProjects.length > 1 ? selectedProjects : selectedProjects[0]!,
     ...(request.conversationTitle ? { conversationTitle: request.conversationTitle } : {}),
     ...(request.role ? { role: request.role } : {}),
     ...(request.createdAfter ? { createdAfter: request.createdAfter } : {}),

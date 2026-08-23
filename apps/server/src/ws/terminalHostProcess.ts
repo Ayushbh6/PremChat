@@ -2,7 +2,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
-import { createWorkspaceShellSession, type WorkspaceShellSession } from "@socrates/workspace"
+import { createWorkspaceShellSession, type TerminalContainment, type WorkspaceShellSession } from "@socrates/workspace"
 import { normalizeError } from "@socrates/shared"
 import type { BashToolInput, BashToolOutput } from "@socrates/contracts"
 
@@ -13,6 +13,7 @@ type HostRequest = {
   workspacePath?: string
   processId?: string
   input?: BashToolInput
+  containment?: TerminalContainment
   text?: string
   cols?: number
   rows?: number
@@ -87,7 +88,8 @@ const handleRequest = async (request: HostRequest): Promise<HostResponse> => {
     if (!request.workspacePath || !request.input) throw new Error("Terminal start payload is incomplete.")
     clearTimeout(startupTimer)
     session?.dispose()
-    session = createWorkspaceShellSession(request.workspacePath)
+    if (!request.containment) throw new Error("Terminal native containment payload is required.")
+    session = createWorkspaceShellSession(request.workspacePath, { containment: request.containment })
     const output = await session.run({ ...request.input, operation: "start" })
     processId = output.process?.processId
     if (!processId) throw new Error("Terminal process did not return a process id.")

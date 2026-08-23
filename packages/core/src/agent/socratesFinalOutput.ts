@@ -7,7 +7,15 @@ export const parseSocratesFinalOutput = (text: string): SocratesFinalAnswer => {
   try {
     value = JSON.parse(trimmed)
   } catch {
-    throw invalidFinalOutput("The foreground loop ended without a complete JSON final object.", trimmed)
+    const isolatedObject = extractSingleJsonObject(trimmed)
+    if (!isolatedObject) {
+      throw invalidFinalOutput("The foreground loop ended without a complete JSON final object.", trimmed)
+    }
+    try {
+      value = JSON.parse(isolatedObject)
+    } catch {
+      throw invalidFinalOutput("The foreground loop ended without a complete JSON final object.", trimmed)
+    }
   }
   const parsed = socratesFinalAnswerSchema.safeParse(value)
   if (!parsed.success) {
@@ -24,6 +32,47 @@ export const parseSocratesFinalOutput = (text: string): SocratesFinalAnswer => {
     )
   }
   return parsed.data
+}
+
+// Some OpenAI-compatible providers add a short preamble or a stray non-object
+// token even when given an explicit JSON-only contract alongside native tools.
+// Accept exactly one complete top-level object, then apply the same strict
+// schema; never expose or persist the provider noise as part of the answer.
+const extractSingleJsonObject = (text: string): string | undefined => {
+  let inString = false
+  let escaped = false
+  let depth = 0
+  let start = -1
+  let isolatedObject: string | undefined
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (character === "\\") escaped = true
+      else if (character === '"') inString = false
+      continue
+    }
+    if (character === '"') {
+      inString = true
+      continue
+    }
+    if (character === "{") {
+      if (depth === 0) start = index
+      depth += 1
+      continue
+    }
+    if (character !== "}") continue
+    depth -= 1
+    if (depth < 0) return undefined
+    if (depth === 0 && start >= 0) {
+      if (isolatedObject) return undefined
+      isolatedObject = text.slice(start, index + 1)
+      start = -1
+    }
+  }
+
+  return depth === 0 && !inString ? isolatedObject : undefined
 }
 
 export const assertCompleteModelStep = (input: {

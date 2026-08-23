@@ -28,6 +28,7 @@ type ResourceContext = Readonly<{
   projectId: string
   workspacePath: string
   mcpRuntime?: McpRuntime
+  onMcpCapabilityRead?: (serverId: string) => void
   fileFreshness?: FileFreshnessTracker
   previewOnly?: boolean
 }>
@@ -220,9 +221,9 @@ const resolveResourceContent = async (resourcePath: string, context: ResourceCon
     return JSON.stringify(output.results, null, 2)
   }
   if (root === "skills") {
-    if (!second) return JSON.stringify(context.store.runSkillsTool(context.projectId, { operation: "list", limit: 50 }).skills, null, 2)
+    if (!second) return JSON.stringify(context.store.runSkillsTool(context.projectId, { operation: "list", limit: 50 }, context.workspacePath).skills, null, 2)
     const scope = normalizeSkillScope(second)
-    if (!third) return JSON.stringify(context.store.runSkillsTool(context.projectId, { operation: "list", scope, limit: 50 }).skills, null, 2)
+    if (!third) return JSON.stringify(context.store.runSkillsTool(context.projectId, { operation: "list", scope, limit: 50 }, context.workspacePath).skills, null, 2)
     const supportingPath = rest.join("/") || undefined
     const output = context.store.runSkillsTool(context.projectId, {
       operation: "read",
@@ -230,7 +231,7 @@ const resolveResourceContent = async (resourcePath: string, context: ResourceCon
       name: decodeURIComponent(third),
       ...(supportingPath ? { path: supportingPath } : {}),
       charLimit: 80_000,
-    })
+    }, context.workspacePath)
     return output.content ?? JSON.stringify(output.skills, null, 2)
   }
   if (root === "capabilities") return capabilityContent(second ? decodeURIComponent([second, third, ...rest].filter(Boolean).join("/")) : undefined, context)
@@ -261,7 +262,7 @@ const capabilityContent = async (requestedId: string | undefined, context: Resou
   const staticEntries = capabilityCatalog.runtimeInventory(socratesMainAgentDefinition.roleManifest)
     .filter((entry) => entry.kind === "model_tool")
     .map((entry) => ({ id: entry.id, name: entry.modelToolName, description: entry.description, source: "built-in" }))
-  const skills = context.store.runSkillsTool(context.projectId, { operation: "list", limit: 50 }).skills
+  const skills = context.store.runSkillsTool(context.projectId, { operation: "list", limit: 50 }, context.workspacePath).skills
     .filter((skill) => skill.enabled !== false)
     .map((skill) => ({ id: `skill:${skill.scope}:${skill.name}`, name: skill.name, description: skill.description, source: "skill", uri: `socrates://skills/${skill.scope}/${encodeURIComponent(skill.name)}` }))
   const mcp = context.mcpRuntime
@@ -272,6 +273,9 @@ const capabilityContent = async (requestedId: string | undefined, context: Resou
   if (!requestedId) return JSON.stringify(entries, null, 2)
   const exact = entries.find((entry) => entry.id === requestedId || entry.name === requestedId)
   if (!exact) throw resourceMissing(`socrates://capabilities/${requestedId}`)
+  if (exact.id.startsWith("mcp:") && ("enabled" in exact ? exact.enabled !== false : true)) {
+    context.onMcpCapabilityRead?.(exact.id.slice("mcp:".length))
+  }
   return JSON.stringify(exact, null, 2)
 }
 

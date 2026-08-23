@@ -1,5 +1,5 @@
 import { ChevronDown, CircleAlert, Clock3, FileText, Pencil, Search, Sparkles, SquareTerminal, Workflow } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ApprovalPrompt } from "./ApprovalPrompt";
 import { CredentialPrompt } from "./CredentialPrompt";
 import { ToolDetails } from "./ToolDetails";
@@ -22,13 +22,9 @@ export function ToolActivityRow({ tool, approval, credentialRequest, onApprovalD
     (tool.toolName === "bash" && Boolean(tool.stdout || tool.stderr || tool.output)) ||
     isStreaming || tool.status === "running" || tool.status === "awaiting_approval" ||
     tool.status === "failed" || tool.status === "rejected" || tool.status === "cancelled" || credentialRequest?.status === "pending";
-  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
-  useEffect(() => {
-    if (autoOpen) {
-      setManualOpen(null);
-    }
-  }, [autoOpen]);
-  const isOpen = manualOpen ?? autoOpen;
+  const autoOpenKey = `${tool.toolCallId}:${tool.phase ?? "settled"}:${tool.status}:${Boolean(tool.stdout || tool.stderr || tool.output)}:${credentialRequest?.status ?? "none"}`;
+  const [manualOpen, setManualOpen] = useState<{ key: string; value: boolean } | null>(null);
+  const isOpen = manualOpen?.key === autoOpenKey ? manualOpen.value : autoOpen;
   const summary = useMemo(() => summarizeTool(tool), [tool]);
   const statusTone = statusClass(tool.status);
   const isActive = isStreaming || tool.status === "running";
@@ -38,7 +34,7 @@ export function ToolActivityRow({ tool, approval, credentialRequest, onApprovalD
       <button
         type="button"
         className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-left text-sm text-brand-text-light hover:bg-gray-50"
-        onClick={() => setManualOpen((current) => !(current ?? autoOpen))}
+        onClick={() => setManualOpen({ key: autoOpenKey, value: !isOpen })}
       >
         <ToolIcon tool={tool} className={`size-4 shrink-0 ${isActive ? "animate-pulse text-brand-teal-dark" : statusTone.icon}`} />
         <span className="min-w-0 flex-1 truncate">

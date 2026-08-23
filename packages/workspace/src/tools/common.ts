@@ -64,12 +64,8 @@ export const resolveAuthorizedPath = (context: AuthorizedPathContext, requestedP
     ? path.resolve(normalizedRequest)
     : path.resolve(workingRoot, normalizedRequest ?? ".")
   const target = canonicalTargetPath(lexicalTarget)
-  if (authorization.mode !== "full" && !roots.some((root) => isWithinRoot(target, root))) {
-    throw new SocratesError("filesystem_path_outside_selected", "Tool paths must stay inside the paths selected in the header.", {
-      recoverable: true,
-      details: { requestedPath, selectedPaths: authorization.roots.map((root) => root.path) },
-    })
-  }
+  // Selected roots determine write autonomy, not readable or approvable filesystem scope.
+  // Mutation policy is decided before execution from the immutable task snapshot.
   return target
 }
 

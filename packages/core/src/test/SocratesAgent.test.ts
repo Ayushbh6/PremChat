@@ -54,12 +54,11 @@ describe("SocratesAgent", () => {
     expect(requestJson).toContain("current_time")
     expect(requestJson).toContain("socrates://project/memory")
     expect(requestJson).toContain("Use regex=true only for regex syntax")
-    expect(requestJson).toContain(".socrates/MEMORY.md")
-    expect(requestJson).toContain("live cross-conversation project memory")
-    expect(requestJson).toContain("active assistant notebook")
+    expect(requestJson).toContain("Never create, read, or import repo-local .socrates memory")
+    expect(requestJson).toContain("Confirmed resources attach path-specific knowledge")
     expect(requestJson).toContain("Durable-state operating loop")
     expect(requestJson).toContain("socrates://project/repo-docs")
-    expect(requestJson).toContain("A separate Global Memory Agent runs in the background")
+    expect(requestJson).toContain("A Global Memory Agent runs asynchronously")
     expect(requestJson).toContain("A genuine user instruction not to remember")
     expect(requestJson).toContain("Interpret intent from the full semantic meaning, not by keyword")
     expect(requestJson).toContain("Keep user workspace artifacts separate from Socrates' internal project state")
@@ -75,6 +74,8 @@ describe("SocratesAgent", () => {
     expect(requestJson).toContain("release unneeded handles with context_disposition")
     expect(requestJson).toContain("Release is optional")
     expect(Buffer.byteLength(socratesBasePrompt, "utf8")).toBeLessThanOrEqual(26_000)
+    expect(socratesBasePrompt).toContain("local-first, goal-centered")
+    expect(socratesBasePrompt).not.toContain("project-first")
     expect(socratesBasePrompt).toContain("terminal response from this same loop must be exactly one JSON object")
     expect(socratesBasePrompt).not.toContain("Runtime action ledger")
     expect(socratesBasePrompt).not.toContain("socrates_final_answer_checkpoint")
@@ -198,6 +199,83 @@ describe("SocratesAgent", () => {
         goalFinalization: { state: "completed", note: "Answered without tools." },
       },
     })
+  })
+
+  it("places resolved goal context before the exact current user request", async () => {
+    const requests: Array<Parameters<ModelProvider["stream"]>[0]> = []
+    const provider: ModelProvider = {
+      countTokens: fakeCountTokens,
+      async *stream(request) {
+        requests.push(request)
+        yield { type: "model.answer.delta", text: finalJson("Grounded answer.", "Verified the requested work.") }
+        yield { type: "model.completed", finishReason: "stop" }
+      },
+    }
+    const currentRequest = "Call read on facts/marker.txt before finishing."
+
+    for await (const _event of new SocratesAgent(provider).streamTurn({
+      completionMode: "main_structured",
+      providerId: "openrouter",
+      modelId: "deepseek/deepseek-v4-pro",
+      runtimeConfig: {
+        providerId: "openrouter",
+        authMode: "api_key",
+        modelId: "deepseek/deepseek-v4-pro",
+        thinkingEnabled: false,
+        thinkingEffort: "none",
+        approvalMode: "manual",
+        sandboxMode: "workspace_write",
+      },
+      messages: [
+        { role: "user", content: "Earlier request." },
+        { role: "assistant", content: "Earlier answer." },
+        { role: "user", content: currentRequest },
+      ],
+      resolvedTurnContextSeed: {
+        goal: {
+          title: "Alpha workspace continuity",
+          objective: "Verify workspace state",
+          state: "foreground",
+          progress: "Marker still needs verification.",
+          openDecisions: [],
+          blockers: [],
+        },
+        task: { ordinal: 3, request: currentRequest },
+        retrieval: {
+          goalCandidates: "completed",
+          memoryCandidates: "completed",
+          capabilityCandidates: "completed",
+          warnings: [],
+        },
+      },
+      filesystemAuthorization: {
+        id: "access_1",
+        turnId: "turn_3",
+        revision: 1,
+        mode: "selected",
+        roots: [{ id: "root_1", path: "/tmp", label: "Temporary workspace" }],
+        workingRootPath: "/tmp",
+        createdAt: "2026-07-30T00:00:00.000Z",
+      },
+      workspacePath: "/tmp",
+      stableCachePreludeSnapshot: { identitySections: {} },
+      toolExecutors: emptyToolExecutors(),
+      requestApproval: async () => ({ decision: "approved" }),
+    })) {
+      // Drain the completed structured turn.
+    }
+
+    const messages = requests[0]?.messages ?? []
+    expect(messages.at(-1)).toEqual({ role: "user", content: currentRequest })
+    const resolvedContextIndex = messages.findIndex(
+      (message) => message.role === "developer" && String(message.content).includes("<socrates_resolved_turn_context>"),
+    )
+    expect(resolvedContextIndex).toBe(messages.length - 2)
+    expect(String(messages[resolvedContextIndex]?.content)).toContain("<socrates_filesystem_access>")
+    expect(messages.filter((message) => message.role === "user" && message.content === currentRequest)).toHaveLength(1)
+    expect(requests[0]?.tools?.map((tool) => tool.name)).toContain("read")
+    if (socratesMainAgentDefinition.completion.mode === "text") throw new Error("Main Socrates must have structured completion.")
+    expect(requests[0]?.structuredOutputSchema).toBe(socratesMainAgentDefinition.completion.schema)
   })
 
   it("rejects dynamic tools outside the main role manifest before model execution", async () => {
@@ -2883,9 +2961,9 @@ describe("SocratesAgent", () => {
     const dynamicContext = JSON.stringify(request.messages)
     expect(request.system).not.toContain("Name: Ayush")
     expect(dynamicContext).toContain("Name: Ayush")
-    expect(dynamicContext).toContain("Name: Socrates")
-    expect(dynamicContext).toContain("Local-first AI workspace.")
-    expect(dynamicContext).toContain("Read repo_docs before answering.")
+    expect(dynamicContext).not.toContain("Name: Socrates")
+    expect(dynamicContext).not.toContain("Local-first AI workspace.")
+    expect(dynamicContext).not.toContain("Read repo_docs before answering.")
     expect(request.system).toContain("If the current date or exact time matters, call current_time")
     expect(request.system).toContain("greetings do not require ceremonial reads")
     expect(request.system).toContain("prepared capsule and latest exact exchange")
@@ -2909,8 +2987,8 @@ describe("SocratesAgent", () => {
     expect(request.system).toContain("five operations")
     expect(request.system).toContain("Use lexical with a concise literal phrase")
     expect(request.system).toContain("Cross-project selectors are not available to the main agent")
-    expect(request.system).toContain("Do not begin with guessed absolute cd paths")
-    expect(request.system).toContain("Terminal commands start in the active workspace")
+    expect(request.system).toContain("Terminal commands start in the task working directory")
+    expect(request.system).toContain("Command-text preflight is explanatory defense in depth, never containment")
   })
 
   it("keeps skill import preview automatic and requires approval for commit", async () => {
@@ -3101,14 +3179,14 @@ describe("bash tool policy", () => {
     }
   })
 
-  it("denies all executable commands in read-only mode", async () => {
+  it("requires exact approval for executable commands in read-only mode", async () => {
     const context = {
       runtimeConfig: { sandboxMode: "read_only", approvalMode: "read_only_auto" },
     } as Parameters<typeof bashTool.decidePolicy>[1]
 
-    expect(await bashTool.decidePolicy({ operation: "run", command: "git diff --stat" }, context)).toMatchObject({ type: "denied" })
-    expect(await bashTool.decidePolicy({ operation: "run", command: "pnpm test" }, context)).toMatchObject({ type: "denied" })
-    expect(await bashTool.decidePolicy({ operation: "inspect", name: "dev" }, context)).toMatchObject({ type: "denied" })
+    expect(await bashTool.decidePolicy({ operation: "run", command: "git diff --stat" }, context)).toMatchObject({ type: "approval_required" })
+    expect(await bashTool.decidePolicy({ operation: "run", command: "pnpm test" }, context)).toMatchObject({ type: "approval_required" })
+    expect(await bashTool.decidePolicy({ operation: "inspect", name: "dev" }, context)).toEqual({ type: "auto" })
   })
 
   it("keeps filesystem scope separate from approvals and never auto-approves high-risk commands", async () => {
@@ -3116,14 +3194,18 @@ describe("bash tool policy", () => {
       filesystemAuthorization: { mode: "full" },
       runtimeConfig: { sandboxMode: "danger_full_access", approvalMode: "manual" },
     } as Parameters<typeof bashTool.decidePolicy>[1]
-    expect(await bashTool.decidePolicy({ operation: "run", command: "git status --short" }, fullManual)).toMatchObject({ type: "approval_required" })
+    expect(await bashTool.decidePolicy({ operation: "run", command: "git status --short" }, fullManual)).toEqual({ type: "auto" })
 
     const fullApproveAll = {
       filesystemAuthorization: { mode: "full" },
       runtimeConfig: { sandboxMode: "danger_full_access", approvalMode: "approve_all" },
     } as Parameters<typeof bashTool.decidePolicy>[1]
     expect(await bashTool.decidePolicy({ operation: "run", command: "pwd" }, fullApproveAll)).toEqual({ type: "auto" })
-    expect(await bashTool.decidePolicy({ operation: "run", command: "rm -rf ./generated" }, fullApproveAll)).toMatchObject({ type: "approval_required" })
+    expect(await bashTool.decidePolicy({ operation: "run", command: "rm -rf ./generated" }, fullApproveAll)).toEqual({ type: "auto" })
+    expect(await bashTool.decidePolicy({ operation: "run", command: "rm -rf /" }, fullApproveAll)).toMatchObject({
+      type: "denied",
+      code: "terminal_catastrophic_operation_denied",
+    })
   })
 
   it("rejects empty or comment-only Terminal commands before approval", async () => {

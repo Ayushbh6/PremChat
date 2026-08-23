@@ -1260,7 +1260,7 @@ export const conversationDeletionScopeSchema = z.enum(["classic_only", "everywhe
 
 export const getConversationDeletionImpactResponseSchema = z
   .object({
-    linkedToFlow: z.boolean(),
+    linkedToGoal: z.boolean(),
   })
   .strict()
 

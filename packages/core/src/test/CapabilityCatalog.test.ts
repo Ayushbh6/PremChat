@@ -13,6 +13,7 @@ import type {
 import {
   globalMemoryAgentDefinition,
   phaseOneAgentDefinitions,
+  skillWriterAgentDefinition,
   socratesMainAgentDefinition,
 } from "../agent/agentDefinitions"
 
@@ -77,7 +78,7 @@ describe("CapabilityCatalog", () => {
     ])
   })
 
-  it("catalogs every Classic and Flow user command with its canonical strict schema", () => {
+  it("catalogs every migration Classic and canonical Socrates user command with its strict schema", () => {
     const commands = capabilityCatalog.list().filter(
       (capability): capability is ServiceCapabilityDefinition => capability.kind === "typed_user_command",
     )
@@ -90,10 +91,10 @@ describe("CapabilityCatalog", () => {
       "access.path.remove",
       "chat.message.send",
       "terminal.input",
-      "v2.message.send",
-      "v2.routing.clarification.respond",
-      "v2.focus.update",
-      "v2.terminal.rename",
+      "socrates.message.send",
+      "socrates.routing.clarification.respond",
+      "socrates.goal.update",
+      "socrates.terminal.rename",
     ]))
     expect(commands.every((command) => command.inputSchema && command.resultSchema)).toBe(true)
   })
@@ -133,5 +134,10 @@ describe("CapabilityCatalog", () => {
     expect(() => capabilityCatalog.resolve(globalMemoryAgentDefinition.roleManifest, [registration])).toThrowError(
       expect.objectContaining({ code: "agent_role_manifest_mismatch" }),
     )
+    expect(() => capabilityCatalog.resolve(skillWriterAgentDefinition.roleManifest, [registration])).toThrowError(
+      expect.objectContaining({ code: "agent_role_manifest_mismatch" }),
+    )
+    expect(globalMemoryAgentDefinition.roleManifest.dynamicCapabilityPrefixes).toBeUndefined()
+    expect(skillWriterAgentDefinition.roleManifest.dynamicCapabilityPrefixes).toBeUndefined()
   })
 })

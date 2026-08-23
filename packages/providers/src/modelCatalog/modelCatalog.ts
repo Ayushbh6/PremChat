@@ -146,7 +146,7 @@ export const modelCatalog = [
   makeModel({
     providerId: "openrouter",
     modelId: "xiaomi/mimo-v2.5-pro",
-    label: "MiMo-V2.5-Pro",
+    label: "MiMo-Socrates.5-Pro",
     contextWindowTokens: 1048576,
     // OpenRouter currently rejects image parts for this endpoint. Keep visual
     // tool evidence textual rather than sending a follow-up image request.
@@ -157,7 +157,7 @@ export const modelCatalog = [
   makeModel({
     providerId: "openrouter",
     modelId: "xiaomi/mimo-v2.5",
-    label: "MiMo-V2.5",
+    label: "MiMo-Socrates.5",
     contextWindowTokens: 1048576,
     thinkingOptions: [offOption, onOption],
     defaultThinkingOptionId: "off",

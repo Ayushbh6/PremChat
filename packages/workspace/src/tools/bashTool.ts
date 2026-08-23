@@ -5,6 +5,7 @@ import type { IPty } from "@homebridge/node-pty-prebuilt-multiarch"
 import type { BashToolInput, BashToolOutput, TruncationMetadata } from "@socrates/contracts"
 import { SocratesError } from "@socrates/shared"
 import { assertNoProtectedSocratesPathMentions, assertNoSecretMaterialPathMentions, clampCharLimit, resolveWorkspacePath } from "./common"
+import type { TerminalContainment } from "./terminalContainment"
 
 type ShellKind = "posix" | "powershell" | "cmd"
 type BashOperation = NonNullable<BashToolInput["operation"]>
@@ -75,13 +76,15 @@ export class WorkspaceShellSession {
   private readonly processes = new Map<string, RunningProcess>()
   private readonly platform: NodeJS.Platform
   private readonly env: NodeJS.ProcessEnv
+  private readonly containment: TerminalContainment | undefined
 
   constructor(
     private readonly workspacePath: string,
-    options: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv } = {},
+    options: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; containment?: TerminalContainment } = {},
   ) {
     this.platform = options.platform ?? process.platform
     this.env = options.env ?? process.env
+    this.containment = options.containment
   }
 
   run(input: BashToolInput, context: ShellRunContext = {}): Promise<BashToolOutput> {
@@ -174,7 +177,7 @@ export class WorkspaceShellSession {
     let finalCwd = cwd
     let markerExitCode: number | undefined
 
-    const adapter = await this.resolveAdapter(cwd)
+    const adapter = this.withContainment(await this.resolveAdapter(cwd))
     const wrappedCommand = adapter.wrapCommand({ command: commandText, cwd, cwdMarker, doneMarker })
     const pty = await spawnPtyChecked(adapter, adapter.runArgs(wrappedCommand), cwd, this.env, defaultCols, defaultRows)
 
@@ -312,7 +315,7 @@ export class WorkspaceShellSession {
 
     const startedAt = Date.now()
     const cwd = input.cwd ? resolveWorkspacePath(this.workspacePath, input.cwd) : this.workspacePath
-    const adapter = await this.resolveAdapter(cwd)
+    const adapter = this.withContainment(await this.resolveAdapter(cwd))
     const cols = defaultCols
     const rows = defaultRows
     const pty = await spawnPtyChecked(adapter, adapter.runArgs(commandText), cwd, this.env, cols, rows)
@@ -467,6 +470,15 @@ export class WorkspaceShellSession {
     throw normalizeShellError(lastError, "shell_start_failed", this.defaultAdapter(), cwd)
   }
 
+  private withContainment(adapter: ShellAdapter): ShellAdapter {
+    if (!this.containment) return adapter
+    return {
+      ...adapter,
+      executable: this.containment.launcher,
+      runArgs: (command) => ["-p", this.containment!.profile, adapter.executable, ...adapter.runArgs(command)],
+    }
+  }
+
   private appendProcessOutput(processInfo: RunningProcess, text: string, context?: ShellRunContext): void {
     if (!text) {
       return
@@ -521,7 +533,7 @@ export class WorkspaceShellSession {
 
 export const createWorkspaceShellSession = (
   workspacePath: string,
-  options?: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv },
+  options?: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; containment?: TerminalContainment },
 ): WorkspaceShellSession => new WorkspaceShellSession(resolveWorkspacePath(workspacePath), options)
 
 const collectProcessTree = (pid: number): number[] => {

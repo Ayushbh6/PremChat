@@ -117,7 +117,7 @@ describe("AI SDK provider request shape", () => {
     expect(options).not.toHaveProperty("activeTools")
   })
 
-  it("enforces a native structured terminal response on the same streamed tool request", async () => {
+  it("projects the canonical OpenRouter terminal schema as a non-leaking provider tool", async () => {
     const provider = new AiSdkProvider({
       getApiKey: () => "test-key",
     })
@@ -130,10 +130,40 @@ describe("AI SDK provider request shape", () => {
       // Drain the mocked stream.
     }
 
-    expect(aiMocks.outputObject).toHaveBeenCalledWith({ schema })
-    const options = aiMocks.streamText.mock.calls[0]?.[0] as { output?: unknown; tools?: Record<string, unknown> }
-    expect(options.output).toEqual({ type: "mock-output-object", input: { schema } })
-    expect(Object.keys(options.tools ?? {})).toEqual(["read"])
+    expect(aiMocks.outputObject).not.toHaveBeenCalled()
+    const options = aiMocks.streamText.mock.calls[0]?.[0] as { output?: unknown; tools?: Record<string, unknown>; system?: string; toolChoice?: unknown }
+    expect(options.output).toBeUndefined()
+    expect(Object.keys(options.tools ?? {})).toEqual(["read", "socrates_submit_structured_final"])
+    expect(options.toolChoice).toBe("required")
+    expect(options.system).toContain("When no capability tool call remains")
+    expect(options.system).toContain("call socrates_submit_structured_final exactly once")
+    expect(options.system).toContain('"answer"')
+  })
+
+  it("normalizes the OpenRouter terminal tool into answer text without exposing a model tool call", async () => {
+    aiMocks.streamText.mockReturnValue({
+      fullStream: (async function* () {
+        yield { type: "tool-input-start", id: "final_1", toolName: "socrates_submit_structured_final" }
+        yield { type: "tool-input-delta", id: "final_1", delta: '{"answer":"done"}' }
+        yield {
+          type: "tool-call",
+          toolCallId: "final_1",
+          toolName: "socrates_submit_structured_final",
+          input: { answer: "done" },
+        }
+        yield { type: "finish", finishReason: "tool-calls", totalUsage: undefined }
+      })(),
+    })
+    const provider = new AiSdkProvider({ getApiKey: () => "test-key" })
+    const events: ModelEvent[] = []
+    for await (const event of provider.stream({
+      ...modelRequest("openrouter", "deepseek/deepseek-v4-pro"),
+      structuredOutputSchema: z.object({ answer: z.string() }).strict(),
+    })) events.push(event)
+
+    expect(events).toContainEqual({ type: "model.answer.delta", text: '{"answer":"done"}' })
+    expect(events.some((event) => event.type === "model.tool_call.streaming")).toBe(false)
+    expect(events.some((event) => event.type === "model.tool_call.completed")).toBe(false)
   })
 
   it("passes stable OpenAI prompt cache options for cache-affinity routing", async () => {

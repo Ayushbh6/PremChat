@@ -49,12 +49,6 @@ export class LanceDbIndex {
     await table.createIndex("content", { config: Index.fts({ withPosition: true }), replace: true })
   }
 
-  async deleteFlow(tableName: string, flowId: string): Promise<void> {
-    const table = await (await this.connection()).openTable(tableName)
-    await table.delete(`\`runtimeKind\` = 'v2_flow' AND \`flowId\` = ${sqlString(flowId)}`)
-    await table.createIndex("content", { config: Index.fts({ withPosition: true }), replace: true })
-  }
-
   async dropTableIfExists(tableName: string): Promise<void> {
     const db = await this.connection()
     if ((await db.tableNames()).includes(tableName)) {
@@ -178,7 +172,6 @@ const cacheTableName = (fingerprint: string): string => `embedding_cache_${sha25
 const filterSql = (filters: RetrievalSearchFilters & { conversationIds?: string[] }): string => {
   const clauses = [`\`corpusKind\` = ${sqlString(filters.corpusKind)}`]
   if (filters.runtimeKind) clauses.push(`\`runtimeKind\` = ${sqlString(filters.runtimeKind)}`)
-  if (filters.flowId) clauses.push(`\`flowId\` = ${sqlString(filters.flowId)}`)
   if (filters.goalId) clauses.push(`\`goalId\` = ${sqlString(filters.goalId)}`)
   if (filters.conversationId) clauses.push(`\`conversationId\` = ${sqlString(filters.conversationId)}`)
   if (filters.conversationIds?.length) clauses.push(`\`conversationId\` IN (${filters.conversationIds.map(sqlString).join(", ")})`)

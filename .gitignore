@@ -40,6 +40,5 @@ apps/desktop/runtime/*
 !apps/desktop/runtime/.gitkeep
 host-workspaces/
 .socrates/
-tmp-opencode/
 tmp-reference-agents/
 Screenshot 2026-05-28 at 8.*PM.png

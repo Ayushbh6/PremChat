@@ -106,7 +106,7 @@ const notificationsQuerySchema = z
 
 type HttpRouteHooks = {
   onConversationDelete?: (conversationId: string) => void
-  getConversationDeletionImpact?: (projectId: string, conversationId: string) => { linkedToFlow: boolean }
+  getConversationDeletionImpact?: (projectId: string, conversationId: string) => { linkedToGoal: boolean }
   beforeConversationDelete?: (
     projectId: string,
     conversationId: string,
@@ -1003,7 +1003,7 @@ export const registerHttpRoutes = async (
       const { projectId, conversationId } = parseParams(conversationParamsSchema, request.params)
       store.getConversation(projectId, conversationId)
       return ok(getConversationDeletionImpactResponseSchema.parse(
-        hooks.getConversationDeletionImpact?.(projectId, conversationId) ?? { linkedToFlow: false },
+        hooks.getConversationDeletionImpact?.(projectId, conversationId) ?? { linkedToGoal: false },
       ))
     } catch (error) {
       const { statusCode, response } = handleRouteError(error)

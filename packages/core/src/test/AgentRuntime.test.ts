@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { z } from "zod"
-import type { ModelProvider, StructuredModelRequest } from "@socrates/providers"
+import type { ModelProvider, ModelRequest, StructuredModelRequest } from "@socrates/providers"
 import { SocratesError } from "@socrates/shared"
 import { AgentRuntime } from "../agent/AgentRuntime"
 import { capabilityCatalog, emptyCapabilitySet } from "../capabilities/CapabilityCatalog"
@@ -45,6 +45,124 @@ const currentTimeCapabilities = capabilityCatalog.resolve({
 })
 
 describe("AgentRuntime", () => {
+  it("keeps tool continuation and the native structured final inside one streamed foreground loop", async () => {
+    const schema = z.object({ ok: z.literal(true) }).strict()
+    const requests: ModelRequest[] = []
+    let detachedStructuredCalls = 0
+    const provider: ModelProvider = {
+      countTokens,
+      async *stream(request) {
+        requests.push(request)
+        if (requests.length === 1) {
+          yield { type: "model.answer.delta", text: "I will verify the time." }
+          yield {
+            type: "model.tool_call.completed",
+            toolCall: { toolCallId: "time_1", toolName: "current_time", input: {} },
+          }
+          yield { type: "model.completed", finishReason: "tool-calls" }
+          return
+        }
+        yield { type: "model.answer.delta", text: JSON.stringify({ ok: true }) }
+        yield { type: "model.completed", finishReason: "stop" }
+      },
+      async generateStructured<TOutput>() {
+        detachedStructuredCalls += 1
+        return { output: { ok: true } as TOutput }
+      },
+    }
+    const toolExecutors = {
+      current_time: async () => ({
+        currentDate: "2026-07-30",
+        currentDateTime: "2026-07-30T03:00:00.000+02:00",
+        timeZone: "Europe/Vienna",
+        source: "system" as const,
+      }),
+    } as unknown as ToolExecutors
+
+    const result = await new AgentRuntime().run({
+      ...runBase,
+      provider,
+      completion: { mode: "streaming_tools_structured_final", schema, maxOutputRepairAttempts: 1 },
+      capabilitySet: currentTimeCapabilities,
+      toolExecutors,
+      maxToolCalls: 1,
+    })
+
+    expect(result).toMatchObject({
+      mode: "streaming_tools_structured_final",
+      output: { ok: true },
+      toolCalls: 1,
+    })
+    expect(detachedStructuredCalls).toBe(0)
+    expect(requests).toHaveLength(2)
+    expect(requests.every((request) => request.structuredOutputSchema === schema)).toBe(true)
+    expect(requests[0]?.tools?.map((tool) => tool.name)).toEqual(["current_time"])
+    expect(requests[1]?.tools).toEqual([])
+    expect(JSON.stringify(requests[1]?.messages)).toContain("2026-07-30")
+    expect(JSON.stringify(requests[1]?.messages)).not.toContain("Finish now")
+  })
+
+  it("rejects zero-tool preliminary prose instead of committing it through a detached finalization call", async () => {
+    let streamCalls = 0
+    let detachedStructuredCalls = 0
+    const provider: ModelProvider = {
+      countTokens,
+      async *stream(request) {
+        streamCalls += 1
+        expect(request.structuredOutputSchema).toBeDefined()
+        yield { type: "model.answer.delta", text: "Let me read the file first." }
+        yield { type: "model.completed", finishReason: "stop" }
+      },
+      async generateStructured<TOutput>() {
+        detachedStructuredCalls += 1
+        return { output: { ok: true } as TOutput }
+      },
+    }
+
+    await expect(new AgentRuntime().run({
+      ...runBase,
+      provider,
+      completion: {
+        mode: "streaming_tools_structured_final",
+        schema: z.object({ ok: z.literal(true) }).strict(),
+        maxOutputRepairAttempts: 1,
+      },
+      capabilitySet: currentTimeCapabilities,
+      toolExecutors: {},
+      maxToolCalls: 1,
+    })).rejects.toMatchObject({ code: "structured_agent_output_invalid" })
+
+    expect(streamCalls).toBe(1)
+    expect(detachedStructuredCalls).toBe(0)
+  })
+
+  it("does not start a repair call when the native streamed final fails strict validation", async () => {
+    let streamCalls = 0
+    const provider: ModelProvider = {
+      countTokens,
+      async *stream() {
+        streamCalls += 1
+        yield { type: "model.answer.delta", text: JSON.stringify({ ok: false, extra: "invalid" }) }
+        yield { type: "model.completed", finishReason: "stop" }
+      },
+    }
+
+    await expect(new AgentRuntime().run({
+      ...runBase,
+      provider,
+      completion: {
+        mode: "streaming_tools_structured_final",
+        schema: z.object({ ok: z.literal(true) }).strict(),
+        maxOutputRepairAttempts: 1,
+      },
+      capabilitySet: emptyCapabilitySet,
+      toolExecutors: {},
+      maxToolCalls: 0,
+    })).rejects.toMatchObject({ code: "structured_agent_output_invalid" })
+
+    expect(streamCalls).toBe(1)
+  })
+
   it("returns schema errors to the model, permits a corrected native tool call, and then validates the final result", async () => {
     let streamCalls = 0
     const toolResults: Array<{ toolName: string; input: unknown; output: unknown }> = []

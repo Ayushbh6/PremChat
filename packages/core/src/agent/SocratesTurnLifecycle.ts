@@ -262,9 +262,12 @@ export class SocratesTurnLifecycle {
     }
 
     try {
-      const policy = context.filesystemAuthorization?.mode === "read_only" && tool.permission !== "read"
-        ? { type: "denied" as const, code: "filesystem_read_only", recoverable: true, reason: "Only read-only tools are available while Access is set to Read only." }
-        : await tool.decidePolicy(parsed.data, context)
+      // Read only is not a blanket mutation denial. The canonical access
+      // policy approval-gates a precise write or Terminal action, so the user
+      // can explicitly authorize it without changing this task's immutable
+      // access snapshot. Catastrophic operations remain hard-denied by their
+      // tool policy and native Terminal containment remains independent.
+      const policy = await tool.decidePolicy(parsed.data, context)
       queue.push({
         type: "tool.call.started",
         toolCallId: toolCall.toolCallId,

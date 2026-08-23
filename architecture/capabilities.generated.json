@@ -81,7 +81,7 @@
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts",
+          "apps/server/src/runtime/runtime.ts",
           "apps/server/src/services/store/memoryAgentRunner.ts",
           "apps/server/src/services/store/skillWriterAgentRunner.ts"
         ],
@@ -185,7 +185,7 @@
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts",
+          "apps/server/src/runtime/runtime.ts",
           "apps/server/src/services/store/memoryAgentRunner.ts",
           "apps/server/src/services/store/skillWriterAgentRunner.ts"
         ],
@@ -266,7 +266,7 @@
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
           "apps/server/src/ws/urlFetch.test.ts"
@@ -388,7 +388,7 @@
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
           "packages/workspace/src/workspace.test.ts"
@@ -455,7 +455,7 @@
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
           "packages/workspace/src/workspace.test.ts"
@@ -628,11 +628,11 @@
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
           "packages/workspace/src/workspace.test.ts",
-          "apps/server/src/test/v2TerminalRuntime.test.ts"
+          "apps/server/src/test/socratesTerminalRuntime.test.ts"
         ],
         "status": "canonical"
       }
@@ -720,7 +720,7 @@
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
           "apps/server/src/services/store/agentTaskStore.test.ts"
@@ -784,7 +784,7 @@
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
           "packages/core/src/test/SocratesAgent.test.ts"
@@ -844,7 +844,7 @@
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts",
+          "apps/server/src/runtime/runtime.ts",
           "apps/server/src/services/store/memoryAgentRunner.ts",
           "apps/server/src/services/store/skillWriterAgentRunner.ts"
         ],
@@ -856,7 +856,7 @@
     },
     {
       "id": "tool.trace_retrieve.main",
-      "description": "Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Search returns at most 8 numbered results; inspect with resultNumber for the exact Q&A parent or with a shown turn-local result such as R1 for its exact tool output, then page with offset=truncation.nextOffset. Internal conversation, Flow, goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.",
+      "description": "Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Search returns at most 8 numbered results; inspect with resultNumber for the exact Q&A parent or with a shown turn-local result such as R1 for its exact tool output, then page with offset=truncation.nextOffset. Internal goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.",
       "kind": "model_tool",
       "allowedRoles": [
         "socrates"
@@ -1174,7 +1174,7 @@
       },
       "documentationTitle": "trace_retrieve",
       "documentationGuidance": [
-        "Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Search returns at most 8 numbered results; inspect with resultNumber for the exact Q&A parent or with a shown turn-local result such as R1 for its exact tool output, then page with offset=truncation.nextOffset. Internal conversation, Flow, goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.",
+        "Recall prior visible work in the active project. Search the full project by default. Use lexical with a concise literal query (128 characters max), semantic for conceptual recall, combined for hybrid recall, and audit only for tool/shell/file/patch/error evidence. Narrow to presented_context or current_goal only when useful. Search returns at most 8 numbered results; inspect with resultNumber for the exact Q&A parent or with a shown turn-local result such as R1 for its exact tool output, then page with offset=truncation.nextOffset. Internal goal, task, and turn ids are resolved by the backend and must not be requested or inferred. This tool cannot search other projects.",
         "Use this capability for prior conversation and evidence investigation when earlier visible work can affect the current answer.",
         "Use `mode: \"lexical\"` for concise literal retrieval, semantic for conceptual recall, combined for both, and audit only for runtime evidence.",
         "Main Socrates searches the active project only; cross-project selectors are unavailable."
@@ -1189,7 +1189,7 @@
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
           "apps/server/src/test/server.test.ts"
@@ -2411,7 +2411,7 @@
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
           "apps/server/src/services/resources/socratesResourceService.test.ts"
@@ -2484,7 +2484,7 @@
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
           "apps/server/src/services/store/memoryAgentJournal.test.ts"
@@ -2873,7 +2873,7 @@
         "callers": [
           "packages/core/src/agent/SocratesAgent.ts",
           "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
           "packages/core/src/test/toolOutputDisposition.test.ts"
@@ -2919,7 +2919,7 @@
           "apps/server/src/services/turn/turnCandidateRetrieval.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts"
+          "apps/server/src/test/server.test.ts"
         ],
         "status": "canonical"
       }
@@ -2962,7 +2962,7 @@
           "apps/server/src/services/turn/turnCandidateRetrieval.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts"
+          "apps/server/src/test/server.test.ts"
         ],
         "status": "canonical"
       }
@@ -3006,7 +3006,7 @@
           "apps/server/src/services/turn/turnCandidateRetrieval.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts"
+          "apps/server/src/test/server.test.ts"
         ],
         "status": "canonical"
       }
@@ -3049,7 +3049,7 @@
           "packages/core/src/retrieval/deterministicMemorySelection.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts"
+          "apps/server/src/test/server.test.ts"
         ],
         "status": "canonical"
       }
@@ -3063,7 +3063,7 @@
       ],
       "runtimeScopes": [
         "goal",
-        "project"
+        "global"
       ],
       "executorBinding": "goal_ledger.transaction",
       "hasInputSchema": true,
@@ -3087,14 +3087,14 @@
       "source": {
         "owner": "apps/server",
         "definitionPath": "packages/core/src/capabilities/CapabilityCatalog.ts",
-        "implementationPath": "apps/server/src/services/v2/flowStore.ts",
+        "implementationPath": "apps/server/src/services/socrates/socratesStore.ts",
         "callers": [
-          "apps/server/src/services/v2/flowStore.ts"
+          "apps/server/src/services/socrates/socratesStore.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts"
+          "apps/server/src/test/server.test.ts"
         ],
-        "status": "migration_compatibility"
+        "status": "canonical"
       }
     },
     {
@@ -3135,7 +3135,7 @@
           "apps/server/src/services/turn/validatedTurnFinalization.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts"
+          "apps/server/src/test/server.test.ts"
         ],
         "status": "canonical"
       }
@@ -3179,7 +3179,7 @@
           "apps/server/src/services/store/accessStore.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts"
+          "apps/server/src/test/server.test.ts"
         ],
         "status": "canonical"
       }
@@ -3192,8 +3192,6 @@
         "socrates",
         "global_memory",
         "skill_writer",
-        "title_generator",
-        "soul_confirmation",
         "socrates_context_compactor",
         "memory_context_compactor",
         "context_anchor_repair"
@@ -3242,8 +3240,6 @@
         "socrates",
         "global_memory",
         "skill_writer",
-        "title_generator",
-        "soul_confirmation",
         "socrates_context_compactor",
         "memory_context_compactor",
         "context_anchor_repair"
@@ -3382,8 +3378,6 @@
         "socrates",
         "global_memory",
         "skill_writer",
-        "title_generator",
-        "soul_confirmation",
         "socrates_context_compactor",
         "memory_context_compactor",
         "context_anchor_repair"
@@ -3433,8 +3427,6 @@
         "socrates",
         "global_memory",
         "skill_writer",
-        "title_generator",
-        "soul_confirmation",
         "socrates_context_compactor",
         "memory_context_compactor",
         "context_anchor_repair"
@@ -3565,92 +3557,6 @@
       }
     },
     {
-      "id": "worker.title_generator",
-      "description": "Generate a Classic migration-surface conversation title through the shared runtime.",
-      "kind": "structured_worker",
-      "allowedRoles": [
-        "title_generator"
-      ],
-      "runtimeScopes": [
-        "conversation"
-      ],
-      "executorBinding": "agent.title_generator",
-      "hasInputSchema": true,
-      "hasResultSchema": true,
-      "policy": {
-        "approval": "not_applicable",
-        "access": "backend_authority",
-        "concurrency": "single_flight",
-        "retry": "bounded_once",
-        "timeout": "provider_default",
-        "idempotency": "conditional"
-      },
-      "persistence": {
-        "evidence": "lifecycle_receipt",
-        "usage": "usage_event",
-        "errors": "typed_and_persisted",
-        "audit": "summary"
-      },
-      "documentationGuidance": [],
-      "documentationPaths": [],
-      "source": {
-        "owner": "packages/core",
-        "definitionPath": "packages/core/src/capabilities/CapabilityCatalog.ts",
-        "implementationPath": "packages/core/src/agent/TitleGeneratorAgent.ts",
-        "callers": [
-          "packages/core/src/agent/TitleGeneratorAgent.ts"
-        ],
-        "tests": [
-          "packages/core/src/test/AgentInstance.test.ts",
-          "packages/core/src/test/AgentRuntime.test.ts"
-        ],
-        "status": "migration_compatibility"
-      }
-    },
-    {
-      "id": "worker.soul_confirmation",
-      "description": "Validate a proposed identity update through the shared runtime and confirmation policy.",
-      "kind": "structured_worker",
-      "allowedRoles": [
-        "soul_confirmation"
-      ],
-      "runtimeScopes": [
-        "global"
-      ],
-      "executorBinding": "agent.soul_confirmation",
-      "hasInputSchema": true,
-      "hasResultSchema": true,
-      "policy": {
-        "approval": "not_applicable",
-        "access": "backend_authority",
-        "concurrency": "single_flight",
-        "retry": "bounded_once",
-        "timeout": "provider_default",
-        "idempotency": "conditional"
-      },
-      "persistence": {
-        "evidence": "lifecycle_receipt",
-        "usage": "usage_event",
-        "errors": "typed_and_persisted",
-        "audit": "summary"
-      },
-      "documentationGuidance": [],
-      "documentationPaths": [],
-      "source": {
-        "owner": "packages/core",
-        "definitionPath": "packages/core/src/capabilities/CapabilityCatalog.ts",
-        "implementationPath": "packages/core/src/agent/SoulConfirmationAgent.ts",
-        "callers": [
-          "packages/core/src/agent/SoulConfirmationAgent.ts"
-        ],
-        "tests": [
-          "packages/core/src/test/AgentInstance.test.ts",
-          "packages/core/src/test/AgentRuntime.test.ts"
-        ],
-        "status": "canonical"
-      }
-    },
-    {
       "id": "worker.context_compactor",
       "description": "Produce the provenance-linked automatic oldest-head context derivative through the shared runtime.",
       "kind": "structured_worker",
@@ -3703,8 +3609,6 @@
       "allowedRoles": [
         "socrates",
         "global_memory",
-        "title_generator",
-        "soul_confirmation",
         "socrates_context_compactor",
         "memory_context_compactor",
         "context_anchor_repair"
@@ -3740,7 +3644,7 @@
           "packages/core/src/agent/AgentRuntime.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts"
+          "apps/server/src/test/server.test.ts"
         ],
         "status": "canonical"
       }
@@ -3783,7 +3687,7 @@
           "packages/core/src/agent/SocratesAgent.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts"
+          "apps/server/src/test/server.test.ts"
         ],
         "status": "canonical"
       }
@@ -4003,7 +3907,7 @@
         "definitionPath": "packages/contracts/src/websocket.ts",
         "implementationPath": "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
         "callers": [
-          "apps/server/src/ws/commandDispatcher.ts"
+          "apps/server/src/ws/commandHandlers/chatMessageSend.ts"
         ],
         "tests": [
           "apps/server/src/test/server.test.ts",
@@ -4047,7 +3951,7 @@
         "definitionPath": "packages/contracts/src/websocket.ts",
         "implementationPath": "apps/server/src/ws/commandHandlers/chatTurnCancel.ts",
         "callers": [
-          "apps/server/src/ws/commandDispatcher.ts"
+          "apps/server/src/ws/commandHandlers/chatTurnCancel.ts"
         ],
         "tests": [
           "apps/server/src/test/server.test.ts",
@@ -4179,7 +4083,7 @@
         "definitionPath": "packages/contracts/src/websocket.ts",
         "implementationPath": "apps/server/src/ws/commandHandlers/approvalDecide.ts",
         "callers": [
-          "apps/server/src/ws/commandDispatcher.ts"
+          "apps/server/src/ws/commandHandlers/approvalDecide.ts"
         ],
         "tests": [
           "apps/server/src/test/server.test.ts",
@@ -4223,7 +4127,7 @@
         "definitionPath": "packages/contracts/src/websocket.ts",
         "implementationPath": "apps/server/src/ws/commandHandlers/credentialInputSubmit.ts",
         "callers": [
-          "apps/server/src/ws/commandDispatcher.ts"
+          "apps/server/src/ws/commandHandlers/credentialInputSubmit.ts"
         ],
         "tests": [
           "apps/server/src/test/server.test.ts",
@@ -4267,7 +4171,7 @@
         "definitionPath": "packages/contracts/src/websocket.ts",
         "implementationPath": "apps/server/src/ws/conversationTerminals.ts",
         "callers": [
-          "apps/server/src/ws/commandDispatcher.ts"
+          "apps/server/src/ws/conversationTerminals.ts"
         ],
         "tests": [
           "apps/server/src/test/server.test.ts",
@@ -4311,7 +4215,7 @@
         "definitionPath": "packages/contracts/src/websocket.ts",
         "implementationPath": "apps/server/src/ws/conversationTerminals.ts",
         "callers": [
-          "apps/server/src/ws/commandDispatcher.ts"
+          "apps/server/src/ws/conversationTerminals.ts"
         ],
         "tests": [
           "apps/server/src/test/server.test.ts",
@@ -4355,7 +4259,7 @@
         "definitionPath": "packages/contracts/src/websocket.ts",
         "implementationPath": "apps/server/src/ws/conversationTerminals.ts",
         "callers": [
-          "apps/server/src/ws/commandDispatcher.ts"
+          "apps/server/src/ws/conversationTerminals.ts"
         ],
         "tests": [
           "apps/server/src/test/server.test.ts",
@@ -4399,7 +4303,7 @@
         "definitionPath": "packages/contracts/src/websocket.ts",
         "implementationPath": "apps/server/src/ws/conversationTerminals.ts",
         "callers": [
-          "apps/server/src/ws/commandDispatcher.ts"
+          "apps/server/src/ws/conversationTerminals.ts"
         ],
         "tests": [
           "apps/server/src/test/server.test.ts",
@@ -4443,7 +4347,7 @@
         "definitionPath": "packages/contracts/src/websocket.ts",
         "implementationPath": "apps/server/src/ws/commandHandlers/feedbackSubmit.ts",
         "callers": [
-          "apps/server/src/ws/commandDispatcher.ts"
+          "apps/server/src/ws/commandHandlers/feedbackSubmit.ts"
         ],
         "tests": [
           "apps/server/src/test/server.test.ts",
@@ -4453,17 +4357,17 @@
       }
     },
     {
-      "id": "command.flow.subscribe",
-      "description": "Validate and dispatch the v2.flow.subscribe user command.",
+      "id": "command.socrates.subscribe",
+      "description": "Validate and dispatch the socrates.subscribe user command.",
       "kind": "typed_user_command",
       "allowedRoles": [
-        "flow_runtime"
+        "socrates_runtime"
       ],
       "runtimeScopes": [
         "runtime",
         "goal"
       ],
-      "executorBinding": "v2.flow.subscribe",
+      "executorBinding": "socrates.subscribe",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {
@@ -4484,30 +4388,30 @@
       "documentationPaths": [],
       "source": {
         "owner": "apps/server",
-        "definitionPath": "packages/contracts/src/v2Flow.ts",
-        "implementationPath": "apps/server/src/v2/runtime.ts",
+        "definitionPath": "packages/contracts/src/socrates.ts",
+        "implementationPath": "apps/server/src/runtime/runtime.ts",
         "callers": [
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts",
+          "apps/server/src/test/server.test.ts",
           "packages/contracts/src/contracts.test.ts"
         ],
         "status": "canonical"
       }
     },
     {
-      "id": "command.flow.unsubscribe",
-      "description": "Validate and dispatch the v2.flow.unsubscribe user command.",
+      "id": "command.socrates.unsubscribe",
+      "description": "Validate and dispatch the socrates.unsubscribe user command.",
       "kind": "typed_user_command",
       "allowedRoles": [
-        "flow_runtime"
+        "socrates_runtime"
       ],
       "runtimeScopes": [
         "runtime",
         "goal"
       ],
-      "executorBinding": "v2.flow.unsubscribe",
+      "executorBinding": "socrates.unsubscribe",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {
@@ -4528,30 +4432,30 @@
       "documentationPaths": [],
       "source": {
         "owner": "apps/server",
-        "definitionPath": "packages/contracts/src/v2Flow.ts",
-        "implementationPath": "apps/server/src/v2/runtime.ts",
+        "definitionPath": "packages/contracts/src/socrates.ts",
+        "implementationPath": "apps/server/src/runtime/runtime.ts",
         "callers": [
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts",
+          "apps/server/src/test/server.test.ts",
           "packages/contracts/src/contracts.test.ts"
         ],
         "status": "canonical"
       }
     },
     {
-      "id": "command.flow.message.send",
-      "description": "Validate and dispatch the v2.message.send user command.",
+      "id": "command.socrates.message.send",
+      "description": "Validate and dispatch the socrates.message.send user command.",
       "kind": "typed_user_command",
       "allowedRoles": [
-        "flow_runtime"
+        "socrates_runtime"
       ],
       "runtimeScopes": [
         "runtime",
         "goal"
       ],
-      "executorBinding": "v2.message.send",
+      "executorBinding": "socrates.message.send",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {
@@ -4572,30 +4476,30 @@
       "documentationPaths": [],
       "source": {
         "owner": "apps/server",
-        "definitionPath": "packages/contracts/src/v2Flow.ts",
-        "implementationPath": "apps/server/src/v2/runtime.ts",
+        "definitionPath": "packages/contracts/src/socrates.ts",
+        "implementationPath": "apps/server/src/runtime/runtime.ts",
         "callers": [
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts",
+          "apps/server/src/test/server.test.ts",
           "packages/contracts/src/contracts.test.ts"
         ],
         "status": "canonical"
       }
     },
     {
-      "id": "command.flow.routing.clarification.respond",
-      "description": "Validate and dispatch the v2.routing.clarification.respond user command.",
+      "id": "command.socrates.routing.clarification.respond",
+      "description": "Validate and dispatch the socrates.routing.clarification.respond user command.",
       "kind": "typed_user_command",
       "allowedRoles": [
-        "flow_runtime"
+        "socrates_runtime"
       ],
       "runtimeScopes": [
         "runtime",
         "goal"
       ],
-      "executorBinding": "v2.routing.clarification.respond",
+      "executorBinding": "socrates.routing.clarification.respond",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {
@@ -4616,30 +4520,30 @@
       "documentationPaths": [],
       "source": {
         "owner": "apps/server",
-        "definitionPath": "packages/contracts/src/v2Flow.ts",
-        "implementationPath": "apps/server/src/v2/runtime.ts",
+        "definitionPath": "packages/contracts/src/socrates.ts",
+        "implementationPath": "apps/server/src/runtime/runtime.ts",
         "callers": [
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts",
+          "apps/server/src/test/server.test.ts",
           "packages/contracts/src/contracts.test.ts"
         ],
         "status": "canonical"
       }
     },
     {
-      "id": "command.flow.focus.update",
-      "description": "Validate and dispatch the v2.focus.update user command.",
+      "id": "command.socrates.goal.update",
+      "description": "Validate and dispatch the socrates.goal.update user command.",
       "kind": "typed_user_command",
       "allowedRoles": [
-        "flow_runtime"
+        "socrates_runtime"
       ],
       "runtimeScopes": [
         "runtime",
         "goal"
       ],
-      "executorBinding": "v2.focus.update",
+      "executorBinding": "socrates.goal.update",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {
@@ -4660,30 +4564,30 @@
       "documentationPaths": [],
       "source": {
         "owner": "apps/server",
-        "definitionPath": "packages/contracts/src/v2Flow.ts",
-        "implementationPath": "apps/server/src/v2/runtime.ts",
+        "definitionPath": "packages/contracts/src/socrates.ts",
+        "implementationPath": "apps/server/src/runtime/runtime.ts",
         "callers": [
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts",
+          "apps/server/src/test/server.test.ts",
           "packages/contracts/src/contracts.test.ts"
         ],
         "status": "canonical"
       }
     },
     {
-      "id": "command.flow.turn.cancel",
-      "description": "Validate and dispatch the v2.turn.cancel user command.",
+      "id": "command.socrates.turn.cancel",
+      "description": "Validate and dispatch the socrates.turn.cancel user command.",
       "kind": "typed_user_command",
       "allowedRoles": [
-        "flow_runtime"
+        "socrates_runtime"
       ],
       "runtimeScopes": [
         "runtime",
         "goal"
       ],
-      "executorBinding": "v2.turn.cancel",
+      "executorBinding": "socrates.turn.cancel",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {
@@ -4704,30 +4608,30 @@
       "documentationPaths": [],
       "source": {
         "owner": "apps/server",
-        "definitionPath": "packages/contracts/src/v2Flow.ts",
-        "implementationPath": "apps/server/src/v2/runtime.ts",
+        "definitionPath": "packages/contracts/src/socrates.ts",
+        "implementationPath": "apps/server/src/runtime/runtime.ts",
         "callers": [
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts",
+          "apps/server/src/test/server.test.ts",
           "packages/contracts/src/contracts.test.ts"
         ],
         "status": "canonical"
       }
     },
     {
-      "id": "command.flow.approval.decide",
-      "description": "Validate and dispatch the v2.approval.decide user command.",
+      "id": "command.socrates.approval.decide",
+      "description": "Validate and dispatch the socrates.approval.decide user command.",
       "kind": "typed_user_command",
       "allowedRoles": [
-        "flow_runtime"
+        "socrates_runtime"
       ],
       "runtimeScopes": [
         "runtime",
         "goal"
       ],
-      "executorBinding": "v2.approval.decide",
+      "executorBinding": "socrates.approval.decide",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {
@@ -4748,30 +4652,30 @@
       "documentationPaths": [],
       "source": {
         "owner": "apps/server",
-        "definitionPath": "packages/contracts/src/v2Flow.ts",
-        "implementationPath": "apps/server/src/v2/runtime.ts",
+        "definitionPath": "packages/contracts/src/socrates.ts",
+        "implementationPath": "apps/server/src/runtime/runtime.ts",
         "callers": [
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts",
+          "apps/server/src/test/server.test.ts",
           "packages/contracts/src/contracts.test.ts"
         ],
         "status": "canonical"
       }
     },
     {
-      "id": "command.flow.feedback.submit",
-      "description": "Validate and dispatch the v2.feedback.submit user command.",
+      "id": "command.socrates.feedback.submit",
+      "description": "Validate and dispatch the socrates.feedback.submit user command.",
       "kind": "typed_user_command",
       "allowedRoles": [
-        "flow_runtime"
+        "socrates_runtime"
       ],
       "runtimeScopes": [
         "runtime",
         "goal"
       ],
-      "executorBinding": "v2.feedback.submit",
+      "executorBinding": "socrates.feedback.submit",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {
@@ -4792,30 +4696,30 @@
       "documentationPaths": [],
       "source": {
         "owner": "apps/server",
-        "definitionPath": "packages/contracts/src/v2Flow.ts",
-        "implementationPath": "apps/server/src/v2/runtime.ts",
+        "definitionPath": "packages/contracts/src/socrates.ts",
+        "implementationPath": "apps/server/src/runtime/runtime.ts",
         "callers": [
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts",
+          "apps/server/src/test/server.test.ts",
           "packages/contracts/src/contracts.test.ts"
         ],
         "status": "canonical"
       }
     },
     {
-      "id": "command.flow.credential.input.submit",
-      "description": "Validate and dispatch the v2.credential.input.submit user command.",
+      "id": "command.socrates.credential.input.submit",
+      "description": "Validate and dispatch the socrates.credential.input.submit user command.",
       "kind": "typed_user_command",
       "allowedRoles": [
-        "flow_runtime"
+        "socrates_runtime"
       ],
       "runtimeScopes": [
         "runtime",
         "goal"
       ],
-      "executorBinding": "v2.credential.input.submit",
+      "executorBinding": "socrates.credential.input.submit",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {
@@ -4836,30 +4740,30 @@
       "documentationPaths": [],
       "source": {
         "owner": "apps/server",
-        "definitionPath": "packages/contracts/src/v2Flow.ts",
-        "implementationPath": "apps/server/src/v2/runtime.ts",
+        "definitionPath": "packages/contracts/src/socrates.ts",
+        "implementationPath": "apps/server/src/runtime/runtime.ts",
         "callers": [
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts",
+          "apps/server/src/test/server.test.ts",
           "packages/contracts/src/contracts.test.ts"
         ],
         "status": "canonical"
       }
     },
     {
-      "id": "command.flow.terminal.stop",
-      "description": "Validate and dispatch the v2.terminal.stop user command.",
+      "id": "command.socrates.terminal.stop",
+      "description": "Validate and dispatch the socrates.terminal.stop user command.",
       "kind": "typed_user_command",
       "allowedRoles": [
-        "flow_runtime"
+        "socrates_runtime"
       ],
       "runtimeScopes": [
         "runtime",
         "goal"
       ],
-      "executorBinding": "v2.terminal.stop",
+      "executorBinding": "socrates.terminal.stop",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {
@@ -4880,30 +4784,30 @@
       "documentationPaths": [],
       "source": {
         "owner": "apps/server",
-        "definitionPath": "packages/contracts/src/v2Flow.ts",
-        "implementationPath": "apps/server/src/v2/runtime.ts",
+        "definitionPath": "packages/contracts/src/socrates.ts",
+        "implementationPath": "apps/server/src/runtime/runtime.ts",
         "callers": [
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts",
+          "apps/server/src/test/server.test.ts",
           "packages/contracts/src/contracts.test.ts"
         ],
         "status": "canonical"
       }
     },
     {
-      "id": "command.flow.terminal.input",
-      "description": "Validate and dispatch the v2.terminal.input user command.",
+      "id": "command.socrates.terminal.input",
+      "description": "Validate and dispatch the socrates.terminal.input user command.",
       "kind": "typed_user_command",
       "allowedRoles": [
-        "flow_runtime"
+        "socrates_runtime"
       ],
       "runtimeScopes": [
         "runtime",
         "goal"
       ],
-      "executorBinding": "v2.terminal.input",
+      "executorBinding": "socrates.terminal.input",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {
@@ -4924,30 +4828,30 @@
       "documentationPaths": [],
       "source": {
         "owner": "apps/server",
-        "definitionPath": "packages/contracts/src/v2Flow.ts",
-        "implementationPath": "apps/server/src/v2/runtime.ts",
+        "definitionPath": "packages/contracts/src/socrates.ts",
+        "implementationPath": "apps/server/src/runtime/runtime.ts",
         "callers": [
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts",
+          "apps/server/src/test/server.test.ts",
           "packages/contracts/src/contracts.test.ts"
         ],
         "status": "canonical"
       }
     },
     {
-      "id": "command.flow.terminal.resize",
-      "description": "Validate and dispatch the v2.terminal.resize user command.",
+      "id": "command.socrates.terminal.resize",
+      "description": "Validate and dispatch the socrates.terminal.resize user command.",
       "kind": "typed_user_command",
       "allowedRoles": [
-        "flow_runtime"
+        "socrates_runtime"
       ],
       "runtimeScopes": [
         "runtime",
         "goal"
       ],
-      "executorBinding": "v2.terminal.resize",
+      "executorBinding": "socrates.terminal.resize",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {
@@ -4968,30 +4872,30 @@
       "documentationPaths": [],
       "source": {
         "owner": "apps/server",
-        "definitionPath": "packages/contracts/src/v2Flow.ts",
-        "implementationPath": "apps/server/src/v2/runtime.ts",
+        "definitionPath": "packages/contracts/src/socrates.ts",
+        "implementationPath": "apps/server/src/runtime/runtime.ts",
         "callers": [
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts",
+          "apps/server/src/test/server.test.ts",
           "packages/contracts/src/contracts.test.ts"
         ],
         "status": "canonical"
       }
     },
     {
-      "id": "command.flow.terminal.rename",
-      "description": "Validate and dispatch the v2.terminal.rename user command.",
+      "id": "command.socrates.terminal.rename",
+      "description": "Validate and dispatch the socrates.terminal.rename user command.",
       "kind": "typed_user_command",
       "allowedRoles": [
-        "flow_runtime"
+        "socrates_runtime"
       ],
       "runtimeScopes": [
         "runtime",
         "goal"
       ],
-      "executorBinding": "v2.terminal.rename",
+      "executorBinding": "socrates.terminal.rename",
       "hasInputSchema": true,
       "hasResultSchema": true,
       "policy": {
@@ -5012,13 +4916,13 @@
       "documentationPaths": [],
       "source": {
         "owner": "apps/server",
-        "definitionPath": "packages/contracts/src/v2Flow.ts",
-        "implementationPath": "apps/server/src/v2/runtime.ts",
+        "definitionPath": "packages/contracts/src/socrates.ts",
+        "implementationPath": "apps/server/src/runtime/runtime.ts",
         "callers": [
-          "apps/server/src/v2/runtime.ts"
+          "apps/server/src/runtime/runtime.ts"
         ],
         "tests": [
-          "apps/server/src/test/v2FlowRuntime.test.ts",
+          "apps/server/src/test/server.test.ts",
           "packages/contracts/src/contracts.test.ts"
         ],
         "status": "canonical"

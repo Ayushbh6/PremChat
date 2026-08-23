@@ -2,7 +2,6 @@ import type {
   CompleteCompactionSnapshotInput,
   ContextCompactionSummary,
   FailCompactionSnapshotInput,
-  ReconciliationWatermarkState,
   StableCachePreludeSnapshot,
   StartCompactionSnapshotInput,
 } from "@socrates/core"
@@ -107,7 +106,7 @@ import type {
   WorkerModelRole,
   WorkerModelSettings,
 } from "@socrates/contracts"
-import { traceRetrieveMainToolInputSchema } from "@socrates/contracts"
+import { goalCandidateRetrievalSchema, traceRetrieveMainToolInputSchema } from "@socrates/contracts"
 import {
   createDefaultEmbeddingProvider,
   createDefaultModelProvider,
@@ -120,7 +119,6 @@ import {
 } from "@socrates/providers"
 import { limitModelOutputText, MAX_MODEL_OUTPUT_TOKEN_LIMIT, SocratesError } from "@socrates/shared"
 import os from "node:os"
-import fs from "node:fs"
 import path from "node:path"
 import type { DatabaseHandle } from "../db/client"
 import { ApprovalStore } from "./store/approvalStore"
@@ -162,7 +160,6 @@ import type {
 } from "./store/types"
 import { UserStore } from "./store/userStore"
 import { RetrievalStore } from "./retrieval/retrievalStore"
-import { CanonicalWorkStore, toClassicProjectedMessage } from "./workState/canonicalWorkStore"
 import { commitValidatedTurnFinalization } from "./turn/validatedTurnFinalization"
 
 export type {
@@ -177,8 +174,6 @@ export type {
   UploadedAttachmentInput,
   UploadedResourceInput,
 } from "./store/types"
-
-const messageRoleOrder = (role: string): number => role === "user" ? 0 : role === "assistant" ? 1 : 2
 
 export class SocratesStore {
   private readonly access: AccessStore
@@ -205,7 +200,6 @@ export class SocratesStore {
   private readonly embeddings: EmbeddingStore
   private readonly retrieval: RetrievalStore
   private readonly contextCompactions: ContextCompactionStore
-  private readonly canonicalWork: CanonicalWorkStore | undefined
   private ollamaChatModels: ModelOption[] = []
   private ollamaChatModelsCheckedAt = 0
   private memoryAgentScheduler: ReturnType<typeof setInterval> | undefined
@@ -215,7 +209,7 @@ export class SocratesStore {
     private readonly handle: DatabaseHandle,
     embeddingProvider?: EmbeddingProvider,
     private readonly credentials?: ProviderCredentialResolver,
-    options: { socratesHome?: string; memoryProvider?: ModelProvider; v2FlowEnabled?: boolean } = {},
+    options: { socratesHome?: string; memoryProvider?: ModelProvider } = {},
   ) {
     this.events = new EventStore(handle)
     const context: StoreContext = {
@@ -233,9 +227,7 @@ export class SocratesStore {
     this.errors = new ErrorStore(context)
     this.approvals = new ApprovalStore(context)
     this.attachments = new AttachmentStore(context)
-    this.canonicalWork = options.v2FlowEnabled ? new CanonicalWorkStore(handle) : undefined
-    this.canonicalWork?.reconcileLegacyBridgeData()
-    this.turns = new TurnStore(context, this.errors, this.attachments, this.canonicalWork)
+    this.turns = new TurnStore(context, this.errors, this.attachments)
     this.feedback = new FeedbackStore(context)
     this.tools = new ToolStore(context)
     this.terminals = new TerminalStore(context)
@@ -275,12 +267,12 @@ export class SocratesStore {
   async initializeRetrieval(): Promise<void> {
     const projects = this.handle.sqlite
       .prepare(
-        `SELECT p.id,
+        `SELECT p.id, p.metadata_json AS metadataJson,
                 (SELECT pw.path FROM project_workspaces pw WHERE pw.project_id = p.id AND pw.is_primary = 1 AND pw.status IN ('active','missing') ORDER BY pw.updated_at DESC LIMIT 1) AS workspacePath
          FROM projects p
          WHERE p.status <> 'deleted'`,
       )
-      .all() as Array<{ id: string; workspacePath: string | null }>
+      .all() as Array<{ id: string; workspacePath: string | null; metadataJson: string | null }>
     for (const project of projects) {
       this.memory.ensureProjectMemory(project.id, project.workspacePath ?? undefined)
     }
@@ -305,12 +297,20 @@ export class SocratesStore {
     return this.users.getCurrentUser()
   }
 
+  ensureLocalUser(): User {
+    return this.users.ensureLocalUser()
+  }
+
   completeOnboarding(input: CompleteOnboardingRequest): User {
     return this.users.completeOnboarding(input)
   }
 
   getFilesystemAccess(): FilesystemAccessState {
     return this.access.getState()
+  }
+
+  getDefaultFilesystemWorkingRoot(): string | undefined {
+    return this.access.getDefaultWorkingRoot()
   }
 
   setFilesystemAccessMode(mode: FilesystemAccessMode): FilesystemAccessState {
@@ -370,6 +370,22 @@ export class SocratesStore {
     return context
   }
 
+  getAgentContextAtWorkspace(projectId: string, workspacePath: string): AgentContext {
+    const context = this.projects.getAgentContext(projectId)
+    this.memory.ensureProjectMemory(projectId, workspacePath)
+    return context
+  }
+
+  getGlobalAgentContextAtWorkspace(workspacePath: string): AgentContext {
+    const user = this.users.ensureLocalUser()
+    this.memory.ensureProjectMemory("global", workspacePath)
+    return {
+      userDisplayName: user.displayName,
+      projectName: path.basename(workspacePath) || "Socrates",
+      projectDescription: "The current working path selected for this global Socrates task.",
+    }
+  }
+
   getPrimaryWorkspacePath(projectId: string): string {
     return this.projects.getPrimaryWorkspacePath(projectId)
   }
@@ -415,8 +431,8 @@ export class SocratesStore {
     return this.memory.runToolDocsTool(projectId, this.primaryWorkspacePathOrUndefined(projectId), input)
   }
 
-  runSkillsTool(projectId: string, input: SkillsToolInput): SkillsToolOutput {
-    return this.memory.runSkillsTool(projectId, this.primaryWorkspacePathOrUndefined(projectId), input)
+  runSkillsTool(projectId: string, input: SkillsToolInput, workspacePath?: string): SkillsToolOutput {
+    return this.memory.runSkillsTool(projectId, workspacePath ?? this.primaryWorkspacePathOrUndefined(projectId), input)
   }
 
   runSkillsImportTool(
@@ -427,6 +443,7 @@ export class SocratesStore {
       turnId: string
       signal?: AbortSignal
       attachedArchive?: { filename: string; data: Buffer }
+      workspacePath?: string
     },
   ): Promise<SkillsToolOutput> {
     const attachedArchive = source.attachedArchive ?? (input.operation === "preview_import" && "attachmentPath" in input
@@ -439,7 +456,7 @@ export class SocratesStore {
       : undefined)
     return this.memory.runSkillsImportTool(
       projectId,
-      this.primaryWorkspacePathOrUndefined(projectId),
+      source.workspacePath ?? this.primaryWorkspacePathOrUndefined(projectId),
       input,
       source.signal,
       attachedArchive,
@@ -455,7 +472,7 @@ export class SocratesStore {
       turnId: string
       messageId?: string
       messageExcerpt?: string
-      sourceRuntime?: "classic" | "v2_flow"
+      sourceRuntime?: "classic" | "socrates"
       appendClassicEvent?: boolean
     },
   ): MemoryNoteToolOutput {
@@ -819,37 +836,7 @@ export class SocratesStore {
     lastRuntimeConfig?: RuntimeConfig
   } {
     const conversation = this.conversations.getConversation(projectId, conversationId)
-    if (this.canonicalWork) {
-      const sessionId = (this.handle.sqlite.prepare(
-        "SELECT id FROM sessions WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
-      ).get(conversationId) as { id: string } | undefined)?.id
-      if (sessionId) {
-        const projected = this.canonicalWork.listConversationMessages(conversationId)
-          .map((message) => toClassicProjectedMessage(message, conversationId, sessionId))
-        const projectedIds = new Set(projected.map((message) => message.id))
-        const native = conversation.messages.filter((message) =>
-          !projectedIds.has(message.id) && !this.canonicalWork?.isLegacyShadowMessage("classic", message.id)
-        )
-        conversation.messages = [...native, ...projected]
-          .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || messageRoleOrder(left.role) - messageRoleOrder(right.role) || left.id.localeCompare(right.id))
-      }
-      const projectedPartialTurns = this.canonicalWork.listConversationPartialTurns(conversationId)
-      const projectedTurnIds = new Set(projectedPartialTurns.map((turn) => turn.turnId))
-      const nativePartialTurns = conversation.partialTurns?.filter((turn) => !projectedTurnIds.has(turn.turnId)) ?? []
-      const partialTurns = [...nativePartialTurns, ...projectedPartialTurns]
-      if (partialTurns.length > 0) conversation.partialTurns = partialTurns
-      else delete conversation.partialTurns
-    }
-    const nativeToolRuns = this.tools.getConversationToolRuns(conversationId)
-    const sessionId = (this.handle.sqlite.prepare(
-      "SELECT id FROM sessions WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
-    ).get(conversationId) as { id: string } | undefined)?.id
-    const projectedToolRuns = this.canonicalWork && sessionId
-      ? this.canonicalWork.listConversationToolRuns(conversationId, sessionId)
-      : []
-    const projectedToolIds = new Set(projectedToolRuns.map((tool) => tool.toolCallId))
-    const toolRuns = [...nativeToolRuns.filter((tool) => !projectedToolIds.has(tool.toolCallId)), ...projectedToolRuns]
-      .sort((left, right) => (left.startedAt ?? "").localeCompare(right.startedAt ?? "") || left.toolCallId.localeCompare(right.toolCallId))
+    const toolRuns = this.tools.getConversationToolRuns(conversationId)
     const usageReports = this.modelTelemetry.getConversationUsageReportBundle(conversationId)
     return {
       ...conversation,
@@ -889,12 +876,16 @@ export class SocratesStore {
     this.retrieval.enqueueRebuild(projectId, reason)
   }
 
-  deleteV2TurnRetrieval(projectId: string, turnId: string): void {
-    this.retrieval.deleteV2Turn(projectId, turnId)
+  deleteSocratesTurnRetrieval(projectId: string, turnId: string): void {
+    this.retrieval.deleteSocratesTurn(projectId, turnId)
   }
 
-  deleteV2GoalRetrieval(projectId: string, goalId: string): void {
-    this.retrieval.deleteV2Goal(projectId, goalId)
+  deleteSocratesGoalRetrieval(projectId: string, goalId: string): void {
+    this.retrieval.deleteSocratesGoal(projectId, goalId)
+  }
+
+  deleteSocratesRetrievalParents(projectId: string, parentIds: readonly string[]): void {
+    this.retrieval.deleteSocratesParents(projectId, parentIds)
   }
 
   createTurnFromUserMessage(projectId: string, conversationId: string, payload: ChatMessageSendPayload): CreatedTurn {
@@ -946,60 +937,7 @@ export class SocratesStore {
       ...options,
       readAttachmentDataUrl: (attachment) => this.attachments.readAttachmentDataUrl(attachment),
     })
-    if (!this.canonicalWork) return native
-    const projectedRecords = this.canonicalWork.listConversationMessages(conversationId)
-    const projected = projectedRecords
-      .filter((message) => ["user", "assistant", "system", "developer"].includes(message.role) && message.status === "completed")
-      .map((message): ConversationModelMessage => {
-        const turnOrdinal = this.canonicalWork?.turnOrdinal(message.sourceRuntime, message.sourceTurnId)
-        const taskOrdinal = message.goalId
-          ? this.canonicalWork?.taskOrdinal(message.goalId, message.sourceRuntime, message.sourceTurnId)
-          : undefined
-        const base = {
-          role: message.role as ConversationModelMessage["role"],
-          content: message.content,
-          id: message.sourceMessageId,
-          turnId: message.sourceTurnId,
-          ...(turnOrdinal !== undefined ? { turnOrdinal } : {}),
-          ...(taskOrdinal !== undefined ? { taskOrdinal } : {}),
-        }
-        if (message.role !== "user" || message.classicAttachments.length === 0) return base
-        const references = message.classicAttachments.map((attachment) =>
-          `[Attachment: ${attachment.fileName} · ${attachment.mimeType} · ${attachment.sizeBytes} bytes · ${attachment.uri}]`
-        ).join("\n")
-        const images = message.classicAttachments.filter((attachment) => attachment.kind === "image")
-        if (!options.includeImageParts || images.length === 0) {
-          return { ...base, content: message.content.trim() ? `${message.content}\n\n${references}` : references }
-        }
-        const parts: ConversationModelMessage["content"] = [{
-          type: "text",
-          text: [message.content.trim(), references].filter(Boolean).join("\n\n"),
-        }]
-        for (const image of images) {
-          try {
-            const data = fs.readFileSync(image.uri)
-            parts.push({ type: "image", mediaType: image.mimeType, data: `data:${image.mimeType};base64,${data.toString("base64")}`, fileName: image.fileName })
-          } catch {
-            // The attachment reference remains in context if the file is unavailable.
-          }
-        }
-        return { ...base, content: parts }
-      })
-    const projectedIds = new Set(projected.map((message) => message.id))
-    const createdAtByMessageId = new Map(projectedRecords.map((message) => [message.sourceMessageId, message.createdAt]))
-    const nativeTimes = this.handle.sqlite.prepare(
-      "SELECT id, created_at AS createdAt FROM messages WHERE conversation_id = ?",
-    ).all(conversationId) as Array<{ id: string; createdAt: string }>
-    for (const row of nativeTimes) if (!createdAtByMessageId.has(row.id)) createdAtByMessageId.set(row.id, row.createdAt)
-    const combined = [
-      ...native.filter((message) => !message.id || (!projectedIds.has(message.id) && !this.canonicalWork?.isLegacyShadowMessage("classic", message.id))),
-      ...projected,
-    ]
-    return combined.sort((left, right) => {
-      const leftId = left.id ?? ""
-      const rightId = right.id ?? ""
-      return (createdAtByMessageId.get(leftId) ?? "").localeCompare(createdAtByMessageId.get(rightId) ?? "") || messageRoleOrder(left.role) - messageRoleOrder(right.role) || leftId.localeCompare(rightId)
-    })
+    return native
   }
 
   createModelCall(input: {
@@ -1285,16 +1223,12 @@ export class SocratesStore {
     this.retrieval.enqueueTurn(projectId, turnId)
   }
 
-  indexV2TurnRetrieval(projectId: string, turnId: string): void {
-    this.retrieval.enqueueV2Turn(projectId, turnId)
+  indexSocratesTurnRetrieval(projectId: string, turnId: string): void {
+    this.retrieval.enqueueSocratesTurn(projectId, turnId)
   }
 
   indexGoalRetrieval(projectId: string, goalId: string): void {
     this.retrieval.enqueueGoal(projectId, goalId)
-  }
-
-  deleteV2FlowRetrieval(projectId: string, flowId: string): void {
-    this.retrieval.deleteV2Flow(projectId, flowId)
   }
 
   retrieveToolTraces(projectId: string, conversationId: string, input: TraceRetrieveToolInput) {
@@ -1303,8 +1237,9 @@ export class SocratesStore {
 
   async retrieveGlobalToolTraces(
     input: TraceRetrieveGlobalToolInput,
-    authority?: { scope: "presented_context" | "current_goal" | "project"; presentedConversationId: string; goalId: string; currentTurnId: string },
+    authority?: { scope: "presented_context" | "current_goal" | "project"; presentedConversationId: string; goalId: string; currentTurnId: string; projectIds?: readonly string[] },
   ): Promise<TraceRetrieveGlobalToolOutput> {
+    const allowedProjectIds = authority?.projectIds ? new Set(authority.projectIds) : undefined
     if (input.operation === "inspect") {
       if (input.result) {
         const exactResult = this.retrieveContextResultByHandle(input.result, authority)
@@ -1317,14 +1252,14 @@ export class SocratesStore {
       const previous = input.resultNumber ? this.globalTraceRefs[input.resultNumber - 1] : undefined
       const turnId = input.turnId ?? previous?.turnId
       const projectId = previous?.projectId ?? input.projectId ?? this.resolveGlobalInspectProjectId(input, turnId)
-      if (!projectId) {
+      if (!projectId || (allowedProjectIds && !allowedProjectIds.has(projectId))) {
         throw new SocratesError("trace_result_not_found", "The requested trace result could not be resolved to a visible project.", { recoverable: true })
       }
       if (turnId) {
-        const v2Result = this.retrieveV2GlobalTraceTurn(projectId, turnId)
-        if (v2Result) {
+        const socratesResult = this.retrieveSocratesGlobalTraceTurn(projectId, turnId)
+        if (socratesResult) {
           this.globalTraceRefs = [{ projectId, turnId }]
-          return limitGlobalTraceInspectOutput([{ ...v2Result, resultNumber: 1 }], input)
+          return limitGlobalTraceInspectOutput([{ ...socratesResult, resultNumber: 1 }], input)
         }
       }
       const inspected = await this.retrieval.retrieveMainTrace(projectId, "", {
@@ -1339,7 +1274,7 @@ export class SocratesStore {
       return limitGlobalTraceInspectOutput(results, input)
     }
 
-    const projectIds = this.resolveGlobalRetrievalProjectIds(input)
+    const projectIds = this.resolveGlobalRetrievalProjectIds(input).filter((projectId) => !allowedProjectIds || allowedProjectIds.has(projectId))
     const exactConversationId = authority?.scope === "presented_context"
       ? authority.presentedConversationId
       : typeof input.conversationId === "string" ? input.conversationId : undefined
@@ -1371,22 +1306,20 @@ export class SocratesStore {
           warnings.push(`${this.projectTitle(projectId)}: ${error instanceof Error ? error.message : String(error)}`)
         }
         try {
-          for (const candidate of this.searchV2GlobalTraceTurns(projectId, input, {
+          for (const candidate of this.searchSocratesGlobalTraceTurns(projectId, input, {
             ...(exactConversationId ? { exactConversationId } : {}),
             ...(exactGoalId ? { exactGoalId } : {}),
           })) {
             collected.push({ projectId, result: candidate.result, rawScore: candidate.rawScore })
           }
         } catch (error) {
-          warnings.push(`${this.projectTitle(projectId)} Seamless Flow: ${error instanceof Error ? error.message : String(error)}`)
+          warnings.push(`${this.projectTitle(projectId)} Socrates: ${error instanceof Error ? error.message : String(error)}`)
         }
       }
     } else {
       for (const projectId of projectIds) {
         try {
-          const selectedV2Flow = exactConversationId
-            ? Boolean(this.handle.sqlite.prepare("SELECT 1 FROM v2_flows WHERE id = ? AND project_id = ? LIMIT 1").get(exactConversationId, projectId))
-            : false
+          const selectedSocrates = exactConversationId === "global-socrates"
           const ranked = await this.retrieval.search({
             projectId,
             query,
@@ -1395,8 +1328,8 @@ export class SocratesStore {
               corpusKind: "trace_turn",
               scope: "project",
               ...(exactConversationId
-                ? selectedV2Flow
-                  ? { runtimeKind: "v2_flow" as const, flowId: exactConversationId }
+                ? selectedSocrates
+                  ? { runtimeKind: "socrates" as const }
                   : { conversationId: exactConversationId }
                 : {}),
               ...(exactGoalId ? { goalId: exactGoalId } : {}),
@@ -1451,7 +1384,7 @@ export class SocratesStore {
 
   private retrieveContextResultByHandle(
     resultHandle: string,
-    authority?: { scope: "presented_context" | "current_goal" | "project"; presentedConversationId: string; goalId: string; currentTurnId: string },
+    authority?: { scope: "presented_context" | "current_goal" | "project"; presentedConversationId: string; goalId: string; currentTurnId: string; projectIds?: readonly string[] },
   ): { projectId: string; result: TraceRetrieveGlobalResult } | undefined {
     type ExactToolRow = {
       projectId: string
@@ -1484,11 +1417,11 @@ export class SocratesStore {
        LEFT JOIN work_tasks wt ON wt.source_runtime = 'classic' AND wt.source_turn_id = t.id
        WHERE json_extract(tc.metadata_json, '$.contextResultHandle') = ?`,
     ).all(resultHandle) as ExactToolRow[]
-    const flow = this.handle.sqlite.prepare(
+    const socrates = this.handle.sqlite.prepare(
       `SELECT vtc.project_id AS projectId,
-              vtc.flow_id AS conversationKey,
-              'Seamless Flow' AS conversationTitle,
-              COALESCE(vtc.goal_id, wt.goal_id) AS goalId,
+              'global-socrates' AS conversationKey,
+              'Socrates' AS conversationTitle,
+              vtc.goal_id AS goalId,
               vt.id AS turnId,
               vt.ordinal AS turnOrdinal,
               vt.started_at AS startedAt,
@@ -1498,12 +1431,15 @@ export class SocratesStore {
               vtc.result_json AS resultJson
        FROM v2_tool_calls vtc
        INNER JOIN v2_turns vt ON vt.id = vtc.turn_id
-       LEFT JOIN work_tasks wt ON wt.source_runtime = 'v2_flow' AND wt.source_turn_id = vt.id
        WHERE json_extract(vtc.metadata_json, '$.contextResultHandle') = ?`,
     ).all(resultHandle) as ExactToolRow[]
+    const allowedProjectIds = authority?.projectIds ? new Set(authority.projectIds) : undefined
     const visible = authority
-      ? [...classic, ...flow].filter((row) => row.conversationKey === authority.presentedConversationId || row.goalId === authority.goalId)
-      : [...classic, ...flow]
+      ? [...classic, ...socrates].filter((row) => (
+          (!allowedProjectIds || allowedProjectIds.has(row.projectId))
+          && (row.conversationKey === authority.presentedConversationId || row.goalId === authority.goalId)
+        ))
+      : [...classic, ...socrates]
     const selected = visible.sort((left, right) => {
       const leftCurrent = authority && left.turnId === authority.currentTurnId ? 1 : 0
       const rightCurrent = authority && right.turnId === authority.currentTurnId ? 1 : 0
@@ -1551,45 +1487,48 @@ export class SocratesStore {
     currentTurnId: string
     request: TraceRetrieveMainToolInput
   }) {
+    const projectIds = [input.projectId]
     return retrieveUnifiedMainToolTracesFromAuthority(
       (request, authority) => this.retrieveGlobalToolTraces(request, authority),
-      input,
+      { ...input, projectIds },
     )
   }
 
   async prepareExactGoalHistory(input: {
     projectId: string
+    projectIds?: readonly string[]
     goalId: string
     query: string
     messages: readonly ModelMessage[]
   }): Promise<ModelMessage[]> {
-    const retrieved = await this.retrieval.search({
-      projectId: input.projectId,
+    const projectIds = [...new Set(input.projectIds ?? [input.projectId])]
+    const settled = await Promise.allSettled(projectIds.map((projectId) => this.retrieval.search({
+      projectId,
       query: input.query,
       mode: "combined",
       filters: { corpusKind: "trace_turn", scope: "project", goalId: input.goalId },
       limit: 3,
       automaticFallback: true,
-    }).then((results) => results.map((result) => ({
-      resultNumber: result.rank,
-      conversationTitle: result.metadata.conversationTitle,
-      turnNumber: result.metadata.turnNumber,
-      occurredAt: result.metadata.occurredAt,
+    })))
+    const ranked = rankDistinctParents(settled.flatMap((result) => result.status === "fulfilled"
+      ? result.value.map((candidate) => ({
+          chunkId: candidate.chunkId,
+          parentId: candidate.parentId,
+          content: candidate.content,
+          rawScore: 1 / candidate.rank,
+          normalizedScore: 1 / candidate.rank,
+          ...(candidate.occurredAt ? { occurredAt: candidate.occurredAt } : {}),
+          metadata: candidate,
+        }))
+      : []), { limit: 3 })
+    const retrieved = ranked.map((result, index) => ({
+      resultNumber: index + 1,
+      conversationTitle: result.metadata.metadata.conversationTitle,
+      turnNumber: result.metadata.metadata.turnNumber,
+      occurredAt: result.metadata.metadata.occurredAt,
       content: result.content,
-    }))).catch(() => [])
+    }))
     return selectExactGoalHistory(input.messages, retrieved)
-  }
-
-  getTaskReconciliationWatermark(sourceRuntime: "classic" | "v2_flow", sourceTurnId: string) {
-    return this.canonicalWork?.getReconciliationWatermark(sourceRuntime, sourceTurnId)
-  }
-
-  saveTaskReconciliationWatermark(
-    sourceRuntime: "classic" | "v2_flow",
-    sourceTurnId: string,
-    state: ReconciliationWatermarkState,
-  ): void {
-    this.canonicalWork?.saveReconciliationWatermark(sourceRuntime, sourceTurnId, state)
   }
 
   retrieveMemoryCandidates(projectId: string, input: MemoryCandidateQuery, automaticFallback = false) {
@@ -1598,6 +1537,32 @@ export class SocratesStore {
 
   retrieveGoalCandidates(projectId: string, query: string, limit = 4) {
     return this.retrieval.retrieveGoalCandidates(projectId, query, limit)
+  }
+
+  async retrieveGlobalGoalCandidates(projectIds: readonly string[], query: string, limit = 3) {
+    const uniqueProjectIds = [...new Set(projectIds)]
+    const settled = await Promise.allSettled(uniqueProjectIds.map(async (projectId) => ({
+      projectId,
+      retrieval: await this.retrieval.retrieveGoalCandidates(projectId, query, Math.max(3, limit)),
+    })))
+    const successful = settled.flatMap((result) => result.status === "fulfilled" ? [result.value] : [])
+    if (successful.length === 0 && settled.length > 0) {
+      const failed = settled.find((result) => result.status === "rejected")
+      throw failed && failed.status === "rejected" ? failed.reason : new Error("Global goal retrieval failed.")
+    }
+    const ranked = rankDistinctParents(successful.flatMap(({ projectId, retrieval }) => retrieval.results.map((candidate) => ({
+      chunkId: `${projectId}:${candidate.goalId}:${candidate.resultNumber}`,
+      parentId: candidate.goalId,
+      content: candidate.content,
+      rawScore: 1 / candidate.resultNumber,
+      normalizedScore: 1 / candidate.resultNumber,
+      occurredAt: candidate.occurredAt,
+      metadata: candidate,
+    }))), { limit: Math.max(1, Math.min(3, limit)) })
+    return goalCandidateRetrievalSchema.parse({
+      results: ranked.map(({ metadata }, index) => ({ ...metadata, resultNumber: index + 1 })),
+      totalMatches: new Set(successful.flatMap(({ retrieval }) => retrieval.results.map((candidate) => candidate.goalId))).size,
+    })
   }
 
   retrieveCapabilityCandidates(projectId: string, query: string, limit = 5) {
@@ -1665,11 +1630,9 @@ export class SocratesStore {
     const requestedIds = traceSelectorValues(input.projectId)
     if (requestedIds.length > 0) return requestedIds
     if (input.conversationId) {
-      const rows = this.handle.sqlite.prepare(
-        `SELECT project_id AS projectId FROM conversations WHERE id = ?
-         UNION
-         SELECT project_id AS projectId FROM v2_flows WHERE id = ?`,
-      ).all(input.conversationId, input.conversationId) as Array<{ projectId: string }>
+      const rows = input.conversationId === "global-socrates"
+        ? this.handle.sqlite.prepare("SELECT DISTINCT project_id AS projectId FROM v2_turns").all() as Array<{ projectId: string }>
+        : this.handle.sqlite.prepare("SELECT project_id AS projectId FROM conversations WHERE id = ?").all(input.conversationId) as Array<{ projectId: string }>
       return rows.map((row) => row.projectId)
     }
     const titles = traceSelectorValues(input.projectTitle)
@@ -1686,29 +1649,24 @@ export class SocratesStore {
 
   /**
    * Complements the shared canonical Q&A index with bounded exact search over
-   * V2-owned tool, Terminal, error, and immutable-evidence rows. It never
+   * Socrates-owned tool, Terminal, error, and immutable-evidence rows. It never
    * manufactures Classic conversations/turns or writes Classic trace tables.
    */
-  private searchV2GlobalTraceTurns(
+  private searchSocratesGlobalTraceTurns(
     projectId: string,
     input: TraceRetrieveGlobalSearchInput,
     authority: { exactConversationId?: string | string[]; exactGoalId?: string } = {},
   ): Array<{ result: Omit<TraceRetrieveGlobalResult, "resultNumber">; rawScore: number }> {
-    const where = ["t.project_id = ?", "t.status IN ('completed','failed','cancelled')", "f.status IN ('active','archived')"]
+    const where = ["t.project_id = ?", "t.status IN ('completed','failed','cancelled')"]
     const params: unknown[] = [projectId]
-    if (authority.exactConversationId && typeof authority.exactConversationId === "string") {
-      where.push("t.flow_id = ?")
-      params.push(authority.exactConversationId)
-    } else if (input.conversationId) {
-      where.push("t.flow_id = ?")
-      params.push(input.conversationId)
-    }
+    const exactConversation = typeof authority.exactConversationId === "string" ? authority.exactConversationId : input.conversationId
+    if (exactConversation && exactConversation !== "global-socrates") return []
     if (authority.exactGoalId) {
       where.push("t.goal_id = ?")
       params.push(authority.exactGoalId)
     }
     if (input.conversationTitle) {
-      where.push("LOWER(CASE WHEN g.title IS NULL OR trim(g.title) = '' THEN 'Seamless Flow' ELSE 'Seamless Flow · ' || g.title END) = LOWER(?)")
+      where.push("LOWER(CASE WHEN g.title IS NULL OR trim(g.title) = '' THEN 'Socrates' ELSE 'Socrates · ' || g.title END) = LOWER(?)")
       params.push(input.conversationTitle)
     }
     if ("turnNo" in input && input.turnNo) {
@@ -1742,7 +1700,6 @@ export class SocratesStore {
               (SELECT group_concat(vm.content, char(10)) FROM v2_messages vm WHERE (vm.turn_id = t.id OR vm.id = root_turn.user_message_id) AND vm.role = 'user') AS userContent,
               (SELECT group_concat(vm.content, char(10)) FROM v2_messages vm WHERE vm.turn_id = t.id AND vm.role = 'assistant') AS assistantContent
          FROM v2_turns t
-         JOIN v2_flows f ON f.id = t.flow_id AND f.project_id = t.project_id
          LEFT JOIN v2_goals g ON g.id = t.goal_id
          LEFT JOIN v2_agent_tasks task ON task.current_turn_id = t.id
          LEFT JOIN v2_turns root_turn ON root_turn.id = task.root_turn_id
@@ -1753,7 +1710,7 @@ export class SocratesStore {
 
     const candidates: Array<{ result: Omit<TraceRetrieveGlobalResult, "resultNumber">; rawScore: number }> = []
     for (const row of rows) {
-      const inspected = this.retrieveV2GlobalTraceTurn(projectId, row.turnId)
+      const inspected = this.retrieveSocratesGlobalTraceTurn(projectId, row.turnId)
       if (!inspected) continue
       const searchable = inspected.content.toLowerCase()
       const auditInput = input.mode === "audit" ? input : undefined
@@ -1785,7 +1742,7 @@ export class SocratesStore {
     return candidates.slice(0, 32)
   }
 
-  private retrieveV2GlobalTraceTurn(
+  private retrieveSocratesGlobalTraceTurn(
     projectId: string,
     turnId: string,
   ): Omit<TraceRetrieveGlobalResult, "resultNumber"> | undefined {
@@ -1869,7 +1826,7 @@ export class SocratesStore {
     ).all(turnId) as Array<{ source: string; code: string; message: string; detailsJson: string | null }>
 
     const sections = [
-      `[Seamless Flow goal: ${turn.goalTitle ?? "Current goal"}]`,
+      `[Socrates goal: ${turn.goalTitle ?? "Current goal"}]`,
       messages.map((message) => `${message.role}: ${message.content}`).join("\n\n"),
       tools.length > 0
         ? `[Tool calls]\n${tools.map((tool) => [
@@ -1902,7 +1859,7 @@ export class SocratesStore {
     return {
       content: raw,
       turnId,
-      conversationTitle: turn.goalTitle ? `Seamless Flow · ${turn.goalTitle}` : "Seamless Flow",
+      conversationTitle: turn.goalTitle ? `Socrates · ${turn.goalTitle}` : "Socrates",
       turnNumber: Math.max(1, turn.ordinal),
       matchedRole: assistant ? "assistant" : "user",
       status,

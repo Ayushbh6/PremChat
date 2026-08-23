@@ -1423,39 +1423,32 @@ export const schemaMigrations = sqliteTable("schema_migrations", {
   checksum: text("checksum"),
 })
 
-// V2 Flow is deliberately isolated from every V1 conversation table. The V2
-// store may reuse low-level provider/tool infrastructure, but all persisted
-// ownership and lifecycle state lives under this `v2_` namespace.
+// Global Socrates owns one foreground goal and one active root task. Released
+// Socrates table names remain physical migration history, but no active record has a
+// separate workspace-container owner.
 
-export const v2Flows = sqliteTable(
-  "v2_flows",
+export const globalSocratesState = sqliteTable(
+  "global_socrates_state",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").notNull(),
-    status: text("status").notNull(),
     foregroundGoalId: text("foreground_goal_id"),
-    contextPolicyJson: text("context_policy_json").notNull(),
+    activeTaskId: text("active_task_id"),
     revision: integer("revision").notNull().default(0),
     lastEventSequence: integer("last_event_sequence").notNull().default(0),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
-    archivedAt: text("archived_at"),
     metadataJson: text("metadata_json"),
   },
   (table) => ({
-    projectIdx: uniqueIndex("v2_flows_project_idx").on(table.projectId),
-    statusUpdatedIdx: index("v2_flows_status_updated_idx").on(table.status, table.updatedAt),
-    revisionCheck: check("v2_flows_revision_check", sql`${table.revision} >= 0`),
-    eventSequenceCheck: check("v2_flows_event_sequence_check", sql`${table.lastEventSequence} >= 0`),
+    revisionCheck: check("global_socrates_state_revision_check", sql`${table.revision} >= 0`),
+    eventSequenceCheck: check("global_socrates_state_event_sequence_check", sql`${table.lastEventSequence} >= 0`),
   }),
 )
 
-export const v2Goals = sqliteTable(
+export const socratesGoals = sqliteTable(
   "v2_goals",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
-    projectId: text("project_id").notNull(),
     ordinal: integer("ordinal").notNull(),
     title: text("title").notNull(),
     summary: text("summary"),
@@ -1472,22 +1465,20 @@ export const v2Goals = sqliteTable(
     metadataJson: text("metadata_json"),
   },
   (table) => ({
-    flowOrdinalIdx: uniqueIndex("v2_goals_flow_ordinal_idx").on(table.flowId, table.ordinal),
+    ordinalIdx: uniqueIndex("v2_goals_ordinal_idx").on(table.ordinal),
     oneForegroundIdx: uniqueIndex("v2_goals_one_foreground_idx")
-      .on(table.flowId)
+      .on(table.status)
       .where(sql`${table.status} = 'foreground'`),
-    flowStatusIdx: index("v2_goals_flow_status_idx").on(table.flowId, table.status, table.lastActiveAt),
-    projectStatusIdx: index("v2_goals_project_status_idx").on(table.projectId, table.status),
+    statusIdx: index("v2_goals_status_idx").on(table.status, table.lastActiveAt),
     ordinalCheck: check("v2_goals_ordinal_check", sql`${table.ordinal} > 0`),
     priorityCheck: check("v2_goals_priority_check", sql`${table.priority} BETWEEN 0 AND 100`),
   }),
 )
 
-export const v2GoalTransitions = sqliteTable(
+export const socratesGoalTransitions = sqliteTable(
   "v2_goal_transitions",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     goalId: text("goal_id").notNull(),
     turnId: text("turn_id"),
     routingRunId: text("routing_run_id"),
@@ -1499,7 +1490,7 @@ export const v2GoalTransitions = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (table) => ({
-    flowSequenceIdx: uniqueIndex("v2_goal_transitions_flow_sequence_idx").on(table.flowId, table.sequence),
+    sequenceIdx: uniqueIndex("v2_goal_transitions_sequence_idx").on(table.sequence),
     goalCreatedIdx: index("v2_goal_transitions_goal_created_idx").on(table.goalId, table.createdAt),
     turnIdx: index("v2_goal_transitions_turn_idx").on(table.turnId),
     routingRunIdx: index("v2_goal_transitions_routing_run_idx").on(table.routingRunId),
@@ -1507,11 +1498,10 @@ export const v2GoalTransitions = sqliteTable(
   }),
 )
 
-export const v2GoalRoutingRuns = sqliteTable(
+export const socratesGoalRoutingRuns = sqliteTable(
   "v2_goal_routing_runs",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     turnId: text("turn_id").notNull(),
     messageId: text("message_id").notNull(),
@@ -1534,7 +1524,7 @@ export const v2GoalRoutingRuns = sqliteTable(
   },
   (table) => ({
     turnIdx: uniqueIndex("v2_goal_routing_runs_turn_idx").on(table.turnId),
-    flowStartedIdx: index("v2_goal_routing_runs_flow_started_idx").on(table.flowId, table.startedAt),
+    startedIdx: index("v2_goal_routing_runs_started_idx").on(table.startedAt),
     selectedGoalIdx: index("v2_goal_routing_runs_selected_goal_idx").on(table.selectedGoalId),
     confidenceCheck: check(
       "v2_goal_routing_runs_confidence_check",
@@ -1543,11 +1533,10 @@ export const v2GoalRoutingRuns = sqliteTable(
   }),
 )
 
-export const v2GoalCapsules = sqliteTable(
+export const socratesGoalCapsules = sqliteTable(
   "v2_goal_capsules",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     goalId: text("goal_id").notNull(),
     version: integer("version").notNull(),
     status: text("status").notNull(),
@@ -1567,18 +1556,17 @@ export const v2GoalCapsules = sqliteTable(
     oneActiveIdx: uniqueIndex("v2_goal_capsules_one_active_idx")
       .on(table.goalId)
       .where(sql`${table.status} = 'active'`),
-    flowCreatedIdx: index("v2_goal_capsules_flow_created_idx").on(table.flowId, table.createdAt),
+    createdIdx: index("v2_goal_capsules_created_idx").on(table.createdAt),
     versionCheck: check("v2_goal_capsules_version_check", sql`${table.version} > 0`),
     sourceSequenceCheck: check("v2_goal_capsules_source_sequence_check", sql`${table.sourceThroughSequence} >= 0`),
     tokenEstimateCheck: check("v2_goal_capsules_token_estimate_check", sql`${table.tokenEstimate} >= 0`),
   }),
 )
 
-export const v2GoalMessageLinks = sqliteTable(
+export const socratesGoalMessageLinks = sqliteTable(
   "v2_goal_message_links",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     goalId: text("goal_id").notNull(),
     messageId: text("message_id").notNull(),
     turnId: text("turn_id"),
@@ -1588,27 +1576,26 @@ export const v2GoalMessageLinks = sqliteTable(
   (table) => ({
     goalMessageIdx: uniqueIndex("v2_goal_message_links_goal_message_idx").on(table.goalId, table.messageId, table.relation),
     messageIdx: index("v2_goal_message_links_message_idx").on(table.messageId),
-    flowCreatedIdx: index("v2_goal_message_links_flow_created_idx").on(table.flowId, table.createdAt),
+    createdIdx: index("v2_goal_message_links_created_idx").on(table.createdAt),
   }),
 )
 
-// A bridge owns one Classic conversation's projection into the project Flow.
+// A bridge records one released Classic conversation's goal projection.
 // Its `goalId` is the conversation's most recently selected goal, not a
 // permanent one-to-one assignment. Per-turn links below preserve the canonical
 // many-to-many conversation <-> goal history. Tool/evidence ownership stays
 // with the runtime that produced it.
-export const v2ClassicConversationBridges = sqliteTable(
+export const socratesClassicConversationBridges = sqliteTable(
   "v2_classic_conversation_bridges",
   {
     id: text("id").primaryKey(),
     projectId: text("project_id").notNull(),
-    flowId: text("flow_id").notNull(),
     goalId: text("goal_id").notNull(),
     conversationId: text("conversation_id").notNull(),
     sessionId: text("session_id").notNull(),
     activeOwner: text("active_owner").notNull().default("v2"),
     status: text("status").notNull().default("active"),
-    lastV2MessageOrdinal: integer("last_v2_message_ordinal").notNull().default(0),
+    lastSocratesMessageOrdinal: integer("last_v2_message_ordinal").notNull().default(0),
     lastClassicMessageCreatedAt: text("last_classic_message_created_at"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -1618,20 +1605,19 @@ export const v2ClassicConversationBridges = sqliteTable(
   (table) => ({
     goalIdx: index("v2_classic_bridges_goal_idx").on(table.goalId),
     conversationIdx: uniqueIndex("v2_classic_bridges_conversation_idx").on(table.conversationId),
-    flowStatusIdx: index("v2_classic_bridges_flow_status_idx").on(table.flowId, table.status),
+    statusIdx: index("v2_classic_bridges_status_idx").on(table.status, table.updatedAt),
     ownerCheck: check("v2_classic_bridges_owner_check", sql`${table.activeOwner} IN ('v2', 'classic')`),
   }),
 )
 
-// Flow -> Classic is deterministic without making the relationship one-to-one:
+// Goal -> released Classic history is deterministic without making the relationship one-to-one:
 // a goal has at most one preferred Classic home, while that conversation may
 // contain turns belonging to any number of goals.
-export const v2GoalClassicHomes = sqliteTable(
+export const socratesGoalClassicHomes = sqliteTable(
   "v2_goal_classic_homes",
   {
     id: text("id").primaryKey(),
     projectId: text("project_id").notNull(),
-    flowId: text("flow_id").notNull(),
     goalId: text("goal_id").notNull(),
     bridgeId: text("bridge_id").notNull(),
     conversationId: text("conversation_id").notNull(),
@@ -1642,19 +1628,17 @@ export const v2GoalClassicHomes = sqliteTable(
   (table) => ({
     goalIdx: uniqueIndex("v2_goal_classic_homes_goal_idx").on(table.goalId),
     conversationIdx: index("v2_goal_classic_homes_conversation_idx").on(table.conversationId),
-    flowIdx: index("v2_goal_classic_homes_flow_idx").on(table.flowId),
   }),
 )
 
 // Classic turns are assigned to exactly one canonical project goal by the
 // shared pre-turn goal-resolution lifecycle. This compact ledger is sufficient
 // to reconstruct a multi-goal Classic conversation without replaying its full token history.
-export const v2ClassicTurnGoalLinks = sqliteTable(
+export const socratesClassicTurnGoalLinks = sqliteTable(
   "v2_classic_turn_goal_links",
   {
     id: text("id").primaryKey(),
     projectId: text("project_id").notNull(),
-    flowId: text("flow_id").notNull(),
     goalId: text("goal_id").notNull(),
     bridgeId: text("bridge_id").notNull(),
     conversationId: text("conversation_id").notNull(),
@@ -1672,19 +1656,19 @@ export const v2ClassicTurnGoalLinks = sqliteTable(
   }),
 )
 
-export const v2ClassicMessageLinks = sqliteTable(
+export const socratesClassicMessageLinks = sqliteTable(
   "v2_classic_message_links",
   {
     id: text("id").primaryKey(),
     bridgeId: text("bridge_id").notNull(),
-    v2MessageId: text("v2_message_id").notNull(),
+    socratesMessageId: text("v2_message_id").notNull(),
     classicMessageId: text("classic_message_id").notNull(),
     direction: text("direction").notNull(),
     sourceRuntime: text("source_runtime").notNull(),
     createdAt: text("created_at").notNull(),
   },
   (table) => ({
-    v2MessageIdx: uniqueIndex("v2_classic_message_links_v2_idx").on(table.v2MessageId),
+    socratesMessageIdx: uniqueIndex("v2_classic_message_links_v2_idx").on(table.socratesMessageId),
     classicMessageIdx: uniqueIndex("v2_classic_message_links_classic_idx").on(table.classicMessageId),
     bridgeCreatedIdx: index("v2_classic_message_links_bridge_idx").on(table.bridgeId, table.createdAt),
     directionCheck: check("v2_classic_message_links_direction_check", sql`${table.direction} IN ('v2_to_classic', 'classic_to_v2')`),
@@ -1692,18 +1676,19 @@ export const v2ClassicMessageLinks = sqliteTable(
   }),
 )
 
-// Canonical work identity is deliberately source-referential. A task and its
-// visible messages have one physical owner (Classic or Flow); view projections
-// below point at that owner instead of copying Q&A into the other runtime.
-// The legacy bridge tables remain for non-destructive migration and rollback.
+// A root task is the canonical owner of one exact user request and all of its
+// execution continuations. Legacy coordinates survive only as provenance in
+// metadata after migration.
 export const workTasks = sqliteTable(
   "work_tasks",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").notNull(),
+    projectId: text("project_id"),
     goalId: text("goal_id"),
     sourceRuntime: text("source_runtime").notNull(),
     sourceTurnId: text("source_turn_id").notNull(),
+    accessSnapshotId: text("access_snapshot_id"),
+    workingRootPath: text("working_root_path"),
     startedAt: text("started_at").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -1713,7 +1698,7 @@ export const workTasks = sqliteTable(
     sourceIdx: uniqueIndex("work_tasks_source_idx").on(table.sourceRuntime, table.sourceTurnId),
     goalStartedIdx: index("work_tasks_goal_started_idx").on(table.goalId, table.startedAt),
     projectStartedIdx: index("work_tasks_project_started_idx").on(table.projectId, table.startedAt),
-    sourceRuntimeCheck: check("work_tasks_source_runtime_check", sql`${table.sourceRuntime} IN ('classic', 'v2_flow')`),
+    sourceRuntimeCheck: check("work_tasks_source_runtime_check", sql`${table.sourceRuntime} = 'socrates'`),
   }),
 )
 
@@ -1731,7 +1716,7 @@ export const workMessages = sqliteTable(
   (table) => ({
     sourceIdx: uniqueIndex("work_messages_source_idx").on(table.sourceRuntime, table.sourceMessageId),
     taskCreatedIdx: index("work_messages_task_created_idx").on(table.taskId, table.sourceCreatedAt),
-    sourceRuntimeCheck: check("work_messages_source_runtime_check", sql`${table.sourceRuntime} IN ('classic', 'v2_flow')`),
+    sourceRuntimeCheck: check("work_messages_source_runtime_check", sql`${table.sourceRuntime} = 'socrates'`),
   }),
 )
 
@@ -1754,11 +1739,10 @@ export const conversationTaskProjections = sqliteTable(
   }),
 )
 
-export const v2Turns = sqliteTable(
+export const socratesTurns = sqliteTable(
   "v2_turns",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     ordinal: integer("ordinal").notNull(),
@@ -1775,20 +1759,19 @@ export const v2Turns = sqliteTable(
     metadataJson: text("metadata_json"),
   },
   (table) => ({
-    flowOrdinalIdx: uniqueIndex("v2_turns_flow_ordinal_idx").on(table.flowId, table.ordinal),
-    flowStatusIdx: index("v2_turns_flow_status_idx").on(table.flowId, table.status),
+    ordinalIdx: uniqueIndex("v2_turns_ordinal_idx").on(table.ordinal),
+    statusIdx: index("v2_turns_status_idx").on(table.status, table.startedAt),
     goalStartedIdx: index("v2_turns_goal_started_idx").on(table.goalId, table.startedAt),
     projectStatusIdx: index("v2_turns_project_status_idx").on(table.projectId, table.status),
     ordinalCheck: check("v2_turns_ordinal_check", sql`${table.ordinal} > 0`),
   }),
 )
 
-export const v2TurnRuntimeConfigs = sqliteTable(
+export const socratesTurnRuntimeConfigs = sqliteTable(
   "v2_turn_runtime_configs",
   {
     id: text("id").primaryKey(),
     turnId: text("turn_id").notNull(),
-    flowId: text("flow_id").notNull(),
     providerId: text("provider_id").notNull(),
     authMode: text("auth_mode").notNull().default("api_key"),
     modelId: text("model_id").notNull(),
@@ -1803,7 +1786,6 @@ export const v2TurnRuntimeConfigs = sqliteTable(
   },
   (table) => ({
     turnIdx: uniqueIndex("v2_turn_runtime_configs_turn_idx").on(table.turnId),
-    flowIdx: index("v2_turn_runtime_configs_flow_idx").on(table.flowId),
     contextWindowCheck: check(
       "v2_turn_runtime_configs_context_window_check",
       sql`${table.contextWindowTokens} IS NULL OR ${table.contextWindowTokens} > 0`,
@@ -1811,11 +1793,10 @@ export const v2TurnRuntimeConfigs = sqliteTable(
   }),
 )
 
-export const v2Messages = sqliteTable(
+export const socratesMessages = sqliteTable(
   "v2_messages",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id"),
@@ -1832,7 +1813,7 @@ export const v2Messages = sqliteTable(
     metadataJson: text("metadata_json"),
   },
   (table) => ({
-    flowOrdinalIdx: uniqueIndex("v2_messages_flow_ordinal_idx").on(table.flowId, table.ordinal),
+    ordinalIdx: uniqueIndex("v2_messages_ordinal_idx").on(table.ordinal),
     turnIdx: index("v2_messages_turn_idx").on(table.turnId),
     goalCreatedIdx: index("v2_messages_goal_created_idx").on(table.goalId, table.createdAt),
     projectCreatedIdx: index("v2_messages_project_created_idx").on(table.projectId, table.createdAt),
@@ -1840,12 +1821,11 @@ export const v2Messages = sqliteTable(
   }),
 )
 
-export const v2MessageAttachments = sqliteTable(
+export const socratesMessageAttachments = sqliteTable(
   "v2_message_attachments",
   {
     id: text("id").primaryKey(),
     projectId: text("project_id").notNull(),
-    flowId: text("flow_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id"),
     messageId: text("message_id"),
@@ -1861,7 +1841,7 @@ export const v2MessageAttachments = sqliteTable(
     metadataJson: text("metadata_json"),
   },
   (table) => ({
-    flowCreatedIdx: index("v2_message_attachments_flow_created_idx").on(table.flowId, table.createdAt),
+    createdIdx: index("v2_message_attachments_created_idx").on(table.createdAt),
     messageIdx: index("v2_message_attachments_message_idx").on(table.messageId),
     artifactIdx: uniqueIndex("v2_message_attachments_artifact_idx").on(table.artifactId),
     projectStatusIdx: index("v2_message_attachments_project_status_idx").on(table.projectId, table.status),
@@ -1872,12 +1852,11 @@ export const v2MessageAttachments = sqliteTable(
 // Evidence rows are append-only for agent/runtime operations. Explicit user
 // deletion is authorized by a short-lived row in v2_deletion_authorizations;
 // turn-local release changes only the live model projection, never this row.
-export const v2EvidenceItems = sqliteTable(
+export const socratesEvidenceItems = sqliteTable(
   "v2_evidence_items",
   {
     id: text("id").primaryKey(),
     handle: text("handle").notNull(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id"),
@@ -1896,16 +1875,16 @@ export const v2EvidenceItems = sqliteTable(
   },
   (table) => ({
     handleIdx: uniqueIndex("v2_evidence_items_handle_idx").on(table.handle),
-    flowCreatedIdx: index("v2_evidence_items_flow_created_idx").on(table.flowId, table.createdAt),
+    createdIdx: index("v2_evidence_items_created_idx").on(table.createdAt),
     goalCreatedIdx: index("v2_evidence_items_goal_created_idx").on(table.goalId, table.createdAt),
     sourceIdx: index("v2_evidence_items_source_idx").on(table.sourceKind, table.sourceId),
-    contentHashIdx: index("v2_evidence_items_content_hash_idx").on(table.flowId, table.contentHash),
+    contentHashIdx: index("v2_evidence_items_content_hash_idx").on(table.contentHash),
     sizeCheck: check("v2_evidence_items_size_check", sql`${table.sizeBytes} IS NULL OR ${table.sizeBytes} >= 0`),
     tokenCheck: check("v2_evidence_items_token_check", sql`${table.tokenEstimate} IS NULL OR ${table.tokenEstimate} >= 0`),
   }),
 )
 
-export const v2DeletionAuthorizations = sqliteTable(
+export const socratesDeletionAuthorizations = sqliteTable(
   "v2_deletion_authorizations",
   {
     id: text("id").primaryKey(),
@@ -1915,17 +1894,16 @@ export const v2DeletionAuthorizations = sqliteTable(
   },
   (table) => ({
     targetIdx: uniqueIndex("v2_deletion_authorizations_target_idx").on(table.targetKind, table.targetId),
-    kindCheck: check("v2_deletion_authorizations_kind_check", sql`${table.targetKind} IN ('turn', 'goal', 'flow')`),
+    kindCheck: check("v2_deletion_authorizations_kind_check", sql`${table.targetKind} IN ('turn', 'goal', 'task')`),
   }),
 )
 
-// Legacy compatibility tables retained non-destructively for existing V2 data.
+// Legacy compatibility tables retained non-destructively for existing Socrates data.
 // They have no active producer, public contract, or context-policy authority.
-export const v2ContextItems = sqliteTable(
+export const socratesContextItems = sqliteTable(
   "v2_context_items",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id"),
     kind: text("kind").notNull(),
@@ -1940,7 +1918,7 @@ export const v2ContextItems = sqliteTable(
     metadataJson: text("metadata_json"),
   },
   (table) => ({
-    flowStateRankIdx: index("v2_context_items_flow_state_rank_idx").on(table.flowId, table.state, table.rank),
+    stateRankIdx: index("v2_context_items_state_rank_idx").on(table.state, table.rank),
     goalStateIdx: index("v2_context_items_goal_state_idx").on(table.goalId, table.state),
     turnIdx: index("v2_context_items_turn_idx").on(table.turnId),
     tokenCheck: check("v2_context_items_token_check", sql`${table.tokenEstimate} >= 0`),
@@ -1953,7 +1931,7 @@ export const v2ContextItems = sqliteTable(
   }),
 )
 
-export const v2ContextItemSources = sqliteTable(
+export const socratesContextItemSources = sqliteTable(
   "v2_context_item_sources",
   {
     id: text("id").primaryKey(),
@@ -1977,11 +1955,10 @@ export const v2ContextItemSources = sqliteTable(
   }),
 )
 
-export const v2ContextDispositions = sqliteTable(
+export const socratesContextDispositions = sqliteTable(
   "v2_context_dispositions",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id").notNull(),
     contextItemId: text("context_item_id").notNull(),
@@ -1998,7 +1975,7 @@ export const v2ContextDispositions = sqliteTable(
   },
   (table) => ({
     itemVersionIdx: uniqueIndex("v2_context_dispositions_item_version_idx").on(table.contextItemId, table.version),
-    flowCreatedIdx: index("v2_context_dispositions_flow_created_idx").on(table.flowId, table.createdAt),
+    createdIdx: index("v2_context_dispositions_created_idx").on(table.createdAt),
     goalDispositionIdx: index("v2_context_dispositions_goal_disposition_idx").on(table.goalId, table.disposition),
     turnIdx: index("v2_context_dispositions_turn_idx").on(table.turnId),
     versionCheck: check("v2_context_dispositions_version_check", sql`${table.version} > 0`),
@@ -2013,11 +1990,10 @@ export const v2ContextDispositions = sqliteTable(
   }),
 )
 
-export const v2RuntimeEvents = sqliteTable(
+export const socratesRuntimeEvents = sqliteTable(
   "v2_runtime_events",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id"),
@@ -2028,21 +2004,20 @@ export const v2RuntimeEvents = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (table) => ({
-    flowSequenceIdx: uniqueIndex("v2_runtime_events_flow_sequence_idx").on(table.flowId, table.sequence),
+    sequenceIdx: uniqueIndex("v2_runtime_events_sequence_idx").on(table.sequence),
     projectSequenceIdx: index("v2_runtime_events_project_sequence_idx").on(table.projectId, table.sequence),
     goalSequenceIdx: index("v2_runtime_events_goal_sequence_idx").on(table.goalId, table.sequence),
     turnSequenceIdx: index("v2_runtime_events_turn_sequence_idx").on(table.turnId, table.sequence),
     typeIdx: index("v2_runtime_events_type_idx").on(table.type),
     sequenceCheck: check("v2_runtime_events_sequence_check", sql`${table.sequence} > 0`),
-    typeCheck: check("v2_runtime_events_type_check", sql`${table.type} LIKE 'v2.%'`),
+    typeCheck: check("v2_runtime_events_type_check", sql`${table.type} LIKE 'socrates.%'`),
   }),
 )
 
-export const v2ModelCalls = sqliteTable(
+export const socratesModelCalls = sqliteTable(
   "v2_model_calls",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id"),
@@ -2061,16 +2036,15 @@ export const v2ModelCalls = sqliteTable(
   },
   (table) => ({
     turnIdx: index("v2_model_calls_turn_idx").on(table.turnId),
-    flowStartedIdx: index("v2_model_calls_flow_started_idx").on(table.flowId, table.startedAt),
+    startedIdx: index("v2_model_calls_started_idx").on(table.startedAt),
     roleStatusIdx: index("v2_model_calls_role_status_idx").on(table.role, table.status),
   }),
 )
 
-export const v2UsageEvents = sqliteTable(
+export const socratesUsageEvents = sqliteTable(
   "v2_usage_events",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id"),
@@ -2090,7 +2064,7 @@ export const v2UsageEvents = sqliteTable(
   },
   (table) => ({
     modelCallIdx: uniqueIndex("v2_usage_events_model_call_idx").on(table.modelCallId),
-    flowCreatedIdx: index("v2_usage_events_flow_created_idx").on(table.flowId, table.createdAt),
+    createdIdx: index("v2_usage_events_created_idx").on(table.createdAt),
     turnIdx: index("v2_usage_events_turn_idx").on(table.turnId),
     tokenCheck: check(
       "v2_usage_events_token_check",
@@ -2100,11 +2074,10 @@ export const v2UsageEvents = sqliteTable(
   }),
 )
 
-export const v2ToolCalls = sqliteTable(
+export const socratesToolCalls = sqliteTable(
   "v2_tool_calls",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id").notNull(),
@@ -2123,17 +2096,16 @@ export const v2ToolCalls = sqliteTable(
   },
   (table) => ({
     turnIdx: index("v2_tool_calls_turn_idx").on(table.turnId),
-    flowStatusIdx: index("v2_tool_calls_flow_status_idx").on(table.flowId, table.status),
+    statusIdx: index("v2_tool_calls_status_idx").on(table.status, table.startedAt),
     goalStartedIdx: index("v2_tool_calls_goal_started_idx").on(table.goalId, table.startedAt),
     approvalIdx: index("v2_tool_calls_approval_idx").on(table.approvalId),
   }),
 )
 
-export const v2Approvals = sqliteTable(
+export const socratesApprovals = sqliteTable(
   "v2_approvals",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id").notNull(),
@@ -2150,17 +2122,16 @@ export const v2Approvals = sqliteTable(
     metadataJson: text("metadata_json"),
   },
   (table) => ({
-    flowStatusIdx: index("v2_approvals_flow_status_idx").on(table.flowId, table.status),
+    statusIdx: index("v2_approvals_status_idx").on(table.status, table.requestedAt),
     turnIdx: index("v2_approvals_turn_idx").on(table.turnId),
     toolCallIdx: uniqueIndex("v2_approvals_tool_call_idx").on(table.toolCallId),
   }),
 )
 
-export const v2TerminalSessions = sqliteTable(
+export const socratesTerminalSessions = sqliteTable(
   "v2_terminal_sessions",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id"),
@@ -2185,7 +2156,7 @@ export const v2TerminalSessions = sqliteTable(
     metadataJson: text("metadata_json"),
   },
   (table) => ({
-    flowStatusIdx: index("v2_terminal_sessions_flow_status_idx").on(table.flowId, table.status),
+    statusIdx: index("v2_terminal_sessions_status_idx").on(table.status, table.updatedAt),
     goalStatusIdx: index("v2_terminal_sessions_goal_status_idx").on(table.goalId, table.status),
     turnIdx: index("v2_terminal_sessions_turn_idx").on(table.turnId),
     processIdx: index("v2_terminal_sessions_process_idx").on(table.processId),
@@ -2193,12 +2164,11 @@ export const v2TerminalSessions = sqliteTable(
   }),
 )
 
-export const v2TerminalOutputChunks = sqliteTable(
+export const socratesTerminalOutputChunks = sqliteTable(
   "v2_terminal_output_chunks",
   {
     id: text("id").primaryKey(),
     terminalSessionId: text("terminal_session_id").notNull(),
-    flowId: text("flow_id").notNull(),
     sequence: integer("sequence").notNull(),
     stream: text("stream").notNull(),
     text: text("text").notNull(),
@@ -2210,16 +2180,15 @@ export const v2TerminalOutputChunks = sqliteTable(
       table.terminalSessionId,
       table.sequence,
     ),
-    flowCreatedIdx: index("v2_terminal_output_chunks_flow_created_idx").on(table.flowId, table.createdAt),
+    createdIdx: index("v2_terminal_output_chunks_created_idx").on(table.createdAt),
     sequenceCheck: check("v2_terminal_output_chunks_sequence_check", sql`${table.sequence} >= 0`),
   }),
 )
 
-export const v2Errors = sqliteTable(
+export const socratesErrors = sqliteTable(
   "v2_errors",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id"),
@@ -2232,17 +2201,16 @@ export const v2Errors = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (table) => ({
-    flowCreatedIdx: index("v2_errors_flow_created_idx").on(table.flowId, table.createdAt),
+    createdIdx: index("v2_errors_created_idx").on(table.createdAt),
     turnIdx: index("v2_errors_turn_idx").on(table.turnId),
     codeIdx: index("v2_errors_code_idx").on(table.code),
   }),
 )
 
-export const v2Artifacts = sqliteTable(
+export const socratesArtifacts = sqliteTable(
   "v2_artifacts",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id"),
@@ -2256,7 +2224,7 @@ export const v2Artifacts = sqliteTable(
     metadataJson: text("metadata_json"),
   },
   (table) => ({
-    flowCreatedIdx: index("v2_artifacts_flow_created_idx").on(table.flowId, table.createdAt),
+    createdIdx: index("v2_artifacts_created_idx").on(table.createdAt),
     goalCreatedIdx: index("v2_artifacts_goal_created_idx").on(table.goalId, table.createdAt),
     turnIdx: index("v2_artifacts_turn_idx").on(table.turnId),
     contentHashIdx: index("v2_artifacts_content_hash_idx").on(table.contentHash),
@@ -2264,11 +2232,10 @@ export const v2Artifacts = sqliteTable(
   }),
 )
 
-export const v2AgentTasks = sqliteTable(
+export const socratesAgentTasks = sqliteTable(
   "v2_agent_tasks",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     rootTurnId: text("root_turn_id").notNull(),
@@ -2282,18 +2249,17 @@ export const v2AgentTasks = sqliteTable(
     metadataJson: text("metadata_json"),
   },
   (table) => ({
-    flowStatusIdx: index("v2_agent_tasks_flow_status_idx").on(table.flowId, table.status),
+    statusIdx: index("v2_agent_tasks_status_idx").on(table.status, table.updatedAt),
     goalStatusIdx: index("v2_agent_tasks_goal_status_idx").on(table.goalId, table.status),
     currentTurnIdx: index("v2_agent_tasks_current_turn_idx").on(table.currentTurnId),
     rootTurnIdx: uniqueIndex("v2_agent_tasks_root_turn_idx").on(table.rootTurnId),
   }),
 )
 
-export const v2SpeechJobs = sqliteTable(
+export const socratesSpeechJobs = sqliteTable(
   "v2_speech_jobs",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id"),
@@ -2317,7 +2283,7 @@ export const v2SpeechJobs = sqliteTable(
     metadataJson: text("metadata_json"),
   },
   (table) => ({
-    flowStatusIdx: index("v2_speech_jobs_flow_status_idx").on(table.flowId, table.status),
+    statusIdx: index("v2_speech_jobs_status_idx").on(table.status, table.createdAt),
     messageIdx: index("v2_speech_jobs_message_idx").on(table.messageId),
     turnIdx: index("v2_speech_jobs_turn_idx").on(table.turnId),
     engineModelIdx: index("v2_speech_jobs_engine_model_idx").on(table.engine, table.modelId),
@@ -2329,11 +2295,10 @@ export const v2SpeechJobs = sqliteTable(
   }),
 )
 
-export const v2Feedback = sqliteTable(
+export const socratesFeedback = sqliteTable(
   "v2_feedback",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id"),
@@ -2349,7 +2314,7 @@ export const v2Feedback = sqliteTable(
   },
   (table) => ({
     messageIdx: uniqueIndex("v2_feedback_message_idx").on(table.messageId),
-    flowCreatedIdx: index("v2_feedback_flow_created_idx").on(table.flowId, table.createdAt),
+    createdIdx: index("v2_feedback_created_idx").on(table.createdAt),
     goalCreatedIdx: index("v2_feedback_goal_created_idx").on(table.goalId, table.createdAt),
     targetIdx: index("v2_feedback_target_idx").on(table.turnId, table.modelCallId),
     ratingCheck: check("v2_feedback_rating_check", sql`${table.rating} IN ('thumbs_up', 'thumbs_down')`),
@@ -2358,11 +2323,10 @@ export const v2Feedback = sqliteTable(
 
 // Secret values are intentionally never persisted here. This table owns only
 // the resumable request lifecycle and the non-secret MCP binding metadata.
-export const v2CredentialInputRequests = sqliteTable(
+export const socratesCredentialInputRequests = sqliteTable(
   "v2_credential_input_requests",
   {
     id: text("id").primaryKey(),
-    flowId: text("flow_id").notNull(),
     projectId: text("project_id").notNull(),
     goalId: text("goal_id"),
     turnId: text("turn_id").notNull(),
@@ -2378,7 +2342,7 @@ export const v2CredentialInputRequests = sqliteTable(
     metadataJson: text("metadata_json"),
   },
   (table) => ({
-    flowStatusIdx: index("v2_credential_input_requests_flow_status_idx").on(table.flowId, table.status),
+    statusIdx: index("v2_credential_input_requests_status_idx").on(table.status, table.requestedAt),
     turnStatusIdx: index("v2_credential_input_requests_turn_status_idx").on(table.turnId, table.status),
     toolCallIdx: uniqueIndex("v2_credential_input_requests_tool_call_idx").on(table.toolCallId, table.envKey),
     statusCheck: check(

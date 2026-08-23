@@ -40,6 +40,7 @@ export function InstructionsDialog({
     <Modal
       title="Set project instructions"
       description={`Provide Socrates with relevant instructions and information for chats within ${projectName}.`}
+      onClose={isSaving ? undefined : onCancel}
       footer={
         <>
           <Button type="button" variant="outline" onClick={onCancel} disabled={isSaving}>

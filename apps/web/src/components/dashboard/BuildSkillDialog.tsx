@@ -96,6 +96,7 @@ export function BuildSkillDialog({
     <Modal
       title={onPreviewImport ? title.replace(/^Build /, "Add ") : title}
       description={description ?? `Describe the reusable workflow Socrates should learn for ${projectName ?? "this project"}.`}
+      onClose={busy ? undefined : onCancel}
       footer={
         <>
           <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button>

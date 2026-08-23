@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bot, BrainCircuit, CheckCircle2, Loader2, PencilLine, Sparkles, Type } from "lucide-react";
+import { Bot, BrainCircuit, CheckCircle2, Loader2, PencilLine, Sparkles } from "lucide-react";
 import type { ModelOption, ModelSettingsResolution, ModelThinkingOption, WorkerModelRole, WorkerModelSettings } from "@socrates/contracts";
 import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
@@ -21,7 +21,7 @@ const workers: Array<{
   {
     id: "socrates_context_compactor",
     title: "Socrates Context Compactor",
-    description: "Compresses long Classic and Flow chat context.",
+    description: "Compacts older completed Socrates work with provenance when model context reaches the fixed trigger.",
     icon: BrainCircuit,
   },
   {
@@ -29,12 +29,6 @@ const workers: Array<{
     title: "Memory Context Compactor",
     description: "Compresses long Memory Agent and Skill Writer context.",
     icon: BrainCircuit,
-  },
-  {
-    id: "title_generator",
-    title: "Title Generator",
-    description: "Creates short names for new conversations.",
-    icon: Type,
   },
   {
     id: "frontier",

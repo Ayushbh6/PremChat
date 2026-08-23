@@ -59,7 +59,6 @@ const runtimeConfig: RuntimeConfig = {
   thinkingEffort: target.thinkingEffort,
   approvalMode: "read_only_auto",
   sandboxMode: "read_only",
-  contextWindowTokens: target.contextWindowTokens,
 }
 
 const turnId = `provider_acceptance_${target.id}`
@@ -144,7 +143,9 @@ const prepared = await new ContextPipeline().prepare({
     compressorThinkingEnabled: target.thinkingEnabled,
     compressorThinkingEffort: target.thinkingEffort,
     compressorFallbacks: [],
-    completeSnapshot: (snapshot) => snapshots.push(snapshot),
+    completeSnapshot: (snapshot) => {
+      snapshots.push(snapshot)
+    },
   },
 })
 

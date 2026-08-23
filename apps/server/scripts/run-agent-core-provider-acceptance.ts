@@ -5,7 +5,6 @@ import {
   AgentInstance,
   capabilityCatalog,
   defineAgent,
-  TitleGeneratorAgent,
   type ToolExecutors,
 } from "@socrates/core"
 import { createDefaultModelProvider } from "@socrates/providers"
@@ -32,24 +31,6 @@ const runtimeConfig = {
   sandboxMode: "read_only" as const,
   contextWindowTokens: 128_000,
 }
-
-const title = await new TitleGeneratorAgent().run({
-  provider,
-  modelSettings: {
-    providerId: "openrouter",
-    authMode: "api_key",
-    modelId,
-    thinkingEnabled: false,
-    thinkingEffort: "none",
-  },
-  userContent: "We are establishing one canonical provider-neutral shared agent runtime and its enforceable role contracts.",
-  projectId: "agent_core_acceptance",
-  conversationId: "agent_core_title",
-  sessionId: "agent_core_title",
-  turnId: "agent_core_title",
-  workspacePath: socratesHome,
-})
-if (!title.output.title.trim()) throw new Error("The production Title Generator returned an empty title.")
 
 const acceptanceSchema = z.object({
   observedTimeZone: z.literal("Europe/Vienna"),
@@ -134,10 +115,7 @@ console.log(JSON.stringify({
   ok: true,
   providerId: "openrouter",
   modelId,
-  productionDefinition: {
-    id: "title-generator",
-    title: title.output.title,
-  },
+  productionDefinition: { id: "socrates-main" },
   sharedRuntimeProbe: {
     definitionId: acceptanceDefinition.id,
     completionMode: result.mode,

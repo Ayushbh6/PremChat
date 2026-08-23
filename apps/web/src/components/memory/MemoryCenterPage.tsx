@@ -39,7 +39,6 @@ import type {
 } from "@socrates/contracts";
 import { BuildSkillDialog } from "@/components/dashboard/BuildSkillDialog";
 import { MemoryFileViewer } from "@/components/memory/MemoryFileViewer";
-import { McpServersPanel } from "@/components/mcp/McpServersPanel";
 import { Button } from "@/components/ui/Button";
 import { Switch } from "@/components/ui/Switch";
 import { api } from "@/lib/api";
@@ -283,9 +282,9 @@ export function MemoryCenterPage() {
         <header className="flex-none border-b border-slate-200 bg-white/95 px-4 py-3 sm:px-6">
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
-              <Link href="/projects" className="inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-slate-900">
+              <Link href="/chat" className="inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-slate-900">
                 <ArrowLeft className="size-4" />
-                Back to projects
+                Back to Socrates
               </Link>
               <div className="mt-2 flex flex-wrap items-center gap-3">
                 <div className="flex size-9 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
@@ -482,12 +481,6 @@ export function MemoryCenterPage() {
                     </div>
                   </section>
 
-                  <McpServersPanel
-                    scope="global"
-                    title="Global MCP servers"
-                    description="Bundled and user-added MCP servers available to Socrates in every workspace."
-                    variant="section"
-                  />
                 </>
               ) : (
                 <div className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading Memory Center...</div>

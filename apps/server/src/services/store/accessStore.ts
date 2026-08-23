@@ -13,7 +13,7 @@ import type {
 } from "@socrates/contracts"
 import { createId, nowIso, SocratesError } from "@socrates/shared"
 import { and, asc, eq, inArray } from "drizzle-orm"
-import { filesystemAccessSettings, filesystemRoots, projectWorkspaces, projects, turnFilesystemAuthorizations } from "../../db/schema"
+import { filesystemAccessSettings, filesystemRoots, projectWorkspaces, projects, turnFilesystemAuthorizations, users } from "../../db/schema"
 import { StoreBase } from "./shared"
 
 type FilesystemRootRow = typeof filesystemRoots.$inferSelect
@@ -72,15 +72,29 @@ const mapRoot = (row: FilesystemRootRow): FilesystemRoot => ({
 })
 
 export class AccessStore extends StoreBase {
+  getDefaultWorkingRoot(): string | undefined {
+    const user = this.getCurrentUserRow()
+    if (!user) return undefined
+    this.ensureSettings(user.id)
+    this.importLegacyWorkspaces(user.id)
+    const roots = this.handle.db
+      .select()
+      .from(filesystemRoots)
+      .where(and(eq(filesystemRoots.userId, user.id), eq(filesystemRoots.status, "active")))
+      .orderBy(asc(filesystemRoots.createdAt))
+      .all()
+    return roots.find((root) => root.isDefault)?.path ?? roots[0]?.path
+  }
+
   getState(): FilesystemAccessState {
-    const user = this.requireUser()
+    const user = this.requireAccessUser()
     this.ensureSettings(user.id)
     this.importLegacyWorkspaces(user.id)
     return this.stateForUser(user.id)
   }
 
   setMode(mode: FilesystemAccessMode): FilesystemAccessState {
-    const user = this.requireUser()
+    const user = this.requireAccessUser()
     this.ensureSettings(user.id)
     this.importLegacyWorkspaces(user.id)
     const now = nowIso()
@@ -93,7 +107,7 @@ export class AccessStore extends StoreBase {
   }
 
   addRoot(input: AddFilesystemRootRequest): AddFilesystemRootResponse {
-    const user = this.requireUser()
+    const user = this.requireAccessUser()
     this.ensureSettings(user.id)
     const rootPath = canonicalExistingDirectory(input.path)
     const existing = this.handle.db
@@ -141,7 +155,7 @@ export class AccessStore extends StoreBase {
   }
 
   updateRoot(rootId: string, input: UpdateFilesystemRootRequest): UpdateFilesystemRootResponse {
-    const user = this.requireUser()
+    const user = this.requireAccessUser()
     const existing = this.mustGetRootRow(user.id, rootId)
     if (existing.status === "revoked") {
       throw new SocratesError("filesystem_root_not_found", "Selected path was not found.", { recoverable: true })
@@ -168,7 +182,7 @@ export class AccessStore extends StoreBase {
   }
 
   removeRoot(rootId: string): RemoveFilesystemRootResponse {
-    const user = this.requireUser()
+    const user = this.requireAccessUser()
     const existing = this.mustGetRootRow(user.id, rootId)
     if (existing.status === "revoked") {
       throw new SocratesError("filesystem_root_not_found", "Selected path was not found.", { recoverable: true })
@@ -192,7 +206,7 @@ export class AccessStore extends StoreBase {
       .get()
     if (prior) return this.mapSnapshot(prior)
 
-    const user = this.requireUser()
+    const user = this.requireAccessUser()
     const state = this.getState()
     const activeRoots = state.roots.filter((root) => root.status === "active")
     const normalizedWorkspace = workspacePath ? canonicalLegacyPath(workspacePath).path : undefined
@@ -241,9 +255,15 @@ export class AccessStore extends StoreBase {
     }).run()
   }
 
+  private requireAccessUser(): typeof users.$inferSelect {
+    const user = this.getCurrentUserRow()
+    if (!user) throw new SocratesError("user_not_found", "Socrates needs the current user record before configuring filesystem access.")
+    return user
+  }
+
   private importLegacyWorkspaces(userId: string): void {
     const rows = this.handle.db
-      .select({ projectId: projectWorkspaces.projectId, path: projectWorkspaces.path })
+      .select({ projectId: projectWorkspaces.projectId, path: projectWorkspaces.path, projectMetadataJson: projects.metadataJson })
       .from(projectWorkspaces)
       .innerJoin(projects, eq(projects.id, projectWorkspaces.projectId))
       .where(and(

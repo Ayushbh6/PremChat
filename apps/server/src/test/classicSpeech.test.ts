@@ -19,7 +19,7 @@ describe("Classic conversation speech transcription", () => {
     await Promise.all(apps.splice(0).map((app) => app.close()))
   })
 
-  it("transcribes temporary WAV audio without requiring V2 flow persistence", async () => {
+  it("transcribes temporary WAV audio without requiring Socrates flow persistence", async () => {
     const app = Fastify()
     apps.push(app)
     await app.register(multipart)

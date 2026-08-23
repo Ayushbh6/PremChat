@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { z } from "zod"
-import type { ModelProvider, StructuredModelRequest } from "@socrates/providers"
+import type { ModelProvider } from "@socrates/providers"
 import { AgentInstance } from "../agent/AgentInstance"
 import { defineAgent } from "../agent/AgentDefinition"
 import { AgentRuntime } from "../agent/AgentRuntime"
@@ -40,7 +40,7 @@ const countTokens: ModelProvider["countTokens"] = async (request) => ({
 
 describe("AgentInstance", () => {
   it("runs a declared tool-capable agent through the injected shared runtime and context pipeline", async () => {
-    const requests: Array<{ system: string; tools: string[] }> = []
+    const requests: Array<{ system: string; tools: string[]; structuredOutputSchema: unknown; messages: unknown }> = []
     let preparedCalls = 0
     const contextPipeline = new ContextPipeline()
     const runtime = new AgentRuntime({
@@ -51,20 +51,28 @@ describe("AgentInstance", () => {
       precompute: (input) => contextPipeline.precompute(input),
     })
     let streamed = false
+    let streamCalls = 0
     const provider: ModelProvider = {
       countTokens,
       async *stream(request) {
         streamed = true
-        requests.push({ system: request.system, tools: (request.tools ?? []).map((tool) => tool.name) })
-        yield {
-          type: "model.tool_call.completed",
-          toolCall: { toolCallId: "time_1", toolName: "current_time", input: {} },
+        streamCalls += 1
+        requests.push({
+          system: request.system,
+          tools: (request.tools ?? []).map((tool) => tool.name),
+          structuredOutputSchema: request.structuredOutputSchema,
+          messages: request.messages,
+        })
+        if (streamCalls === 1) {
+          yield {
+            type: "model.tool_call.completed",
+            toolCall: { toolCallId: "time_1", toolName: "current_time", input: {} },
+          }
+          yield { type: "model.completed", finishReason: "tool-calls" }
+          return
         }
-        yield { type: "model.completed", finishReason: "tool-calls" }
-      },
-      async generateStructured<TOutput>(request: StructuredModelRequest<TOutput>) {
-        requests.push({ system: request.system, tools: [] })
-        return { output: { ok: true } as TOutput }
+        yield { type: "model.answer.delta", text: JSON.stringify({ ok: true }) }
+        yield { type: "model.completed", finishReason: "stop" }
       },
     }
     const definition = defineAgent<{ voice: string }, { ok: true }>({
@@ -112,8 +120,21 @@ describe("AgentInstance", () => {
     })
     expect(streamed).toBe(true)
     expect(preparedCalls).toBe(2)
-    expect(requests[0]).toEqual({ system: "Voice: warm and exact", tools: ["current_time"] })
-    expect(requests[1]).toEqual({ system: "Voice: warm and exact", tools: [] })
+    expect(requests[0]).toMatchObject({
+      system: "Voice: warm and exact",
+      tools: ["current_time"],
+      structuredOutputSchema: definition.completion.mode === "streaming_tools_structured_final"
+        ? definition.completion.schema
+        : undefined,
+    })
+    expect(requests[1]).toMatchObject({
+      system: "Voice: warm and exact",
+      tools: [],
+      structuredOutputSchema: definition.completion.mode === "streaming_tools_structured_final"
+        ? definition.completion.schema
+        : undefined,
+    })
+    expect(JSON.stringify(requests[1]?.messages)).not.toContain("Finish now")
   })
 
   it("rejects a capability that is not allowed for the declared role before provider execution", async () => {
@@ -221,16 +242,13 @@ describe("AgentInstance", () => {
         capabilityIds: expect.arrayContaining(["tool.trace_retrieve.global", "tool.skill_write"]),
       }),
       expect.objectContaining({
-        id: "title-generator",
-        completionMode: "structured",
-        capabilityIds: expect.arrayContaining(["worker.title_generator", "context.stable_prompt", "context.tool_definitions"]),
-      }),
-      expect.objectContaining({
         id: "global-memory",
         completionMode: "streaming_tools_structured_final",
-        capabilityIds: expect.arrayContaining(["tool.trace_retrieve.global", "tool.memory_notes", "tool.edit_files"]),
+        capabilityIds: expect.arrayContaining(["tool.memory_notes", "tool.edit_files"]),
       }),
       expect.objectContaining({ id: "socrates-context-compactor", modelRole: "socrates_context_compactor" }),
     ]))
+    const memory = inventory.find((entry) => entry.id === "global-memory")
+    expect(memory?.capabilityIds).not.toEqual(expect.arrayContaining(["tool.trace_retrieve.global", "tool.read", "tool.search"]))
   })
 })

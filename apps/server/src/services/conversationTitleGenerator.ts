@@ -1,6 +1,5 @@
 import fs from "node:fs"
 import type { Message, MessageAttachment, ProviderAuthMode, ProviderId, ThinkingEffort, WorkerModelSettings } from "@socrates/contracts"
-import { TitleGeneratorAgent } from "@socrates/core"
 import type { ModelMessageContent, ModelMessagePart, ModelProvider, ModelUsage } from "@socrates/providers"
 
 export const conversationTitleProviderId: ProviderId = "openrouter"
@@ -70,25 +69,15 @@ const runTitleCandidate = async (input: {
   input.abortSignal?.addEventListener("abort", abortFromParent, { once: true })
 
   try {
-    const result = await new TitleGeneratorAgent().run({
-      provider: input.provider,
-      modelSettings: input.modelSettings,
-      userContent: input.userContent,
-      projectId: input.projectId,
-      conversationId: input.conversationId,
-      sessionId: input.sessionId,
-      turnId: input.turnId,
-      workspacePath: input.workspacePath,
-      abortSignal: abortController.signal,
-    })
-    const title = sanitizeGeneratedTitle(result.output.title, input.fallbackTitle)
-    const usage = mergeUsages(result.usages)
+    const source = typeof input.userContent === "string"
+      ? input.userContent
+      : input.userContent.find((part) => part.type === "text")?.text ?? input.fallbackTitle
+    const title = sanitizeGeneratedTitle(source, input.fallbackTitle)
     return title
       ? {
           title,
           providerId: input.modelSettings.providerId,
           modelId: input.modelSettings.modelId,
-          ...(usage ? { usage } : {}),
         }
       : undefined
   } catch {

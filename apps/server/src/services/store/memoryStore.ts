@@ -55,7 +55,7 @@ import type {
   SkillImportPreview,
   CommitSkillImportResponse,
 } from "@socrates/contracts"
-import { SoulConfirmationAgent, type StableCachePreludeSnapshot } from "@socrates/core"
+import type { StableCachePreludeSnapshot } from "@socrates/core"
 import type { ModelProvider, ModelUsage, ProviderCredentialResolver } from "@socrates/providers"
 import { estimateTextTokens } from "@socrates/providers"
 import { createId, nowIso, SocratesError } from "@socrates/shared"
@@ -181,7 +181,7 @@ type GlobalMemoryAgentRunInput = {
 }
 
 type GlobalTurnManifestRow = {
-  runtimeKind: "classic" | "v2_flow"
+  runtimeKind: "classic" | "socrates"
   sequence: number
   projectId: string
   projectName: string
@@ -688,7 +688,7 @@ export class MemoryStore extends StoreBase {
     turnId: string
     messageId?: string
     messageExcerpt?: string
-    sourceRuntime?: "classic" | "v2_flow"
+    sourceRuntime?: "classic" | "socrates"
     appendClassicEvent?: boolean
   }): MemoryNoteToolOutput {
     this.ensureGlobalKnowledge()
@@ -844,7 +844,7 @@ export class MemoryStore extends StoreBase {
     this.handle.db.update(memoryNotes).set({ status: "done", completedAt, outcome, resolution }).where(eq(memoryNotes.id, row.id)).run()
     const updated = this.mustGetMemoryNote(input.noteNumber as number)
     const sourceMetadata = parseJsonObject(updated.metadataJson)
-    if (sourceMetadata.sourceRuntime !== "v2_flow") {
+    if (sourceMetadata.sourceRuntime !== "socrates") {
       this.appendEvent({
         ...(updated.projectId ? { projectId: updated.projectId } : {}),
         ...(updated.conversationId ? { conversationId: updated.conversationId } : {}),
@@ -1978,15 +1978,15 @@ export class MemoryStore extends StoreBase {
           LIMIT ?`,
       )
       .all(lastProcessedEventSequence, GLOBAL_MEMORY_AGENT_MAX_TURNS) as Array<Omit<GlobalTurnManifestRow, "runtimeKind">>
-    const v2Rows = this.handle.sqlite
+    const socratesRows = this.handle.sqlite
       .prepare(
         `SELECT COALESCE(MAX(re.sequence), t.ordinal) AS sequence,
                 t.project_id AS projectId,
                 p.name AS projectName,
-                t.flow_id AS conversationId,
+                'global-socrates' AS conversationId,
                 CASE WHEN g.title IS NULL OR trim(g.title) = ''
-                     THEN 'Seamless Flow'
-                     ELSE 'Seamless Flow · ' || g.title END AS conversationTitle,
+                     THEN 'Socrates'
+                     ELSE 'Socrates · ' || g.title END AS conversationTitle,
                 t.id AS sessionId,
                 t.id AS turnId,
                 COALESCE(t.completed_at, t.updated_at, t.started_at) AS createdAt,
@@ -1994,7 +1994,6 @@ export class MemoryStore extends StoreBase {
                 t.goal_id AS goalId,
                 g.title AS goalTitle
            FROM v2_turns t
-           JOIN v2_flows f ON f.id = t.flow_id AND f.project_id = t.project_id
            JOIN projects p ON p.id = t.project_id
            LEFT JOIN v2_goals g ON g.id = t.goal_id
            LEFT JOIN project_workspaces pw ON pw.project_id = t.project_id AND pw.is_primary = 1
@@ -2007,7 +2006,7 @@ export class MemoryStore extends StoreBase {
                WHERE completed_job.status = 'completed'
                  AND processed_turn.value = t.id
             )
-          GROUP BY t.id, t.project_id, p.name, t.flow_id, g.title, t.ordinal,
+          GROUP BY t.id, t.project_id, p.name, g.title, t.ordinal,
                    t.completed_at, t.updated_at, t.started_at, pw.path, t.goal_id
           ORDER BY createdAt ASC, t.id ASC
           LIMIT ?`,
@@ -2015,7 +2014,7 @@ export class MemoryStore extends StoreBase {
       .all(GLOBAL_MEMORY_AGENT_MAX_TURNS) as Array<Omit<GlobalTurnManifestRow, "runtimeKind">>
     const rows: GlobalTurnManifestRow[] = [
       ...classicRows.map((row) => ({ ...row, runtimeKind: "classic" as const })),
-      ...v2Rows.map((row) => ({ ...row, runtimeKind: "v2_flow" as const })),
+      ...socratesRows.map((row) => ({ ...row, runtimeKind: "socrates" as const })),
     ].sort((left, right) => {
       const time = Date.parse(left.createdAt) - Date.parse(right.createdAt)
       if (time !== 0) return time
@@ -2031,7 +2030,7 @@ export class MemoryStore extends StoreBase {
       }
       const entry: GlobalTurnManifestEntry = {
         ...row,
-        counts: row.runtimeKind === "v2_flow" ? this.countV2TurnArtifacts(row.turnId) : this.countTurnArtifacts(row.turnId),
+        counts: row.runtimeKind === "socrates" ? this.countSocratesTurnArtifacts(row.turnId) : this.countTurnArtifacts(row.turnId),
       }
       const renderedEntry = this.renderGlobalManifestEntry(entry, entries.length + 1)
       const entryTokensEstimate = estimateTextTokens(`\n${renderedEntry}`).inputTokens
@@ -2256,12 +2255,12 @@ export class MemoryStore extends StoreBase {
   }
 
   private renderGlobalManifestEntry(entry: GlobalTurnManifestEntry, index: number): string {
-    if (entry.runtimeKind === "v2_flow") {
+    if (entry.runtimeKind === "socrates") {
       return [
-        `## ${index}. Seamless Flow turn ${entry.sequence}`,
-        "runtime: V2 Seamless Flow",
+        `## ${index}. Socrates task ${entry.sequence}`,
+        "runtime: Socrates",
         `project: ${entry.projectName} (${entry.projectId})`,
-        `flow: ${entry.conversationTitle ?? "Seamless Flow"} (${entry.conversationId})`,
+        `surface: ${entry.conversationTitle ?? "Socrates"}`,
         entry.goalId ? `goal: ${entry.goalTitle ?? "Current goal"} (${entry.goalId})` : "goal: Current goal",
         `turnId: ${entry.turnId}`,
         `completedAt: ${entry.createdAt}`,
@@ -2304,7 +2303,7 @@ export class MemoryStore extends StoreBase {
     }
   }
 
-  private countV2TurnArtifacts(turnId: string): GlobalTurnManifestEntry["counts"] {
+  private countSocratesTurnArtifacts(turnId: string): GlobalTurnManifestEntry["counts"] {
     const count = (tableName: string, extraWhere = ""): number => {
       const row = this.handle.sqlite.prepare(`SELECT COUNT(*) AS count FROM ${tableName} WHERE turn_id = ? ${extraWhere}`).get(turnId) as { count: number }
       return row.count
@@ -2368,7 +2367,7 @@ export class MemoryStore extends StoreBase {
       return { fileChangeEvents: 0, distinctChangedFiles: 0 }
     }
     const classicTurnIds = entries.filter((entry) => entry.runtimeKind === "classic").map((entry) => entry.turnId)
-    const v2TurnIds = entries.filter((entry) => entry.runtimeKind === "v2_flow").map((entry) => entry.turnId)
+    const socratesTurnIds = entries.filter((entry) => entry.runtimeKind === "socrates").map((entry) => entry.turnId)
     const changedFiles = new Set<string>()
     const classicPlaceholders = classicTurnIds.map(() => "?").join(",")
     const fileRows = classicTurnIds.length === 0 ? [] : this.handle.sqlite
@@ -2398,23 +2397,23 @@ export class MemoryStore extends StoreBase {
       }
     }
 
-    const v2Placeholders = v2TurnIds.map(() => "?").join(",")
-    const v2MutationRows = v2TurnIds.length === 0 ? [] : this.handle.sqlite
+    const socratesPlaceholders = socratesTurnIds.map(() => "?").join(",")
+    const socratesMutationRows = socratesTurnIds.length === 0 ? [] : this.handle.sqlite
       .prepare(
         `SELECT tool_name AS toolName, result_json AS resultJson
            FROM v2_tool_calls
-          WHERE turn_id IN (${v2Placeholders})
+          WHERE turn_id IN (${socratesPlaceholders})
             AND status = 'completed'
             AND tool_name IN ('edit','apply_patch','project_docs','repo_docs')`,
       )
-      .all(...v2TurnIds) as Array<{ toolName: string; resultJson: string | null }>
-    for (const row of v2MutationRows) {
+      .all(...socratesTurnIds) as Array<{ toolName: string; resultJson: string | null }>
+    for (const row of socratesMutationRows) {
       const result = parseJsonObject(row.resultJson)
       for (const file of mutationPathsFromResult(result)) changedFiles.add(file)
     }
 
     return {
-      fileChangeEvents: fileRows.length + patchFileEvents + v2MutationRows.length,
+      fileChangeEvents: fileRows.length + patchFileEvents + socratesMutationRows.length,
       distinctChangedFiles: changedFiles.size,
     }
   }
@@ -2424,13 +2423,13 @@ export class MemoryStore extends StoreBase {
       return 0
     }
     const classicTurnIds = entries.filter((entry) => entry.runtimeKind === "classic").map((entry) => entry.turnId)
-    const v2TurnIds = entries.filter((entry) => entry.runtimeKind === "v2_flow").map((entry) => entry.turnId)
+    const socratesTurnIds = entries.filter((entry) => entry.runtimeKind === "socrates").map((entry) => entry.turnId)
     const classic = classicTurnIds.length === 0 ? 0 : (this.handle.sqlite
       .prepare(`SELECT COALESCE(SUM(total_tokens), 0) AS totalTokens FROM turn_usage_reports WHERE turn_id IN (${classicTurnIds.map(() => "?").join(",")})`)
       .get(...classicTurnIds) as { totalTokens: number | null }).totalTokens ?? 0
-    const v2 = v2TurnIds.length === 0 ? 0 : (this.handle.sqlite
-      .prepare(`SELECT COALESCE(SUM(total_tokens), 0) AS totalTokens FROM v2_usage_events WHERE turn_id IN (${v2TurnIds.map(() => "?").join(",")})`)
-      .get(...v2TurnIds) as { totalTokens: number | null }).totalTokens ?? 0
+    const v2 = socratesTurnIds.length === 0 ? 0 : (this.handle.sqlite
+      .prepare(`SELECT COALESCE(SUM(total_tokens), 0) AS totalTokens FROM v2_usage_events WHERE turn_id IN (${socratesTurnIds.map(() => "?").join(",")})`)
+      .get(...socratesTurnIds) as { totalTokens: number | null }).totalTokens ?? 0
     return Math.max(0, Math.floor(classic + v2))
   }
 
@@ -3789,90 +3788,11 @@ export class MemoryStore extends StoreBase {
       payload: { jobId, actionId: action.actionId, confirmationId, document, prompt: SOUL_CONFIRMATION_PROMPT },
     })
 
-    if (!this.options.provider) {
-      throw new SocratesError("memory_agent_provider_unavailable", "Soul confirmation requires the configured Memory Agent provider.", { recoverable: true })
+    return {
+      applied: false,
+      actionId: action.actionId,
+      error: "Identity changes require typed user acceptance in the Memory Center.",
     }
-    const confirmation = await new SoulConfirmationAgent().run({
-      provider: this.options.provider,
-      modelSettings: {
-        providerId: modelSettings.providerId,
-        modelId: modelSettings.modelId,
-        thinkingEnabled: modelSettings.thinkingEnabled,
-        ...(modelSettings.authMode ? { authMode: modelSettings.authMode } : {}),
-        ...(modelSettings.thinkingEffort ? { thinkingEffort: modelSettings.thinkingEffort } : {}),
-      },
-      targetPath,
-      ...(patch.rationale ? { rationale: patch.rationale } : {}),
-      ...(patch.oldText ? { oldText: patch.oldText } : {}),
-      ...(patch.newText ? { newText: patch.newText } : {}),
-      projectId,
-      conversationId: latest?.conversationId ?? jobId,
-      sessionId: latest?.sessionId ?? jobId,
-      turnId: latest?.turnId ?? jobId,
-      workspacePath: this.socratesHome,
-    })
-    const decision = confirmation.output.decision
-    this.handle.db.update(memoryAgentConfirmations).set({ responseText: decision, decision, decidedAt: nowIso() }).where(eq(memoryAgentConfirmations.id, confirmationId)).run()
-    this.appendEvent({
-      projectId,
-      ...scopedIds(latest ?? {}),
-      type: "memory.soul.confirmation.resolved",
-      source: "server",
-      payload: { jobId, actionId: action.actionId, confirmationId, document, decision },
-    })
-    if (decision !== "yes") {
-      const error = `Soul confirmation returned ${decision}.`
-      this.rejectMemoryAction(action.actionId, error)
-      return { applied: false, actionId: action.actionId, error }
-    }
-
-    const latestContent = readIfExists(targetPath) ?? ""
-    const validation = validateMemoryPatch(latestContent, patch)
-    if (!validation.ok) {
-      this.rejectMemoryAction(action.actionId, validation.error)
-      return { applied: false, actionId: action.actionId, error: validation.error }
-    }
-    const next = stampMemoryDocFrontmatter(validation.next, {
-      updatedAt: currentRuntimeTime().currentDateTime,
-      updatedBy: "edit_files",
-      lastEditedSection: lastEditedSection ?? "document",
-    })
-    try {
-      assertValidStructuredMemoryDoc(next, globalMemoryDocProfile(this.socratesHome, "identity"))
-    } catch (error) {
-      const message = `Identity edit was rejected before persistence: ${error instanceof Error ? error.message : String(error)}`
-      this.rejectMemoryAction(action.actionId, message)
-      return { applied: false, actionId: action.actionId, error: message }
-    }
-    writeFileAtomically(targetPath, next)
-    const afterHash = hashText(next)
-    this.handle.db.update(memoryAgentActions).set({ status: "applied", afterHash, appliedAt: nowIso() }).where(eq(memoryAgentActions.id, action.actionId)).run()
-    const notification = this.options.createNotification?.({
-      projectId,
-      ...(latest?.conversationId ? { conversationId: latest.conversationId } : {}),
-      ...(latest?.turnId ? { turnId: latest.turnId } : {}),
-      type: "memory.soul.updated",
-      title: "Socrates soul updated",
-      body: `${document.replace("_", " ")} was updated by the backend memory agent.`,
-      severity: "info",
-      payload: {
-        jobId,
-        actionId: action.actionId,
-        confirmationId,
-        document,
-        path: `primary/${document}.md`,
-        rationale: patch.rationale,
-        diff: simpleDiff(patch.oldText ?? "", patch.newText ?? ""),
-      },
-    })
-    this.appendEvent({
-      projectId,
-      ...scopedIds(latest ?? {}),
-      type: "memory.soul.updated",
-      source: "server",
-      payload: { jobId, actionId: action.actionId, confirmationId, document, path: targetPath, notificationId: notification?.id ?? createId("note"), rationale: patch.rationale },
-    })
-    return { applied: true, actionId: action.actionId }
   }
 
   private createMemoryAction(

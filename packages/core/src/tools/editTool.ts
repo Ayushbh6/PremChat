@@ -1,5 +1,6 @@
 import { editToolInputSchema, editToolOutputSchema } from "@socrates/contracts"
 import type { SocratesTool } from "./types"
+import { decideAccess } from "./accessPolicy"
 
 const previewEdit = (input: typeof editToolInputSchema._type): string => {
   if ("content" in input) {
@@ -12,18 +13,12 @@ const decideEditPolicy: SocratesTool<typeof editToolInputSchema._type, typeof ed
   input,
   context,
 ) => {
-  const readOnly = context.filesystemAuthorization
-    ? context.filesystemAuthorization.mode === "read_only"
-    : context.runtimeConfig.sandboxMode === "read_only" || context.runtimeConfig.approvalMode === "read_only_auto"
-  if (readOnly) {
-    return { type: "denied", reason: "File edits are not allowed in read-only mode." }
-  }
-
-  if (isSocratesOwnedWorkingPath(input.path)) {
-    return { type: "auto" }
-  }
-
-  if (context.runtimeConfig.approvalMode === "approve_all") {
+  if ((!context.filesystemAuthorization && context.runtimeConfig.approvalMode === "approve_all") || decideAccess({
+    authorization: context.filesystemAuthorization,
+    action: "structured_write",
+    targetPath: input.path,
+    workspacePath: context.workspacePath,
+  }) === "automatic") {
     return { type: "auto" }
   }
 
@@ -34,17 +29,12 @@ const decideEditPolicy: SocratesTool<typeof editToolInputSchema._type, typeof ed
     request: {
       actionKind: "file_write",
       title: "Approve file edit",
-      description: "Socrates wants to modify a file inside the current filesystem access scope.",
+      description: "Socrates wants to apply this exact file change outside the task's automatic write scope.",
       actionPreview: preview.diff.trim().length > 0 ? preview.diff : previewEdit(input),
       risk: "medium",
     },
   }
 }
-
-const isSocratesOwnedWorkingPath = (path: string): boolean =>
-  path.startsWith(".socrates/") ||
-  /^socrates:\/\/project\/(?:memory|notes)\/[^/]+$/.test(path) ||
-  /^socrates:\/\/project\/repo-docs\/[^/]+\/[^/]+$/.test(path)
 
 export const editTool: SocratesTool<typeof editToolInputSchema._type, typeof editToolOutputSchema._type> = {
   name: "edit",

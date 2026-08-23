@@ -87,7 +87,6 @@ export const workerModelRoleSchema = z.enum([
   "skill_writer",
   "socrates_context_compactor",
   "memory_context_compactor",
-  "title_generator",
   "frontier",
 ])
 export type WorkerModelRole = z.infer<typeof workerModelRoleSchema>

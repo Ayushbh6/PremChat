@@ -385,7 +385,7 @@ export class SocratesAgent {
     insertDynamicPromptContext(messages, input.promptContext)
     if (input.resolvedTurnContextSeed) {
       const resolvedTurnContext: ResolvedTurnContext = prepareTurnContext(input.resolvedTurnContextSeed, input.resolvedTurnMemory, input.resolvedTurnCapabilities)
-      messages.push({
+      insertBeforeLatestUserMessage(messages, {
         role: "developer",
         content: [
           renderResolvedTurnContext(resolvedTurnContext),
@@ -822,6 +822,16 @@ export class SocratesAgent {
     }
   }
 
+}
+
+const insertBeforeLatestUserMessage = (messages: ModelMessage[], context: ModelMessage): void => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === "user") {
+      messages.splice(index, 0, context)
+      return
+    }
+  }
+  messages.push(context)
 }
 
 const renderFilesystemAuthorization = (authorization: FilesystemAuthorizationSnapshot): string => [

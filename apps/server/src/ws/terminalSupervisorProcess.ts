@@ -2,10 +2,10 @@ import { spawn } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import net from "node:net"
-import { fileURLToPath } from "node:url"
 import { normalizeError } from "@socrates/shared"
 import type { BashToolInput, BashToolOutput } from "@socrates/contracts"
-import { terminalHostSocketPath } from "./terminalSupervisorPaths"
+import { terminalChildProcessArgs, terminalHostSocketPath } from "./terminalSupervisorPaths"
+import type { TerminalContainment } from "@socrates/workspace"
 
 type Method = "start" | "status" | "output" | "stop" | "input" | "resize" | "has" | "health" | "shutdown-host" | "shutdown-if-idle" | "shutdown"
 type SupervisorRequest = {
@@ -15,6 +15,7 @@ type SupervisorRequest = {
   workspacePath?: string
   processId?: string
   input?: BashToolInput
+  containment?: TerminalContainment
   text?: string
   cols?: number
   rows?: number
@@ -36,6 +37,7 @@ const spawningHosts = new Map<string, Promise<void>>()
 const activeStarts = new Set<Promise<SupervisorResponse>>()
 const clientSockets = new Set<net.Socket>()
 const idleShutdownMs = boundedMilliseconds(process.env.SOCRATES_TERMINAL_SUPERVISOR_IDLE_MS, 30_000, 100, 10 * 60_000)
+const hostStartupTimeoutMs = boundedMilliseconds(process.env.SOCRATES_TERMINAL_HOST_STARTUP_TIMEOUT_MS, 30_000, 1_000, 10 * 60_000)
 let shuttingDown = false
 let idleTimer: NodeJS.Timeout | undefined
 
@@ -149,13 +151,10 @@ const ensureHost = async (terminalId: string): Promise<void> => {
 const spawnHost = async (terminalId: string): Promise<void> => {
   const hostSocket = terminalHostSocketPath(socketPath, terminalId)
   if (process.platform !== "win32" && fs.existsSync(hostSocket)) fs.unlinkSync(hostSocket)
-  const currentPath = fileURLToPath(import.meta.url)
-  const isBuilt = currentPath.endsWith(".js")
-  const hostPath = fileURLToPath(new URL(isBuilt ? "./terminalHostProcess.js" : "./terminalHostProcess.ts", import.meta.url))
-  const args = isBuilt ? [hostPath, hostSocket, terminalId] : ["--import", "tsx", hostPath, hostSocket, terminalId]
+  const args = terminalChildProcessArgs(import.meta.url, "terminalHostProcess", [hostSocket, terminalId])
   const child = spawn(process.execPath, args, { detached: true, stdio: "ignore", env: { ...process.env, SOCRATES_TERMINAL_HOST: "1" } })
   child.unref()
-  const deadline = Date.now() + 3_000
+  const deadline = Date.now() + hostStartupTimeoutMs
   while (Date.now() < deadline) {
     if (await canConnect(hostSocket)) return
     await wait(40)

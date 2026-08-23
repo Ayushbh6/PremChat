@@ -5,7 +5,7 @@ import type { MemoryAgentJournalOutput } from "@socrates/contracts"
 import { afterEach, describe, expect, it } from "vitest"
 import { openDatabase, runMigrations } from "../../db/client"
 import { memoryAgentJournal } from "../../db/schema"
-import { normalizeMemoryJournalOutput } from "./memoryAgentJournal"
+import { journalOutputFromRow, normalizeMemoryJournalOutput } from "./memoryAgentJournal"
 import { MemoryStore } from "./memoryStore"
 
 const tempRoots: string[] = []
@@ -18,7 +18,7 @@ const output = (summary: string, title = "Verification gate"): MemoryAgentJourna
   patternsObserved: [{ name: "Context first", finding: "Investigation precedes implementation.", evidenceTurnIds: ["turn-1"] }],
   skillsAffected: [],
   decisions: ["Wait for more evidence."],
-  openInvestigations: [{ title, currentUnderstanding: "The gate repeats.", evidenceTurnIds: ["turn-1"], nextStep: "Inspect another turn." }],
+  openInvestigations: [{ investigationId: null, title, currentUnderstanding: "The gate repeats.", evidenceTurnIds: ["turn-1"], nextStep: "Inspect another turn." }],
   nextRunFocus: ["Inspect another workflow."],
 })
 
@@ -28,6 +28,34 @@ describe("Memory Agent journal continuity", () => {
     const second = normalizeMemoryJournalOutput(output("second", "  VERIFICATION   gate "), first)
     expect(first.openInvestigations[0]?.investigationId).toMatch(/^meminv_/)
     expect(second.openInvestigations[0]?.investigationId).toBe(first.openInvestigations[0]?.investigationId)
+  })
+
+  it("reads legacy persisted journal items by making formerly omitted ids explicit nulls", () => {
+    const parsed = journalOutputFromRow({
+      id: "journal-legacy",
+      jobId: "job-legacy",
+      summary: "Legacy journal row.",
+      patternsObservedJson: "[]",
+      skillsAffectedJson: JSON.stringify([{ action: "inspected", note: "Inspected a skill without recording its id." }]),
+      decisionsJson: "[]",
+      openInvestigationsJson: JSON.stringify([{
+        title: "Legacy investigation",
+        currentUnderstanding: "The older row omitted its generated id.",
+        evidenceTurnIds: [],
+        nextStep: "Continue safely.",
+      }]),
+      nextRunFocusJson: "[]",
+      providerId: "openai",
+      modelId: "gpt-5.6-terra",
+      thinkingEnabled: true,
+      thinkingEffort: "medium",
+      status: "completed",
+      createdAt: "2026-07-30T00:00:00.000Z",
+      metadataJson: null,
+    })
+
+    expect(parsed.skillsAffected[0]?.skillId).toBeNull()
+    expect(parsed.openInvestigations[0]?.investigationId).toBeNull()
   })
 
   it("bounds list/read output and renders only the latest three summaries", () => {

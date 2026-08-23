@@ -1,13 +1,11 @@
 import type { WebSocket } from "ws"
 import {
   DEFAULT_CONTEXT_COMPRESSION_THRESHOLDS,
-  createResolvedTurnContextSeed,
   findModelOption,
-  selectExactMemoryCandidates,
   type SocratesAgent,
   type SocratesAgentEvent,
 } from "@socrates/core"
-import type { CandidateRetrievalStatus, CapabilityCandidate, ClientCommand, MemoryCandidate, SocratesFinalAnswer } from "@socrates/contracts"
+import type { ClientCommand, SocratesFinalAnswer } from "@socrates/contracts"
 import type { McpRuntime } from "@socrates/mcp"
 import type { ModelMessage, ModelProvider, ModelUsage } from "@socrates/providers"
 import { normalizeError, nowIso, SocratesError } from "@socrates/shared"
@@ -19,8 +17,6 @@ import type { ActiveTurns } from "../activeTurns"
 import type { ConversationTerminalManager } from "../conversationTerminals"
 import type { ConversationSubscriptions } from "../conversationSubscriptions"
 import { appendAndEmit, makeEvent, type EventSink } from "../eventSender"
-import type { V2FlowStore } from "../../services/v2/flowStore"
-import { resolveClassicGoal } from "../classicGoalLifecycleCoordinator"
 import { createClassicToolExecutors } from "../classicToolExecutors"
 import {
   createClassicContextCompressionRuntime,
@@ -58,7 +54,6 @@ export const handleChatMessageSend = async (
   mcpRuntime?: McpRuntime,
   titleProvider?: ModelProvider,
   continuation?: ClassicTerminalTaskContinuation,
-  flowStore?: V2FlowStore,
 ): Promise<void> => {
   if (!command && !continuation) {
     throw new SocratesError("missing_chat_command", "A chat message or continuation is required.")
@@ -138,7 +133,6 @@ export const handleChatMessageSend = async (
       workspacePath: store.getPrimaryWorkspacePath(projectId),
       message: created.userMessage,
       fallbackTitle: created.fallbackTitle,
-      modelSettings: store.getWorkerModelSetting("title_generator"),
       abortSignal: abortController.signal,
     })
       .then((result) => {
@@ -214,92 +208,8 @@ export const handleChatMessageSend = async (
   let durableTurnCommitted = false
   let suspendedWait: Extract<SocratesAgentEvent, { type: "agent.suspended" }>["wait"] | undefined
   const exposedMcpServers = new Set<string>()
-  let activeGoal = continuation && flowStore
-    ? flowStore.continueClassicGoalTurn({
-        previousTurnId: continuation.resumedFromTurnId,
-        turnId: continuation.turnId,
-        sessionId: continuation.sessionId,
-      })
-    : undefined
-  let memoryCandidates: readonly MemoryCandidate[] = []
-  let capabilityCandidates: readonly CapabilityCandidate[] = []
-  let retrievalStatus: CandidateRetrievalStatus = {
-    goalCandidates: "completed",
-    memoryCandidates: "completed",
-    capabilityCandidates: "completed",
-    warnings: [],
-  }
 
   try {
-    if (!continuation && flowStore && created.userMessage) {
-      const routed = await resolveClassicGoal({
-        projectId,
-        conversationId,
-        sessionId: created.sessionId,
-        turnId: created.turnId,
-        runtimeConfigId: created.runtimeConfigId,
-        userMessageId: created.userMessage.id,
-        userMessage: created.userMessage.content,
-        workspacePath,
-        flowStore,
-        sharedStore: store,
-        agent,
-        runtimeConfig,
-        abortSignal: abortController.signal,
-      })
-      if (routed.status === "clarification") {
-        const assistantMessage = store.commitValidatedTurn({
-          conversationId,
-          sessionId: created.sessionId,
-          turnId: created.turnId,
-          content: routed.question,
-        })
-        durableTurnCommitted = true
-        appendAndEmit(emitEvent, store, makeEvent("message.completed", { message: assistantMessage }, {
-          projectId,
-          conversationId,
-          sessionId: created.sessionId,
-          turnId: created.turnId,
-          actor: { type: "main_agent" },
-        }), "core")
-        appendAndEmit(emitEvent, store, makeEvent("turn.completed", {
-          turnId: created.turnId,
-          assistantMessageId: assistantMessage.id,
-          summary: "Socrates requested goal clarification.",
-        }, {
-          projectId,
-          conversationId,
-          sessionId: created.sessionId,
-          turnId: created.turnId,
-          actor: { type: "main_agent" },
-        }), "core")
-        store.indexTurnTraceDocuments(projectId, conversationId, created.turnId)
-        store.completeTerminalTaskForTurn(created.turnId, "completed")
-        return
-      }
-      activeGoal = routed.goal
-      memoryCandidates = routed.memoryCandidates
-      capabilityCandidates = routed.capabilityCandidates
-      retrievalStatus = routed.retrieval
-      for (const candidate of capabilityCandidates) {
-        if (candidate.kind === "mcp") exposedMcpServers.add(candidate.name)
-      }
-      store.indexGoalRetrieval(projectId, activeGoal.goalId)
-    }
-    if (continuation && flowStore && !activeGoal) {
-      throw new SocratesError("classic_goal_link_missing", "The continued task no longer has a goal link.", { recoverable: true })
-    }
-    if (activeGoal) {
-      modelHistory = await store.prepareExactGoalHistory({
-        projectId,
-        goalId: activeGoal.goalId,
-        query: activeGoal.taskRequest ?? activeGoal.title,
-        messages: modelHistory,
-      })
-    }
-    const reconciliationWatermark = activeGoal
-      ? store.getTaskReconciliationWatermark("classic", created.turnId)
-      : undefined
     for await (const agentEvent of agent.streamTurn({
       projectId,
       conversationId,
@@ -317,28 +227,8 @@ export const handleChatMessageSend = async (
       filesystemAuthorization,
       stableCachePreludeSnapshot,
       completionMode: "main_structured",
-      ...(reconciliationWatermark ? {
-        reconciliationWatermark: reconciliationWatermark.state,
-        taskStartedAt: reconciliationWatermark.taskStartedAt,
-        persistReconciliationWatermark: (state) => store.saveTaskReconciliationWatermark("classic", created.turnId, state),
-      } : {}),
-      ...(activeGoal ? { activeGoal } : {}),
-      ...(activeGoal ? {
-        resolvedTurnContextSeed: createResolvedTurnContextSeed({
-          goal: activeGoal,
-          messages: modelHistory,
-          retrieval: retrievalStatus,
-        }),
-        resolvedTurnMemory: selectExactMemoryCandidates({
-          candidates: memoryCandidates,
-          userMessage: activeGoal.taskRequest ?? created.userMessage?.content ?? activeGoal.title,
-          goal: activeGoal,
-        }),
-        resolvedTurnCapabilities: capabilityCandidates.map(({ resultNumber: _resultNumber, ...candidate }) => candidate),
-      } : {}),
       toolExecutors: createClassicToolExecutors(store, projectId, created.turnId, activeTurns, terminals, mcpRuntime, {
         exposeMcpServer: (serverId) => exposedMcpServers.add(serverId),
-        ...(activeGoal ? { goalId: activeGoal.goalId } : {}),
       }),
       runtimeCapabilities: () =>
         mcpRuntime ? [...exposedMcpServers].flatMap((serverId) => mcpRuntime.getDynamicCapabilityDefinitions(serverId, { workspacePath })) : [],
@@ -885,11 +775,6 @@ export const handleChatMessageSend = async (
       turnId: created.turnId,
       content: validatedFinalResult.finalAnswer,
       reasoning: reasoningText,
-      ...(flowStore ? {
-        persistBoundGoalAndCapsule: (message) => {
-          flowStore.finalizeClassicGoal(created.turnId, validatedFinalResult.goalFinalization, message.id)
-        },
-      } : {}),
       persistUsageAndAudit: (message) => {
         for (const modelCallId of modelCallIds) {
           store.completeModelCall({
@@ -945,8 +830,6 @@ export const handleChatMessageSend = async (
     )
     appendAndEmit(emitEvent, store, turnCompleted, "core")
 
-    const finalizedGoal = flowStore?.getClassicGoalForTurn(created.turnId)
-    if (finalizedGoal) store.indexGoalRetrieval(projectId, finalizedGoal.goalId)
     store.indexTurnTraceDocuments(projectId, conversationId, created.turnId)
 
     const postTurnHistory = store.getConversationModelMessages(projectId, conversationId, { includeImageParts })

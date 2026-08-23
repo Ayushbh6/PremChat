@@ -32,6 +32,7 @@ export function RenameConversationDialog({ initialTitle, isSaving, onCancel, onS
   return (
     <Modal
       title="Rename conversation"
+      onClose={isSaving ? undefined : onCancel}
       footer={
         <>
           <Button type="button" variant="outline" onClick={onCancel} disabled={isSaving}>

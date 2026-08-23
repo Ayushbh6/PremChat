@@ -6,6 +6,7 @@ import { isValidElement, useEffect, useRef, useState, type ReactNode, type RefOb
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { socratesApiBaseUrl } from "@/lib/api";
+import { resolveLongUserMessagePresentation } from "@/lib/userMessagePresentation";
 import { ChatToolTimeline } from "./ChatToolTimeline";
 import { ToolActivityRow } from "./ToolActivityRow";
 import type { PendingApproval, PendingCredentialInput, ToolTimelineItem } from "./ToolTimelineTypes";
@@ -108,6 +109,9 @@ export function ChatTranscript({
     <div
       ref={scrollContainerRef}
       className={scrollContainerClassName ?? "min-w-0 flex-1 overflow-y-auto px-6 py-6"}
+      role="region"
+      aria-label="Conversation transcript"
+      tabIndex={0}
       onScroll={onScroll}
     >
       <div className={contentClassName ?? "mx-auto flex min-w-0 w-full max-w-4xl flex-col gap-5"}>
@@ -304,7 +308,11 @@ function MessageBubble({
   const hasStepAnswers = steps.some((step) => step.answer);
 
   return (
-    <div data-message-id={message.id} className={isUser ? "flex min-w-0 justify-end" : "flex min-w-0 justify-start"}>
+    <div
+      data-message-id={message.id}
+      data-message-role={message.role}
+      className={isUser ? "flex min-w-0 justify-end" : "flex min-w-0 justify-start"}
+    >
       <div
         className={
           isUser
@@ -373,13 +381,13 @@ function MessageBubble({
 function ExpandableUserMessage({ content, enabled }: { content: string; enabled: boolean }) {
   const contentRef = useRef<HTMLParagraphElement>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isOverflowing, setIsOverflowing] = useState(false);
+  const [contentHeight, setContentHeight] = useState(0);
 
   useEffect(() => {
     if (!enabled) return;
     const element = contentRef.current;
     if (!element) return;
-    const measure = () => setIsOverflowing(element.scrollHeight > 98);
+    const measure = () => setContentHeight(element.scrollHeight);
     const frame = window.requestAnimationFrame(measure);
     const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(measure);
     observer?.observe(element);
@@ -389,7 +397,11 @@ function ExpandableUserMessage({ content, enabled }: { content: string; enabled:
     };
   }, [content, enabled]);
 
-  const isCollapsed = enabled && isOverflowing && !isExpanded;
+  const { isCollapsed, showDisclosure } = resolveLongUserMessagePresentation({
+    enabled,
+    contentHeight,
+    isExpanded,
+  });
 
   return (
     <div className="relative">
@@ -405,7 +417,7 @@ function ExpandableUserMessage({ content, enabled }: { content: string; enabled:
           className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-b from-transparent to-brand-button"
         />
       ) : null}
-      {enabled && isOverflowing ? (
+      {showDisclosure ? (
         <button
           type="button"
           className="relative mt-2 border-0 bg-transparent p-0 text-xs font-medium text-white/75 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45"
@@ -677,6 +689,7 @@ function AttachmentGrid({ attachments }: { attachments: MessageAttachment[] }) {
           className="block overflow-hidden rounded-lg border border-white/30 bg-white/10"
         >
           {attachment.kind === "image" ? (
+            // eslint-disable-next-line @next/next/no-img-element -- Exact local evidence URLs must remain direct and runtime-authenticated.
             <img src={attachmentUrl(attachment)} alt={attachment.fileName} className="max-h-56 w-full object-cover" />
           ) : (
             <span className="flex min-h-16 items-center px-3 py-2 text-xs text-white">{attachment.fileName}</span>

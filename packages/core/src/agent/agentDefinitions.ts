@@ -1,18 +1,12 @@
 import {
   chatCompactionSchema,
-  conversationTitleAgentOutputSchema,
   memoryAgentJournalOutputSchema,
   memoryCompactionSchema,
   socratesFinalAnswerSchema,
-  soulConfirmationAgentOutputSchema,
-  type ConversationTitleAgentOutput,
   type MemoryAgentJournalOutput,
   type SocratesFinalAnswer,
-  type SoulConfirmationAgentOutput,
 } from "@socrates/contracts"
 import type { z } from "zod"
-import { TITLE_GENERATOR_SYSTEM_PROMPT } from "../prompts/titleGeneratorPrompt"
-import { SOUL_CONFIRMATION_AGENT_SYSTEM_PROMPT } from "../prompts/soulConfirmationPrompt"
 import {
   defineAgent,
   defineRoleManifest,
@@ -86,38 +80,6 @@ const socratesInteractiveContextCapabilities = [
   "context.tool_definitions",
   "context.automatic_compaction",
 ] as const
-
-export const titleGeneratorAgentDefinition = defineAgent<undefined, ConversationTitleAgentOutput>({
-  id: "title-generator",
-  role: "title_generator",
-  modelRole: "title_generator",
-  prompt: { id: "title-generator-v1", buildSystem: () => TITLE_GENERATOR_SYSTEM_PROMPT },
-  completion: { mode: "structured", schema: conversationTitleAgentOutputSchema },
-  roleManifest: {
-    id: "title-generator-capabilities-v2",
-    role: "title_generator",
-    capabilityIds: ["worker.title_generator", ...structuredContextCapabilities, "runtime.structured_repair"],
-  },
-  contextProfile: structuredWorkerContext,
-  limits: { maxToolCalls: 0, maxOutputRepairAttempts: 1 },
-  persistenceScope: "conversation",
-})
-
-export const soulConfirmationAgentDefinition = defineAgent<undefined, SoulConfirmationAgentOutput>({
-  id: "soul-confirmation",
-  role: "soul_confirmation",
-  modelRole: "global_memory",
-  prompt: { id: "soul-confirmation-v1", buildSystem: () => SOUL_CONFIRMATION_AGENT_SYSTEM_PROMPT },
-  completion: { mode: "structured", schema: soulConfirmationAgentOutputSchema },
-  roleManifest: {
-    id: "soul-confirmation-capabilities-v2",
-    role: "soul_confirmation",
-    capabilityIds: ["worker.soul_confirmation", ...structuredContextCapabilities, "runtime.structured_repair"],
-  },
-  contextProfile: structuredWorkerContext,
-  limits: { maxToolCalls: 0, maxOutputRepairAttempts: 1 },
-  persistenceScope: "global",
-})
 
 export type DynamicSystemPromptContext = Readonly<{ system: string }>
 
@@ -196,11 +158,6 @@ export const globalMemoryAgentDefinition = defineAgent<DynamicSystemPromptContex
     id: "global-memory-capabilities-v1",
     role: "global_memory",
     capabilityIds: [
-      "tool.current_time",
-      "tool.trace_retrieve.global",
-      "tool.projects",
-      "tool.read",
-      "tool.search",
       "tool.memory_notes",
       "tool.read_memory_journal",
       "tool.edit_files",
@@ -255,8 +212,6 @@ export const memoryCompressorAgentDefinition = createCompressorDefinition<z.infe
 export const phaseOneAgentDefinitions = [
   socratesMainAgentDefinition,
   skillWriterAgentDefinition,
-  titleGeneratorAgentDefinition,
-  soulConfirmationAgentDefinition,
   globalMemoryAgentDefinition,
   chatCompressorAgentDefinition,
   memoryCompressorAgentDefinition,

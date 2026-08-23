@@ -384,6 +384,7 @@ export function McpServersPanel({
         <Modal
           title={scope === "global" ? "Add global MCP server" : "Add project MCP server"}
           description="Paste the configuration from an MCP provider, or enter a stdio command manually. Socrates will test it before enabling it."
+          onClose={isSaving ? undefined : () => setIsFormOpen(false)}
           footer={
             <>
               <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSaving}>

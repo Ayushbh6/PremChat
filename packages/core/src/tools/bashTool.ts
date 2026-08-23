@@ -1,20 +1,22 @@
 import { bashToolInputSchema, bashToolOutputSchema } from "@socrates/contracts"
 import type { SocratesTool, ToolPolicyDecision } from "./types"
+import { decideAccess } from "./accessPolicy"
 
 const highRiskCommandPattern =
   /\b(sudo|rm\s+-rf|Remove-Item|del\s+\/[sq]|rmdir\s+\/[sq]|mkfs|dd\s+if=|chmod\s+-R|chown\s+-R|git\s+(commit|push|reset|clean|checkout|switch|merge|rebase)|docker|curl|Invoke-WebRequest|wget|pnpm\s+(add|install|i|dev|start)|npm\s+(install|i|start|run\s+dev)|yarn\s+(add|dev|start)|migrate|prisma\s+migrate)\b/i
+
+// This is an explicit product hard-denial classifier, not the containment
+// boundary. Native Terminal containment protects child processes from writes
+// outside their exact roots; command preflight prevents named catastrophic
+// operations before an approval or Full-mode launch can reach that boundary.
+const catastrophicCommandPattern =
+  /(?:\brm\s+-[^\n]*r[^\n]*f\s+(?:\/|~\/?|\$HOME\b)|\b(?:rm\s+-[^\n]*r[^\n]*f\s+)?\/dev\/(?:disk|rdisk)|\b(?:mkfs|diskutil\s+eraseDisk)\b|\bdd\s+if=.*\sof=\/dev\/|\b(?:format\s+[A-Za-z]:|Remove-Item\s+.*(?:C:\\|\$env:USERPROFILE)|del\s+.*(?:C:\\|%USERPROFILE%)))/i
 
 const decideBashPolicy: SocratesTool<typeof bashToolInputSchema._type, typeof bashToolOutputSchema._type>["decidePolicy"] = (
   input,
   context,
 ): ToolPolicyDecision => {
   const operation = input.operation
-  const readOnly = context.filesystemAuthorization
-    ? context.filesystemAuthorization.mode === "read_only"
-    : context.runtimeConfig.sandboxMode === "read_only" || context.runtimeConfig.approvalMode === "read_only_auto"
-  if (readOnly) {
-    return { type: "denied", reason: "Terminal is not available while Access is set to Read only. Use read or search for structured inspection." }
-  }
   if (operation === "inspect" || operation === "stop" || operation === "list") {
     return { type: "auto" }
   }
@@ -31,7 +33,16 @@ const decideBashPolicy: SocratesTool<typeof bashToolInputSchema._type, typeof ba
   }
 
   const preview = command ?? "Terminal command"
-  if (context.runtimeConfig.approvalMode === "approve_all" && !highRiskCommandPattern.test(preview)) {
+  if (catastrophicCommandPattern.test(preview)) {
+    return {
+      type: "denied",
+      code: "terminal_catastrophic_operation_denied",
+      recoverable: false,
+      reason: "This command is a protected catastrophic operation and cannot be run by Socrates in any access mode.",
+    }
+  }
+
+  if (decideAccess({ authorization: context.filesystemAuthorization, action: "terminal_run" }) === "automatic") {
     return { type: "auto" }
   }
 
@@ -46,8 +57,8 @@ const decideBashPolicy: SocratesTool<typeof bashToolInputSchema._type, typeof ba
       title: "Approve shell command",
       description:
         operation === "start"
-          ? "Socrates wants to start a background Terminal in the active project workspace."
-          : "Socrates wants to run a command in the active project workspace.",
+          ? "Socrates wants to start a background Terminal from the task's working directory."
+          : "Socrates wants to run this exact command from the task's working directory.",
       actionPreview: preview,
       risk: highRiskCommandPattern.test(preview) ? "high" : "medium",
     },
@@ -65,7 +76,7 @@ const isNoopTerminalCommand = (command: string): boolean => {
 export const bashTool: SocratesTool<typeof bashToolInputSchema._type, typeof bashToolOutputSchema._type> = {
   name: "bash",
   description:
-    "Run commands or manage named persistent Terminals from an authorized working directory. Terminal runs as the local user and is not OS-sandboxed; path selection checks cwd but cannot promise process containment. Use run for a bounded foreground command, start with a unique name for a server or interactive process, inspect with that name to receive status plus new output, stop with that name, and list to discover existing names. Prefer read, search, edit, and apply_patch for structured file work. Use inputMode=user when the visible Terminal must accept user input.",
+    "Run commands or manage named persistent Terminals from an authorized working directory. Terminal launches use native process containment that restricts descendant writes to exact task and resource roots; if that containment cannot be established, automatic Full-access Terminal launch fails closed. Protected catastrophic operations remain denied in every access mode. Use run for a foreground command, start with a unique name for a server or interactive process, inspect with that name to receive status plus new output, stop with that name, and list to discover existing names. Prefer read, search, edit, and apply_patch for structured file work. Use inputMode=user when the visible Terminal must accept user input.",
   inputSchema: bashToolInputSchema,
   resultSchema: bashToolOutputSchema,
   permission: "execute",

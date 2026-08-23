@@ -1,5 +1,6 @@
 import { applyPatchToolInputSchema, applyPatchToolOutputSchema } from "@socrates/contracts"
 import type { SocratesTool } from "./types"
+import { decideAccess } from "./accessPolicy"
 
 const previewPatch = (input: typeof applyPatchToolInputSchema._type): string => {
   const lines = input.patchText.split("\n").filter(Boolean).slice(0, 3)
@@ -8,14 +9,11 @@ const previewPatch = (input: typeof applyPatchToolInputSchema._type): string => 
 
 const decidePatchPolicy: SocratesTool<typeof applyPatchToolInputSchema._type, typeof applyPatchToolOutputSchema._type>["decidePolicy"] =
   async (input, context) => {
-    const readOnly = context.filesystemAuthorization
-      ? context.filesystemAuthorization.mode === "read_only"
-      : context.runtimeConfig.sandboxMode === "read_only" || context.runtimeConfig.approvalMode === "read_only_auto"
-    if (readOnly) {
-      return { type: "denied", reason: "Patch application is not allowed in read-only mode." }
-    }
-
-    if (context.runtimeConfig.approvalMode === "approve_all") {
+    if ((!context.filesystemAuthorization && context.runtimeConfig.approvalMode === "approve_all") || decideAccess({
+      authorization: context.filesystemAuthorization,
+      action: "structured_write",
+      workspacePath: context.workspacePath,
+    }) === "automatic") {
       return { type: "auto" }
     }
 
@@ -26,7 +24,7 @@ const decidePatchPolicy: SocratesTool<typeof applyPatchToolInputSchema._type, ty
       request: {
         actionKind: "patch_apply",
         title: "Approve patch",
-      description: "Socrates wants to apply a patch in the turn's working path.",
+        description: "Socrates wants to apply this exact patch outside the task's automatic write scope.",
         actionPreview: preview.diff.trim().length > 0 ? preview.diff : previewPatch(input),
         risk: "medium",
       },

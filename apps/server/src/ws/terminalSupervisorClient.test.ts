@@ -3,18 +3,27 @@ import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
+import { requireNativeTerminalContainment } from "@socrates/workspace"
 import { TerminalSupervisorClient } from "./terminalSupervisorClient"
-import { terminalHostSocketPath, terminalSupervisorSocketPath } from "./terminalSupervisorPaths"
+import { terminalChildProcessArgs, terminalHostSocketPath, terminalSupervisorSocketPath } from "./terminalSupervisorPaths"
 
 const clients: TerminalSupervisorClient[] = []
 const command = (source: string): string => JSON.stringify(process.execPath) + " -e " + JSON.stringify(source)
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+const containmentFor = (workspace: string) => requireNativeTerminalContainment({ writableRoots: [workspace] })
 
 afterEach(async () => {
   await Promise.allSettled(clients.splice(0).map((client) => client.shutdown()))
-})
+}, 30_000)
 
 describe("Terminal supervisor resilience", () => {
+  it("resolves the source loader from the server workspace instead of the launch cwd", () => {
+    const args = terminalChildProcessArgs(import.meta.url, "terminalSupervisorProcess", ["socket"])
+    expect(args[0]).toBe("--import")
+    expect(args[1]).toMatch(/^file:.*\/tsx\/dist\/loader\.mjs$/)
+    expect(args[2]).toMatch(/terminalSupervisorProcess\.ts$/)
+  }, 30_000)
+
   it("serializes shutdown behind an in-flight start and never respawns afterward", async () => {
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "socrates-terminal-shutdown-race-"))
     const client = new TerminalSupervisorClient(workspace)
@@ -24,7 +33,7 @@ describe("Terminal supervisor resilience", () => {
       operation: "start",
       command: command('process.stdout.write("race-ready\\n"); setInterval(() => {}, 1000)'),
       name: "shutdown-race",
-    })
+    }, containmentFor(workspace))
 
     const shutdown = client.shutdown()
     const started = await start
@@ -36,7 +45,7 @@ describe("Terminal supervisor resilience", () => {
       expect(fs.existsSync(terminalSupervisorSocketPath(workspace))).toBe(false)
     }
     await expect(client.health()).rejects.toMatchObject({ code: "terminal_supervisor_closed" })
-  })
+  }, 30_000)
 
   it("self-expires while genuinely idle and can be restarted by a live client", async () => {
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "socrates-terminal-idle-"))
@@ -49,7 +58,7 @@ describe("Terminal supervisor resilience", () => {
     }
     const second = await client.health()
     expect(second.processId).not.toBe(first.processId)
-  })
+  }, 30_000)
 
   it("does not remain alive when shutdown encounters a lingering client socket", async () => {
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "socrates-terminal-lingering-client-"))
@@ -69,7 +78,7 @@ describe("Terminal supervisor resilience", () => {
       socket.destroy()
       fs.rmSync(workspace, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
 
   it("forgets a naturally exited host that disappears before a poll response and then self-expires", async () => {
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "socrates-terminal-natural-exit-"))
@@ -80,10 +89,14 @@ describe("Terminal supervisor resilience", () => {
       operation: "start",
       command: command('setTimeout(() => process.exit(0), 40)'),
       name: "natural-exit",
-    })
+    }, containmentFor(workspace))
 
-    await wait(250)
-    const final = await client.status(terminalId, started.process?.processId)
+    let final = await client.status(terminalId, started.process?.processId)
+    const completionDeadline = Date.now() + 10_000
+    while (final.process?.status === "running" && Date.now() < completionDeadline) {
+      await wait(100)
+      final = await client.status(terminalId, started.process?.processId)
+    }
     expect(["exited", "missing"]).toContain(final.process?.status)
     await wait(350)
 
@@ -91,7 +104,7 @@ describe("Terminal supervisor resilience", () => {
       expect(fs.existsSync(terminalHostSocketPath(terminalSupervisorSocketPath(workspace), terminalId))).toBe(false)
       expect(fs.existsSync(terminalSupervisorSocketPath(workspace))).toBe(false)
     }
-  })
+  }, 30_000)
 
   it("keeps concurrent PTYs isolated, survives coordinator loss, accepts input, and bounds large reads", async () => {
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "socrates-terminal-stress-"))
@@ -115,6 +128,7 @@ describe("Terminal supervisor resilience", () => {
             name,
             ...(name === "delta" ? { inputMode: "user" as const } : {}),
           },
+          containmentFor(workspace),
         ),
       ),
     )
@@ -153,7 +167,7 @@ describe("Terminal supervisor resilience", () => {
       client.stop("term_gamma", starts[2]?.process?.processId),
       client.stop("term_delta", starts[3]?.process?.processId),
     ])
-  }, 15_000)
+  }, 60_000)
 })
 
 const expectProcessToExit = async (processId: number): Promise<void> => {

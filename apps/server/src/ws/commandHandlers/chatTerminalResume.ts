@@ -2,7 +2,6 @@ import type { SocratesAgent } from "@socrates/core"
 import type { McpRuntime } from "@socrates/mcp"
 import type { ModelProvider } from "@socrates/providers"
 import type { SocratesStore } from "../../services/store"
-import type { V2FlowStore } from "../../services/v2/flowStore"
 import type { ActiveTurns } from "../activeTurns"
 import type { ConversationSubscriptions } from "../conversationSubscriptions"
 import type { ConversationTerminalManager } from "../conversationTerminals"
@@ -18,7 +17,6 @@ export const resumeTerminalTask = async (
   task: ReturnType<SocratesStore["claimTerminalTaskWake"]>[number],
   mcpRuntime?: McpRuntime,
   titleProvider?: ModelProvider,
-  flowStore?: V2FlowStore,
 ): Promise<void> => {
   const continued = store.beginTerminalTaskContinuation(task)
   if (!continued) return
@@ -62,5 +60,5 @@ export const resumeTerminalTask = async (
     runtimeConfig: continued.runtimeConfig,
     resumedFromTurnId: continued.currentTurnId,
     wakeContext,
-  }, flowStore)
+  })
 }

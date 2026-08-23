@@ -40,9 +40,9 @@ export const journalOutputFromRow = (row: MemoryJournalRowLike): MemoryAgentJour
   memoryAgentJournalOutputSchema.parse({
     summary: row.summary,
     patternsObserved: parseArray(row.patternsObservedJson),
-    skillsAffected: parseArray(row.skillsAffectedJson),
+    skillsAffected: addMissingNullableField(parseArray(row.skillsAffectedJson), "skillId"),
     decisions: parseArray(row.decisionsJson),
-    openInvestigations: parseArray(row.openInvestigationsJson),
+    openInvestigations: addMissingNullableField(parseArray(row.openInvestigationsJson), "investigationId"),
     nextRunFocus: parseArray(row.nextRunFocusJson),
   })
 
@@ -128,3 +128,9 @@ const parseArray = (value: string): unknown[] => {
     return []
   }
 }
+
+const addMissingNullableField = (items: unknown[], field: "skillId" | "investigationId"): unknown[] =>
+  items.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item) || field in item) return item
+    return { ...item, [field]: null }
+  })

@@ -6,7 +6,7 @@ const validOutput = {
   patternsObserved: [{ name: "Context first", finding: "The user investigates before authorizing edits.", evidenceTurnIds: ["turn-1", "turn-2"] }],
   skillsAffected: [{ skillId: "global:context-first", action: "proposed_create" as const, note: "Proposed the repeated workflow." }],
   decisions: ["Kept project-specific details out of global profile memory."],
-  openInvestigations: [{ title: "Verification gate", currentUnderstanding: "The final gate may vary by project.", evidenceTurnIds: ["turn-2"], nextStep: "Inspect the next completed workflow." }],
+  openInvestigations: [{ investigationId: null, title: "Verification gate", currentUnderstanding: "The final gate may vary by project.", evidenceTurnIds: ["turn-2"], nextStep: "Inspect the next completed workflow." }],
   nextRunFocus: ["Check whether the verification gate repeats."],
 }
 
@@ -17,8 +17,23 @@ describe("memory journal contracts", () => {
 
   it("rejects oversized evidence, unknown skill actions, and extra keys", () => {
     expect(memoryAgentJournalOutputSchema.safeParse({ ...validOutput, patternsObserved: [{ ...validOutput.patternsObserved[0], evidenceTurnIds: ["1", "2", "3", "4", "5", "6"] }] }).success).toBe(false)
-    expect(memoryAgentJournalOutputSchema.safeParse({ ...validOutput, skillsAffected: [{ action: "created", note: "bad" }] }).success).toBe(false)
+    expect(memoryAgentJournalOutputSchema.safeParse({ ...validOutput, skillsAffected: [{ skillId: null, action: "created", note: "bad" }] }).success).toBe(false)
     expect(memoryAgentJournalOutputSchema.safeParse({ ...validOutput, extra: true }).success).toBe(false)
+  })
+
+  it("requires nullable provider fields instead of optional object properties", () => {
+    expect(memoryAgentJournalOutputSchema.safeParse({
+      ...validOutput,
+      skillsAffected: [{ skillId: null, action: "inspected", note: "No canonical skill id was available." }],
+    }).success).toBe(true)
+    expect(memoryAgentJournalOutputSchema.safeParse({
+      ...validOutput,
+      skillsAffected: [{ action: "inspected", note: "Missing the required nullable field." }],
+    }).success).toBe(false)
+    expect(memoryAgentJournalOutputSchema.safeParse({
+      ...validOutput,
+      openInvestigations: [{ ...validOutput.openInvestigations[0], investigationId: undefined }],
+    }).success).toBe(false)
   })
 
   it("enforces bounded list/read-only journal access", () => {

@@ -151,7 +151,7 @@ const runToolChecks = async (store: SocratesStore, fixture: Fixture): Promise<st
     scope: "project",
   })
   const visibleResult = visible.results[0]
-  if (!visibleResult || visibleResult.provenanceQuality !== "attachment_origin" || visibleResult.conversationTitle !== "Visible image source") {
+  if (!visibleResult || visibleResult.provenanceKind !== "attachment_origin" || visibleResult.conversationTitle !== "Visible image source") {
     throw new Error(`Visible attachment provenance failed: ${JSON.stringify(visible.results)}`)
   }
   checks.push("exact filename search returns attachment-origin provenance")
@@ -161,7 +161,7 @@ const runToolChecks = async (store: SocratesStore, fixture: Fixture): Promise<st
     mode: "exact",
     scope: "project",
   })
-  if (secondary.results.some((result) => result.provenanceQuality === "attachment_origin")) {
+  if (secondary.results.some((result) => result.provenanceKind === "attachment_origin")) {
     throw new Error(`Secondary recap was treated as origin: ${JSON.stringify(secondary.results)}`)
   }
   checks.push("secondary recaps are not treated as attachment origin")

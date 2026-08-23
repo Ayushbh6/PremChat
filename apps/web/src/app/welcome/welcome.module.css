@@ -1,0 +1,21 @@
+.welcomePage {
+  --ink: #263936;
+  --muted: #6d7f7b;
+  --teal: #0a7775;
+  position: relative;
+  width: 100%;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 2rem;
+  color: var(--ink);
+  background: #f8f8f4;
+}
+.oceanNoise { position: absolute; inset: 0; opacity: .58; background: radial-gradient(circle at 50% 44%, rgba(72,174,163,.11), transparent 34rem), radial-gradient(circle, rgba(38,57,54,.08) .55px, transparent .75px); background-size: auto, 30px 30px; mask-image: radial-gradient(circle at center, #000, transparent 86%); }
+.welcomeOrb { position: absolute; top: 48%; left: 50%; opacity: .32; pointer-events: none; transform: translate(-50%,-58%) scale(1.62); }
+.welcomeContent { position: relative; z-index: 2; width: min(52rem,100%); display: grid; justify-items: center; text-align: center; }
+.welcomeContent h1 { max-width: 12ch; margin: 0; font-family: var(--font-newsreader), Georgia, serif; font-size: clamp(3.2rem,8vw,7.2rem); font-weight: 440; letter-spacing: -.06em; line-height: .93; }
+.welcomeOpenAction { min-height: 3.1rem; margin-top: 2.2rem; display: inline-flex; align-items: center; gap: .7rem; padding: .72rem 1.1rem .72rem 1.3rem; border: 1px solid rgba(22,143,141,.22); border-radius: 999px; color: var(--ink); background: rgba(255,255,255,.54); backdrop-filter: blur(16px); font-size: .84rem; font-weight: 610; text-decoration: none; transition: transform .18s ease, background .18s ease, border-color .18s ease; }
+.welcomeOpenAction:hover,.welcomeOpenAction:focus-visible { border-color: rgba(22,143,141,.45); background: rgba(255,255,255,.78); outline: none; transform: translateY(-1px); }.welcomeOpenAction svg { width: .9rem; transition: transform .18s ease; }.welcomeOpenAction:hover svg { transform: translateX(3px); }
+@media (prefers-reduced-motion: reduce) { .welcomeOpenAction,.welcomeOpenAction svg { transition: none; } }

@@ -95,7 +95,7 @@ export class RetrievalStore {
     this.enqueue(projectId, () => this.upsertTurn(projectId, turnId))
   }
 
-  enqueueV2Turn(projectId: string, turnId: string): void {
+  enqueueSocratesTurn(projectId: string, turnId: string): void {
     this.enqueue(projectId, () => this.upsertTurn(projectId, turnId))
   }
 
@@ -316,21 +316,18 @@ export class RetrievalStore {
     this.enqueue(projectId, () => this.deleteConversationNow(projectId, conversationId))
   }
 
-  deleteV2Flow(projectId: string, flowId: string): void {
-    this.enqueue(projectId, async () => {
-      const state = this.state(projectId)
-      if (state?.tableName) await this.lance.deleteFlow(state.tableName, flowId)
-      this.context.handle.sqlite.prepare("DELETE FROM retrieval_result_diagnostics WHERE run_id IN (SELECT id FROM retrieval_runs WHERE project_id = ? AND json_extract(filters_json, '$.flowId') = ?)").run(projectId, flowId)
-      this.context.handle.sqlite.prepare("DELETE FROM retrieval_runs WHERE project_id = ? AND json_extract(filters_json, '$.flowId') = ?").run(projectId, flowId)
-    })
-  }
-
-  deleteV2Turn(projectId: string, turnId: string): void {
+  deleteSocratesTurn(projectId: string, turnId: string): void {
     this.enqueue(projectId, () => this.deleteParentsNow(projectId, [turnId]))
   }
 
-  deleteV2Goal(projectId: string, goalId: string): void {
+  deleteSocratesGoal(projectId: string, goalId: string): void {
     this.enqueue(projectId, () => this.deleteParentsNow(projectId, [goalId]))
+  }
+
+  deleteSocratesParents(projectId: string, parentIds: readonly string[]): void {
+    const uniqueParentIds = [...new Set(parentIds)]
+    if (uniqueParentIds.length === 0) return
+    this.enqueue(projectId, () => this.deleteParentsNow(projectId, uniqueParentIds))
   }
 
   private async deleteParentsNow(projectId: string, parentIds: string[]): Promise<void> {

@@ -30,6 +30,7 @@ import type {
 import { clientCommandSchema, memoryDocRequiredSections, serverEventSchema } from "@socrates/contracts"
 import { MAX_IMAGE_ATTACHMENT_BYTES, MAX_MESSAGE_ATTACHMENT_BYTES, MAX_MESSAGE_ATTACHMENTS } from "@socrates/contracts"
 import { SocratesAgent } from "@socrates/core"
+import { requireNativeTerminalContainment } from "@socrates/workspace"
 import type { EmbeddingProvider, ModelEvent, ModelProvider, StructuredModelRequest, StructuredModelResult } from "@socrates/providers"
 import { createId, nowIso, SocratesError } from "@socrates/shared"
 import { buildServer } from "../app"
@@ -152,6 +153,9 @@ const validMemoryAgentJournal = (overrides: Partial<MemoryAgentJournalOutput> = 
   nextRunFocus: [],
   ...overrides,
 })
+
+const memoryAgentFinalText = (overrides: Partial<MemoryAgentJournalOutput> = {}): string =>
+  JSON.stringify(validMemoryAgentJournal(overrides))
 
 const hasMemoryCompactionMessage = (messages: unknown[]): boolean =>
   messages.some((message) => {
@@ -2452,13 +2456,6 @@ describe("HTTP API", () => {
       thinkingEnabled: true,
       thinkingEffort: "low",
     })
-    expect(resolutionByWorker.get("title_generator")?.effective).toMatchObject({
-      providerId: "openai",
-      authMode: "chatgpt_subscription",
-      modelId: "gpt-5.4-mini",
-      thinkingEnabled: true,
-      thinkingEffort: "low",
-    })
     expect(resolutionByWorker.get("frontier")?.effective).toMatchObject({
       providerId: "openai",
       authMode: "chatgpt_subscription",
@@ -3829,7 +3826,6 @@ describe("WebSocket API", () => {
           .all() as Array<{ providerId: string; modelId: string; status: string }>
         expect(calls).toEqual([
           { providerId: "openrouter", modelId: "deepseek/deepseek-v4-flash", status: "completed" },
-          { providerId: "openrouter", modelId: "deepseek/deepseek-v4-flash", status: "completed" },
           { providerId: "openrouter", modelId: "x-ai/grok-4.5", status: "completed" },
         ])
         const handoverEvents = sqlite.prepare("SELECT COUNT(*) AS count FROM events WHERE type = 'agent.model.handover'").get() as { count: number }
@@ -3935,7 +3931,7 @@ describe("WebSocket API", () => {
     }
   })
 
-  it("continues the current goal while persisting a same-Socrates resolution failure", async () => {
+  it("keeps the retained conversation transport outside global goal resolution", async () => {
     const dbPath = tempDbPath()
     let mainCalls = 0
     const provider: ModelProvider = {
@@ -3983,12 +3979,11 @@ describe("WebSocket API", () => {
         const errors = sqlite
           .prepare("SELECT code, recoverable FROM errors WHERE source = 'goal_resolution' ORDER BY created_at")
           .all() as Array<{ code: string; recoverable: number; detailsJson: string }>
-        expect(errors).toHaveLength(1)
-        expect(errors[0]).toMatchObject({ code: "goal_resolution_invalid_output", recoverable: 1 })
+        expect(errors).toEqual([])
         const resolutionCalls = sqlite
           .prepare("SELECT status FROM model_calls WHERE request_json LIKE '%goal_resolution%'")
           .all() as Array<{ status: string }>
-        expect(resolutionCalls).toEqual([{ status: "failed" }])
+        expect(resolutionCalls).toEqual([])
       } finally {
         sqlite.close()
       }
@@ -5717,7 +5712,7 @@ describe("WebSocket API", () => {
     const memoryProvider: ModelProvider = {
       countTokens: fakeCountTokens,
       async generateStructured<TOutput>(): Promise<StructuredModelResult<TOutput>> {
-        return { output: validMemoryAgentJournal({ skillsAffected: [{ action: "proposed_create", note: "Proposed a project skill." }] }) as TOutput }
+        return { output: validMemoryAgentJournal({ skillsAffected: [{ skillId: null, action: "proposed_create", note: "Proposed a project skill." }] }) as TOutput }
       },
       async *stream() {
         callIndex += 1
@@ -5742,7 +5737,7 @@ describe("WebSocket API", () => {
         }
         yield {
           type: "model.answer.delta",
-          text: "## Investigated\nReviewed the source turn.\n\n## Changed\nProposed a project skill.\n\n## Skipped\nNone.\n\n## Blocked\nNone.",
+          text: memoryAgentFinalText({ skillsAffected: [{ skillId: null, action: "proposed_create", note: "Proposed a project skill." }] }),
         }
         yield { type: "model.completed" }
       },
@@ -5835,7 +5830,7 @@ describe("WebSocket API", () => {
         }
         yield {
           type: "model.answer.delta",
-          text: "## Investigated\nAudited profile and identity.\n\n## Changed\nMoved the implementation hard rule to global always-apply rules.\n\n## Skipped\nNone.\n\n## Blocked\nNone.",
+          text: memoryAgentFinalText({ decisions: ["Moved the misplaced hard rule."] }),
         }
         yield { type: "model.completed" }
       },
@@ -5875,7 +5870,7 @@ describe("WebSocket API", () => {
       fs.writeFileSync(profilePath, patchMemoryDocSection(withRule, profile, "evidence_index", evidence.content, `${evidence.content}\n${evidenceEntry}`))
 
       const result = await store.runGlobalMemoryAgent("manual")
-      expect(result.item?.status).toBe("completed")
+      expect(result.item?.status, result.skippedReason ?? result.state.error ?? undefined).toBe("completed")
       const after = fs.readFileSync(profilePath, "utf8")
       const afterIndex = parseMemoryDoc(after, profile)
       expect(afterIndex.sections.find((section) => section.sectionId === "collaboration_style")?.content).not.toContain(misplaced)
@@ -5944,7 +5939,7 @@ describe("WebSocket API", () => {
           yield { type: "model.completed", finishReason: "tool-calls" }
           return
         }
-        yield { type: "model.answer.delta", text: "## Investigated\nAudited ambiguous and cap-blocked entries.\n\n## Changed\nNone.\n\n## Skipped\nBoth entries were left unchanged.\n\n## Blocked\nOne ambiguous match and one full rule section." }
+        yield { type: "model.answer.delta", text: memoryAgentFinalText({ decisions: ["Left ambiguous and cap-blocked entries unchanged."] }) }
         yield { type: "model.completed" }
       },
     }
@@ -6122,7 +6117,7 @@ describe("WebSocket API", () => {
         }
         yield {
           type: "model.answer.delta",
-          text: "## Investigated\nInspected configured memory worker test evidence.\n\n## Changed\nUpdated user profile and proposed a skill.\n\n## Skipped\nTool-doc edits are read-only in v1.\n\n## Blocked\nNone.",
+          text: memoryAgentFinalText({ decisions: ["Updated user profile and proposed a skill; tool guidance remained read-only."] }),
         }
         yield { type: "model.completed" }
       },
@@ -6356,7 +6351,7 @@ describe("WebSocket API", () => {
         }
         yield {
           type: "model.answer.delta",
-          text: "## Investigated\nUsed trace retrieval for the memory-agent trace marker.\n\n## Changed\nNone.\n\n## Skipped\nNo durable update.\n\n## Blocked\nNone.",
+          text: memoryAgentFinalText({ decisions: ["Inspected trace evidence; no durable update was warranted."] }),
         }
         yield { type: "model.completed" }
       },
@@ -6387,7 +6382,7 @@ describe("WebSocket API", () => {
       }
 
       const result = await store.runGlobalMemoryAgent("manual")
-      expect(result.item?.status).toBe("completed")
+      expect(result.item?.status, result.skippedReason ?? result.state.error ?? undefined).toBe("completed")
       const job = handle.sqlite.prepare("SELECT status FROM memory_agent_jobs ORDER BY started_at DESC LIMIT 1").get() as { status: string }
       expect(job.status).toBe("completed")
       expect(requests[0]).toMatchObject({
@@ -6474,7 +6469,7 @@ describe("WebSocket API", () => {
         }
         yield {
           type: "model.answer.delta",
-          text: "## Investigated\nUsed compacted memory-agent context.\n\n## Changed\nNone.\n\n## Skipped\nNo durable update.\n\n## Blocked\nNone.",
+          text: memoryAgentFinalText({ decisions: ["Inspected compacted memory-agent context; no durable update was warranted."] }),
         }
         yield { type: "model.completed" }
       },
@@ -6499,7 +6494,7 @@ describe("WebSocket API", () => {
       }
 
       const result = await store.runGlobalMemoryAgent("manual")
-      expect(result.item?.status).toBe("completed")
+      expect(result.item?.status, result.skippedReason ?? result.state.error ?? undefined).toBe("completed")
       expect(structuredSystems.some((system) => system.includes("Socrates Memory Agent Compressor"))).toBe(true)
       expect(streamRequests).toHaveLength(2)
       expect(JSON.stringify(streamRequests[1]?.messages)).toContain("socrates_internal_memory_context_compaction")
@@ -6527,7 +6522,7 @@ describe("WebSocket API", () => {
         evidencePrompts.push(String(request.messages[0]?.content ?? ""))
         yield {
           type: "model.answer.delta",
-          text: "## Investigated\nPacked memory evidence.\n\n## Changed\nNone.\n\n## Skipped\nNone.\n\n## Blocked\nNone.",
+          text: memoryAgentFinalText({ decisions: ["Packed memory evidence without a durable update."] }),
         }
         yield { type: "model.completed" }
       },
@@ -6570,7 +6565,7 @@ describe("WebSocket API", () => {
         evidencePrompts.push(String(request.messages[0]?.content ?? ""))
         yield {
           type: "model.answer.delta",
-          text: "## Investigated\nPacked memory evidence under token cap.\n\n## Changed\nNone.\n\n## Skipped\nNone.\n\n## Blocked\nNone.",
+          text: memoryAgentFinalText({ decisions: ["Packed memory evidence under the token cap without a durable update."] }),
         }
         yield { type: "model.completed" }
       },
@@ -6651,7 +6646,7 @@ describe("WebSocket API", () => {
         }
         yield {
           type: "model.answer.delta",
-          text: "## Investigated\nInspected soul update evidence.\n\n## Changed\nUpdated identity.\n\n## Skipped\nNone.\n\n## Blocked\nNone.",
+          text: memoryAgentFinalText({ decisions: ["Applied the confirmed identity update."] }),
         }
         yield { type: "model.completed" }
       },
@@ -8392,7 +8387,12 @@ describe("WebSocket API", () => {
     const supervisor = new TerminalSupervisorClient(path.dirname(dbPath))
     const workspacePath = primaryWorkspace.path
     if (!workspacePath) throw new Error("Expected a primary workspace path")
-    const started = await supervisor.start(terminalId, workspacePath, { operation: "start", command: commandText, name: "recoverable-start" })
+    const started = await supervisor.start(
+      terminalId,
+      workspacePath,
+      { operation: "start", command: commandText, name: "recoverable-start" },
+      requireNativeTerminalContainment({ writableRoots: [workspacePath] }),
+    )
     const systemPid = started.process?.systemPid
     expect(typeof systemPid).toBe("number")
 
@@ -9061,7 +9061,7 @@ describe("WebSocket API", () => {
         }>
         expect(approval).toEqual({ status: "rejected", decision: "rejected" })
         expect(tool.status).toBe("cancelled")
-        expect(modelCalls).toEqual([{ status: "completed" }, { status: "cancelled" }])
+        expect(modelCalls).toEqual([{ status: "cancelled" }])
       } finally {
         sqlite.close()
       }

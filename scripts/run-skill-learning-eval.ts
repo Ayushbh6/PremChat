@@ -243,17 +243,17 @@ const runMaturationSubset = async (
 
     stage = "skill-v2-write"
     await sandbox.store.approveMemorySkillProposal(updateProposal.id)
-    const skillV2 = fs.readFileSync(skillPath, "utf8")
-    if (skillV1 === skillV2) throw new Error("Approved maturation produced no meaningful file change.")
+    const skillSocrates = fs.readFileSync(skillPath, "utf8")
+    if (skillV1 === skillSocrates) throw new Error("Approved maturation produced no meaningful file change.")
 
     stage = "heldout-use-v2"
-    const heldoutV2 = caseFor(source, "heldout-use-v2")
-    const heldoutUse = await runHeldoutUse(sandbox, writerConfig, heldoutV2.evidence[0]?.user ?? "", modelProvider, expectedResponseSignals(heldoutV2))
+    const heldoutSocrates = caseFor(source, "heldout-use-v2")
+    const heldoutUse = await runHeldoutUse(sandbox, writerConfig, heldoutSocrates.evidence[0]?.user ?? "", modelProvider, expectedResponseSignals(heldoutSocrates))
     const passed = heldoutUse.listed && heldoutUse.described && heldoutUse.signalScore >= 5
     return {
       passed,
       stage: passed ? "complete" : stage,
-      skill: { name: skillName, v1Chars: skillV1.length, v2Chars: skillV2.length, changed: true },
+      skill: { name: skillName, v1Chars: skillV1.length, socratesChars: skillSocrates.length, changed: true },
       proposal: summarizeProposal(updateProposal),
       heldoutUse,
       journal: evaluationJournalSnapshots(sandbox.handle),
@@ -494,20 +494,20 @@ const runFullLoop = async (memoryConfig: EvalConfig, writerConfig: EvalConfig, s
     progress.updateMemoryRuns = updateMemoryRuns
     stage = "skill-v2-write"
     await sandbox.store.approveMemorySkillProposal(updateProposal.id)
-    const skillV2 = fs.readFileSync(skillPath, "utf8")
-    if (skillV1 === skillV2) throw new Error("Approved skill maturation produced no meaningful change.")
+    const skillSocrates = fs.readFileSync(skillPath, "utf8")
+    if (skillV1 === skillSocrates) throw new Error("Approved skill maturation produced no meaningful change.")
     stage = "heldout-use-v2"
-    const heldoutV2 = caseFor(source, "heldout-use-v2")
-    const useV2 = await runHeldoutUse(sandbox, memoryConfig, heldoutV2.evidence[0]?.user ?? "", modelProvider, expectedResponseSignals(heldoutV2))
-    const score = [useV1.listed, useV1.described, useV1.signalScore >= 3, skillV1 !== skillV2, useV2.listed, useV2.described, useV2.signalScore >= 5].filter(Boolean).length
+    const heldoutSocrates = caseFor(source, "heldout-use-v2")
+    const useSocrates = await runHeldoutUse(sandbox, memoryConfig, heldoutSocrates.evidence[0]?.user ?? "", modelProvider, expectedResponseSignals(heldoutSocrates))
+    const score = [useV1.listed, useV1.described, useV1.signalScore >= 3, skillV1 !== skillSocrates, useSocrates.listed, useSocrates.described, useSocrates.signalScore >= 5].filter(Boolean).length
     return {
       pair: { memory: memoryConfig.id, writer: writerConfig.id },
       passed: score >= 6,
       score,
-      skill: { name: skillName, id: approvedCreate.skill.id, v1Chars: skillV1.length, v2Chars: skillV2.length, changed: skillV1 !== skillV2 },
+      skill: { name: skillName, id: approvedCreate.skill.id, v1Chars: skillV1.length, socratesChars: skillSocrates.length, changed: skillV1 !== skillSocrates },
       proposals: { create: summarizeProposal(createProposal), update: summarizeProposal(updateProposal) },
       memoryRuns: { create: createMemoryRuns, update: updateMemoryRuns },
-      heldoutUse: { v1: useV1, v2: useV2 },
+      heldoutUse: { v1: useV1, v2: useSocrates },
       costUsd: ledger.totalCostUsd - startedCost,
     }
   } catch (error) {

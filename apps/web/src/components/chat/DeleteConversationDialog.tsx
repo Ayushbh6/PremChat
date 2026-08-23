@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 
 interface DeleteConversationDialogProps {
-  linkedToFlow: boolean;
+  linkedToGoal: boolean;
   isChecking: boolean;
   impactError?: string;
   isDeleting: boolean;
@@ -13,7 +13,7 @@ interface DeleteConversationDialogProps {
   onDelete: (scope: "classic_only" | "everywhere") => Promise<void>;
 }
 
-export function DeleteConversationDialog({ linkedToFlow, isChecking, impactError, isDeleting, onCancel, onDelete }: DeleteConversationDialogProps) {
+export function DeleteConversationDialog({ linkedToGoal, isChecking, impactError, isDeleting, onCancel, onDelete }: DeleteConversationDialogProps) {
   const [error, setError] = useState<string | null>(null);
 
   const handleDelete = async (scope: "classic_only" | "everywhere") => {
@@ -28,13 +28,14 @@ export function DeleteConversationDialog({ linkedToFlow, isChecking, impactError
   return (
     <Modal
       title="Delete conversation?"
-      description={isChecking ? "Checking linked history…" : linkedToFlow ? "Keep Flow history or remove it everywhere?" : "This cannot be undone."}
+      description={isChecking ? "Checking linked history…" : linkedToGoal ? "Keep the canonical goal history or remove it everywhere?" : "This cannot be undone."}
+      onClose={isDeleting || isChecking ? undefined : onCancel}
       footer={
         <>
           <Button type="button" variant="outline" onClick={onCancel} disabled={isDeleting}>
             Cancel
           </Button>
-          {linkedToFlow ? (
+          {linkedToGoal ? (
             <>
               <Button type="button" variant="outline" onClick={() => void handleDelete("classic_only")} disabled={isChecking || Boolean(impactError) || isDeleting}>
                 Classic only

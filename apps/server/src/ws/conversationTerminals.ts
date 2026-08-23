@@ -1,7 +1,7 @@
 import type { BashToolInput, BashToolOutput, ClientCommand, TerminalStatus } from "@socrates/contracts"
 import { createId, normalizeError, nowIso, SocratesError } from "@socrates/shared"
 import type { ToolExecutorContext } from "@socrates/core"
-import { runWorkspaceArgv } from "@socrates/workspace"
+import { requireNativeTerminalContainment, runWorkspaceArgv } from "@socrates/workspace"
 import type { SocratesStore } from "../services/store"
 import type { ActiveTurns } from "./activeTurns"
 import type { ConversationSubscriptions } from "./conversationSubscriptions"
@@ -384,7 +384,12 @@ export class ConversationTerminalManager {
     })
     let output: BashToolOutput
     try {
-      output = await this.supervisor.start(terminalId, context.workspacePath, { ...input, operation: "start" })
+      output = await this.supervisor.start(
+        terminalId,
+        context.workspacePath,
+        { ...input, operation: "start" },
+        requireNativeTerminalContainment({ writableRoots: [context.workspacePath] }),
+      )
     } catch (error) {
       const normalized = normalizeError(error)
       const cancelled = this.lifecycle !== "open" || context.abortSignal?.aborted

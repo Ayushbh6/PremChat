@@ -3,39 +3,31 @@ import cors from "@fastify/cors"
 import multipart from "@fastify/multipart"
 import path from "node:path"
 import { openDatabase, runMigrations, type DatabaseHandle } from "./db/client"
-import { registerHttpRoutes } from "./routes/httpRoutes"
-import { registerClassicSpeechRoutes } from "./routes/classicSpeechRoutes"
 import { SocratesStore } from "./services/store"
-import { registerWebSocketRoutes } from "./ws/websocket"
-import { ConversationTerminalManager } from "./ws/conversationTerminals"
-import { ConversationSubscriptions } from "./ws/conversationSubscriptions"
 import { createDefaultSocratesAgent, type SocratesAgent } from "@socrates/core"
 import { McpRuntime } from "@socrates/mcp"
-import { createDefaultModelProvider, type EmbeddingProvider, type ModelProvider } from "@socrates/providers"
+import type { EmbeddingProvider, ModelProvider } from "@socrates/providers"
 import { ProviderCredentialStore } from "./services/providerCredentials"
-import { registerV2FlowRoutes } from "./routes/v2FlowRoutes"
-import { registerV2SpeechRoutes } from "./routes/v2SpeechRoutes"
-import { V2FlowStore } from "./services/v2/flowStore"
+import { registerSocratesRoutes } from "./routes/socratesRoutes"
+import { registerSocratesSpeechRoutes } from "./routes/socratesSpeechRoutes"
+import { GlobalSocratesStore } from "./services/socrates/socratesStore"
 import {
   LocalKokoroSynthesizer,
   LocalWhisperTranscriber,
   OpenRouterTranscriber,
   SpeechPackManager,
-} from "./services/v2/speech"
-import { registerV2WebSocketRoutes } from "./v2/websocket"
+} from "./services/socrates/speech"
+import { registerSocratesWebSocketRoutes } from "./runtime/websocket"
 
 export type BuildServerOptions = {
   dbPath: string
   logger?: boolean
   databaseHandle?: DatabaseHandle
   agent?: SocratesAgent
-  v2Agent?: SocratesAgent
   embeddingProvider?: EmbeddingProvider
-  titleProvider?: ModelProvider | false
   memoryProvider?: ModelProvider
   socratesHome?: string
   preserveTerminalsOnClose?: boolean
-  v2FlowEnabled?: boolean
 }
 
 export const buildServer = async (options: BuildServerOptions) => {
@@ -43,29 +35,25 @@ export const buildServer = async (options: BuildServerOptions) => {
   runMigrations(handle)
 
   const socratesHome = options.socratesHome ?? (options.dbPath === ":memory:" ? undefined : path.dirname(options.dbPath))
-  const v2FlowEnabled = options.v2FlowEnabled ?? false
   const credentials = new ProviderCredentialStore(socratesHome ? { socratesHome } : {})
   const store = new SocratesStore(handle, options.embeddingProvider, credentials, {
     ...(socratesHome ? { socratesHome } : {}),
     ...(options.memoryProvider ? { memoryProvider: options.memoryProvider } : {}),
-    v2FlowEnabled,
   })
   store.cancelStaleActiveTurns()
   store.requeueInterruptedTerminalTasks()
   await store.initializeRetrieval()
   store.startGlobalMemoryScheduler()
   const agent = options.agent ?? createDefaultSocratesAgent(credentials)
-  const v2Agent = options.v2Agent ?? (options.agent ? options.agent : createDefaultSocratesAgent(credentials))
-  const titleProvider =
-    options.titleProvider === false ? undefined : options.titleProvider ?? (options.agent ? undefined : createDefaultModelProvider(credentials))
   const mcpRuntime = new McpRuntime(socratesHome ? { socratesHome } : {})
-  const subscriptions = new ConversationSubscriptions()
-  const terminals = new ConversationTerminalManager(store, subscriptions, { supervisorScope: socratesHome ?? path.dirname(options.dbPath) })
-  await terminals.reconcilePersistedTerminals()
   const app = Fastify({ logger: options.logger ?? false })
-  const flowStore = new V2FlowStore(handle)
-  flowStore.recoverInterruptedTurns()
   const speechHome = socratesHome ?? path.dirname(options.dbPath)
+  const socratesStore = new GlobalSocratesStore(handle, {
+    globalWorkspacePath: path.resolve(speechHome, "global-workspace"),
+    ensureLocalUser: () => { store.ensureLocalUser() },
+    getGlobalWorkingRoot: () => store.getDefaultFilesystemWorkingRoot(),
+  })
+  socratesStore.recoverInterruptedTurns()
   const speechPacks = new SpeechPackManager(speechHome)
   const runtimeRoot = process.env.SOCRATES_RUNTIME_DIR ?? path.join(speechHome, "runtime")
   const executableName = (name: string): string => process.platform === "win32" ? `${name}.exe` : name
@@ -79,12 +67,12 @@ export const buildServer = async (options: BuildServerOptions) => {
     preferCli: Boolean(whisperCliOverride),
   })
 
-  app.get("/api/v2/capabilities", async () => ({
+  app.get("/api/socrates/capabilities", async () => ({
     ok: true,
     data: {
-      enabled: v2FlowEnabled,
-      product: "socrates_flow",
-      contractVersion: 2,
+      enabled: true,
+      product: "socrates",
+      contractVersion: 3,
       speech: {
         localStt: ["whisper.cpp/base.en", "whisper.cpp/small.en"],
         hostedStt: [
@@ -108,37 +96,17 @@ export const buildServer = async (options: BuildServerOptions) => {
     methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   })
 
-  const websocketRuntime = await registerWebSocketRoutes(app, store, terminals, subscriptions, agent, mcpRuntime, titleProvider, flowStore)
-  await registerHttpRoutes(app, store, credentials, mcpRuntime, {
-    onConversationDelete: (conversationId) => terminals.stopConversation(conversationId, "Conversation deleted."),
-    getConversationDeletionImpact: (projectId, conversationId) => flowStore.getClassicConversationDeletionImpact(projectId, conversationId),
-    beforeConversationDelete: (projectId, conversationId, scope) => flowStore.deleteClassicConversationProjection(projectId, conversationId, scope),
-    afterConversationDelete: (projectId, _conversationId, scope) => {
-      if (scope === "everywhere") store.rebuildProjectRetrieval(projectId, "classic_conversation_deleted_everywhere")
-    },
-    onProjectWorkspaceSwitch: (projectId) => terminals.stopProject(projectId, "Project workspace switched."),
-  })
-  await registerClassicSpeechRoutes(app, {
-    requireConversationScope: ({ projectId, conversationId }) => {
-      store.getConversation(projectId, conversationId)
-    },
-    localWhisper: localWhisperTranscriber,
-    openRouter: openRouterTranscriber,
-  })
-
-  let shutdownV2 = async (): Promise<void> => undefined
-  if (v2FlowEnabled) {
-    await registerV2FlowRoutes(app, flowStore, store)
-    const v2WebSocketRuntime = await registerV2WebSocketRoutes(app, {
-      store: flowStore,
+  await registerSocratesRoutes(app, socratesStore, store, { ...(socratesHome ? { socratesHome } : {}) })
+  const socratesWebSocketRuntime = await registerSocratesWebSocketRoutes(app, {
+      store: socratesStore,
       sharedStore: store,
-      agent: v2Agent,
+      agent,
       mcpRuntime,
       supervisorScope: socratesHome ?? path.dirname(options.dbPath),
     })
 
-    await registerV2SpeechRoutes(app, {
-      persistence: flowStore,
+  await registerSocratesSpeechRoutes(app, {
+      persistence: socratesStore,
       packs: speechPacks,
       openRouter: openRouterTranscriber,
       localWhisper: localWhisperTranscriber,
@@ -147,19 +115,12 @@ export const buildServer = async (options: BuildServerOptions) => {
         modelDirectory: path.dirname(speechPacks.status("kokoro-en-v0_19").path),
       }),
     })
-    shutdownV2 = async () => {
-      await v2WebSocketRuntime.shutdown()
-    }
-  }
 
   app.addHook("onClose", async () => {
-    terminals.beginShutdown()
-    await websocketRuntime.shutdown()
-    await shutdownV2()
-    flowStore.recoverInterruptedTurns("Socrates shut down before this Flow response completed.")
+    await socratesWebSocketRuntime.shutdown()
+    socratesStore.recoverInterruptedTurns("Socrates shut down before this response completed.")
     store.cancelStaleActiveTurns("Socrates shut down before this response completed.")
     store.requeueInterruptedTerminalTasks()
-    await terminals.dispose({ preserveRunning: options.preserveTerminalsOnClose ?? true })
     await store.close()
   })
 

@@ -11,6 +11,23 @@ export class UserStore extends StoreBase {
     return row ? mapUser(row) : null
   }
 
+  ensureLocalUser(displayName = "Socrates User"): User {
+    const existing = this.getCurrentUserRow()
+    if (existing) return mapUser(existing)
+    const now = nowIso()
+    const id = createId("user")
+    this.handle.db.insert(users).values({
+      id,
+      displayName,
+      onboardingCompleted: true,
+      createdAt: now,
+      updatedAt: now,
+      onboardedAt: now,
+      metadataJson: JSON.stringify({ source: "global_welcome_bootstrap" }),
+    }).run()
+    return mapUser(this.mustGetUserRow(id))
+  }
+
   completeOnboarding(input: CompleteOnboardingRequest): User {
     const existing = this.getCurrentUserRow()
     const now = nowIso()

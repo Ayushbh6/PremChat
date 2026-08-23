@@ -20,19 +20,19 @@ import {
   removeFilesystemRootCommandSchema,
   updateFilesystemAccessRequestSchema,
   updateFilesystemRootCommandSchema,
-  v2ApprovalDecideCommandSchema,
-  v2CredentialInputSubmitCommandSchema,
-  v2FeedbackSubmitCommandSchema,
-  v2FlowSubscribeCommandSchema,
-  v2FlowUnsubscribeCommandSchema,
-  v2FocusUpdateCommandSchema,
-  v2MessageSendCommandSchema,
-  v2RoutingClarificationRespondCommandSchema,
-  v2TerminalInputCommandSchema,
-  v2TerminalRenameCommandSchema,
-  v2TerminalResizeCommandSchema,
-  v2TerminalStopCommandSchema,
-  v2TurnCancelCommandSchema,
+  socratesApprovalDecideCommandSchema,
+  socratesCredentialInputSubmitCommandSchema,
+  socratesFeedbackSubmitCommandSchema,
+  socratesSubscribeCommandSchema,
+  socratesUnsubscribeCommandSchema,
+  socratesGoalUpdateCommandSchema,
+  socratesMessageSendCommandSchema,
+  socratesRoutingClarificationRespondCommandSchema,
+  socratesTerminalInputCommandSchema,
+  socratesTerminalRenameCommandSchema,
+  socratesTerminalResizeCommandSchema,
+  socratesTerminalStopCommandSchema,
+  socratesTurnCancelCommandSchema,
 } from "@socrates/contracts"
 import { applyPatchTool } from "../tools/applyPatchTool"
 import { bashTool } from "../tools/bashTool"
@@ -82,8 +82,6 @@ const ALL_AGENT_ROLES = [
   MAIN,
   MEMORY,
   SKILL_WRITER,
-  "title_generator",
-  "soul_confirmation",
   "socrates_context_compactor",
   "memory_context_compactor",
   "context_anchor_repair",
@@ -92,7 +90,7 @@ const ALL_AGENT_ROLES = [
 const mainCallers = [
   "packages/core/src/agent/SocratesAgent.ts",
   "apps/server/src/ws/commandHandlers/chatMessageSend.ts",
-  "apps/server/src/v2/runtime.ts",
+  "apps/server/src/runtime/runtime.ts",
 ] as const
 const specialistCallers = [
   "apps/server/src/services/store/memoryAgentRunner.ts",
@@ -105,7 +103,7 @@ const staticToolSpecs: readonly StaticToolSpec[] = [
   toolSpec("tool.url_fetch", urlFetchTool, [MAIN], "apps/server", "apps/server/src/ws/urlFetch.ts", mainCallers, ["apps/server/src/ws/urlFetch.test.ts"], ["url_fetch.md"]),
   toolSpec("tool.edit", editTool, [MAIN], "packages/workspace", "packages/workspace/src/tools/editTool.ts", mainCallers, ["packages/workspace/src/workspace.test.ts"], ["edit_apply_patch.md"]),
   toolSpec("tool.apply_patch", applyPatchTool, [MAIN], "packages/workspace", "packages/workspace/src/tools/patchHelpers.ts", mainCallers, ["packages/workspace/src/workspace.test.ts"], ["edit_apply_patch.md"]),
-  toolSpec("tool.bash", bashTool, [MAIN], "packages/workspace", "packages/workspace/src/tools/bashTool.ts", mainCallers, ["packages/workspace/src/workspace.test.ts", "apps/server/src/test/v2TerminalRuntime.test.ts"], ["terminal.md"]),
+  toolSpec("tool.bash", bashTool, [MAIN], "packages/workspace", "packages/workspace/src/tools/bashTool.ts", mainCallers, ["packages/workspace/src/workspace.test.ts", "apps/server/src/test/socratesTerminalRuntime.test.ts"], ["terminal.md"]),
   toolSpec("tool.wait", waitTool, [MAIN], "apps/server", "apps/server/src/services/store/agentTaskStore.ts", mainCallers, ["apps/server/src/services/store/agentTaskStore.test.ts"], ["terminal.md"]),
   toolSpec("tool.handover_to_frontier", frontierHandoverTool, [MAIN], "packages/core", "packages/core/src/agent/SocratesAgent.ts", mainCallers, ["packages/core/src/test/SocratesAgent.test.ts"], ["handover_to_frontier.md"]),
   toolSpec("tool.current_time", currentTimeTool, [MAIN, MEMORY, SKILL_WRITER], "apps/server", "apps/server/src/services/store/runtimeContext.ts", [...mainCallers, ...specialistCallers], ["packages/core/src/test/AgentRuntime.test.ts"], ["current_time.md", "memory_agent/current_time.md"]),
@@ -180,7 +178,7 @@ const serviceCapabilities: CapabilityDefinition[] = [
   serviceCapability("retrieval.memory_candidates", "automatic_retrieval", "Retrieve authorized exact-memory candidates in parallel with goal candidates and perform one conditional bound-goal refinement through the same service.", "retrieval.memory_candidates", [MAIN], ["goal", "runtime"], "apps/server/src/services/turn/turnCandidateRetrieval.ts", "canonical"),
   serviceCapability("retrieval.capability_candidates", "automatic_retrieval", "Retrieve ranked installed skill and MCP capability candidates in parallel with goal and memory candidates.", "retrieval.capability_candidates", [MAIN], ["project", "global", "runtime"], "apps/server/src/services/turn/turnCandidateRetrieval.ts", "canonical"),
   serviceCapability("authority.memory_selection", "deterministic_authority", "Select exact authorized memory after goal binding without a model router.", "memory.select_exact", [MAIN], ["goal", "runtime"], "packages/core/src/retrieval/deterministicMemorySelection.ts", "canonical"),
-  serviceCapability("authority.goal_ledger", "deterministic_authority", "Own canonical goal pointers, lifecycle state, task counts, and capsule references.", "goal_ledger.transaction", [MAIN], ["goal", "project"], "apps/server/src/services/v2/flowStore.ts", "migration_compatibility"),
+  serviceCapability("authority.goal_ledger", "deterministic_authority", "Own canonical goal pointers, lifecycle state, task counts, and capsule references.", "goal_ledger.transaction", [MAIN], ["goal", "global"], "apps/server/src/services/socrates/socratesStore.ts", "canonical"),
   serviceCapability("authority.finalization", "deterministic_authority", "Validate and atomically persist the answer, task, bound goal, capsule, usage, and audit state before publication.", "finalization.atomic_commit", [MAIN], ["turn", "goal"], "apps/server/src/services/turn/validatedTurnFinalization.ts", "canonical"),
   serviceCapability("authority.filesystem_access", "deterministic_authority", "Own global Read only, Selected paths, and Full access state plus immutable per-turn authorization snapshots.", "filesystem_access.snapshot", [MAIN], ["turn", "global", "runtime"], "apps/server/src/services/store/accessStore.ts", "canonical"),
   serviceCapability("context.stable_prompt", "context_stage", "Attach stable prompt and standing rules before dynamic turn context.", "context.stable_prompt", ALL_AGENT_ROLES, ["turn"], "packages/core/src/agent/ContextPipeline.ts", "canonical"),
@@ -191,10 +189,8 @@ const serviceCapabilities: CapabilityDefinition[] = [
   serviceCapability("context.automatic_compaction", "context_stage", "Automatically replace only the oldest completed-turn model projection at 170k while retaining exact provenance and a recent whole-turn suffix.", "context.compact_oldest_head", ALL_AGENT_ROLES, ["turn", "conversation", "global"], "packages/core/src/context/contextCompression.ts", "canonical"),
   serviceCapability("worker.global_memory", "structured_worker", "Curate durable global memory asynchronously from completed exact evidence.", "agent.global_memory", [MEMORY], ["global"], "apps/server/src/services/store/memoryAgentRunner.ts", "canonical"),
   serviceCapability("worker.skill_writer", "structured_worker", "Create or update an approved skill through the shared agent runtime.", "agent.skill_writer", [SKILL_WRITER], ["project", "global"], "apps/server/src/services/store/skillWriterAgentRunner.ts", "canonical"),
-  serviceCapability("worker.title_generator", "structured_worker", "Generate a Classic migration-surface conversation title through the shared runtime.", "agent.title_generator", ["title_generator"], ["conversation"], "packages/core/src/agent/TitleGeneratorAgent.ts", "migration_compatibility"),
-  serviceCapability("worker.soul_confirmation", "structured_worker", "Validate a proposed identity update through the shared runtime and confirmation policy.", "agent.soul_confirmation", ["soul_confirmation"], ["global"], "packages/core/src/agent/SoulConfirmationAgent.ts", "canonical"),
   serviceCapability("worker.context_compactor", "structured_worker", "Produce the provenance-linked automatic oldest-head context derivative through the shared runtime.", "agent.context_compactor", ["socrates_context_compactor", "memory_context_compactor", "context_anchor_repair"], ["conversation", "global"], "packages/core/src/agent/CompressorAgent.ts", "canonical"),
-  serviceCapability("runtime.structured_repair", "deterministic_authority", "Permit one declared structured-output repair and otherwise return a typed failure.", "agent_runtime.structured_repair", [MAIN, MEMORY, "title_generator", "soul_confirmation", "socrates_context_compactor", "memory_context_compactor", "context_anchor_repair"], ["provider", "runtime"], "packages/core/src/agent/AgentRuntime.ts", "canonical"),
+  serviceCapability("runtime.structured_repair", "deterministic_authority", "Permit one declared structured-output repair and otherwise return a typed failure.", "agent_runtime.structured_repair", [MAIN, MEMORY, "socrates_context_compactor", "memory_context_compactor", "context_anchor_repair"], ["provider", "runtime"], "packages/core/src/agent/AgentRuntime.ts", "canonical"),
   serviceCapability("runtime.frontier_handover", "deterministic_authority", "Transfer one approved task to the configured Frontier model without parallel agent dialogue.", "agent_runtime.frontier_handover", [MAIN], ["turn", "provider"], "packages/core/src/agent/SocratesAgent.ts", "canonical"),
 ]
 
@@ -214,19 +210,19 @@ const typedUserCommandCapabilities: CapabilityDefinition[] = [
   userCommandCapability("command.classic.terminal.resize", "terminal.resize", terminalResizeCommandSchema, "apps/server/src/ws/conversationTerminals.ts"),
   userCommandCapability("command.classic.terminal.rename", "terminal.rename", terminalRenameCommandSchema, "apps/server/src/ws/conversationTerminals.ts"),
   userCommandCapability("command.classic.feedback.submit", "feedback.submit", feedbackSubmitCommandSchema, "apps/server/src/ws/commandHandlers/feedbackSubmit.ts"),
-  userCommandCapability("command.flow.subscribe", "v2.flow.subscribe", v2FlowSubscribeCommandSchema, "apps/server/src/v2/runtime.ts"),
-  userCommandCapability("command.flow.unsubscribe", "v2.flow.unsubscribe", v2FlowUnsubscribeCommandSchema, "apps/server/src/v2/runtime.ts"),
-  userCommandCapability("command.flow.message.send", "v2.message.send", v2MessageSendCommandSchema, "apps/server/src/v2/runtime.ts"),
-  userCommandCapability("command.flow.routing.clarification.respond", "v2.routing.clarification.respond", v2RoutingClarificationRespondCommandSchema, "apps/server/src/v2/runtime.ts"),
-  userCommandCapability("command.flow.focus.update", "v2.focus.update", v2FocusUpdateCommandSchema, "apps/server/src/v2/runtime.ts"),
-  userCommandCapability("command.flow.turn.cancel", "v2.turn.cancel", v2TurnCancelCommandSchema, "apps/server/src/v2/runtime.ts"),
-  userCommandCapability("command.flow.approval.decide", "v2.approval.decide", v2ApprovalDecideCommandSchema, "apps/server/src/v2/runtime.ts"),
-  userCommandCapability("command.flow.feedback.submit", "v2.feedback.submit", v2FeedbackSubmitCommandSchema, "apps/server/src/v2/runtime.ts"),
-  userCommandCapability("command.flow.credential.input.submit", "v2.credential.input.submit", v2CredentialInputSubmitCommandSchema, "apps/server/src/v2/runtime.ts"),
-  userCommandCapability("command.flow.terminal.stop", "v2.terminal.stop", v2TerminalStopCommandSchema, "apps/server/src/v2/runtime.ts"),
-  userCommandCapability("command.flow.terminal.input", "v2.terminal.input", v2TerminalInputCommandSchema, "apps/server/src/v2/runtime.ts"),
-  userCommandCapability("command.flow.terminal.resize", "v2.terminal.resize", v2TerminalResizeCommandSchema, "apps/server/src/v2/runtime.ts"),
-  userCommandCapability("command.flow.terminal.rename", "v2.terminal.rename", v2TerminalRenameCommandSchema, "apps/server/src/v2/runtime.ts"),
+  userCommandCapability("command.socrates.subscribe", "socrates.subscribe", socratesSubscribeCommandSchema, "apps/server/src/runtime/runtime.ts"),
+  userCommandCapability("command.socrates.unsubscribe", "socrates.unsubscribe", socratesUnsubscribeCommandSchema, "apps/server/src/runtime/runtime.ts"),
+  userCommandCapability("command.socrates.message.send", "socrates.message.send", socratesMessageSendCommandSchema, "apps/server/src/runtime/runtime.ts"),
+  userCommandCapability("command.socrates.routing.clarification.respond", "socrates.routing.clarification.respond", socratesRoutingClarificationRespondCommandSchema, "apps/server/src/runtime/runtime.ts"),
+  userCommandCapability("command.socrates.goal.update", "socrates.goal.update", socratesGoalUpdateCommandSchema, "apps/server/src/runtime/runtime.ts"),
+  userCommandCapability("command.socrates.turn.cancel", "socrates.turn.cancel", socratesTurnCancelCommandSchema, "apps/server/src/runtime/runtime.ts"),
+  userCommandCapability("command.socrates.approval.decide", "socrates.approval.decide", socratesApprovalDecideCommandSchema, "apps/server/src/runtime/runtime.ts"),
+  userCommandCapability("command.socrates.feedback.submit", "socrates.feedback.submit", socratesFeedbackSubmitCommandSchema, "apps/server/src/runtime/runtime.ts"),
+  userCommandCapability("command.socrates.credential.input.submit", "socrates.credential.input.submit", socratesCredentialInputSubmitCommandSchema, "apps/server/src/runtime/runtime.ts"),
+  userCommandCapability("command.socrates.terminal.stop", "socrates.terminal.stop", socratesTerminalStopCommandSchema, "apps/server/src/runtime/runtime.ts"),
+  userCommandCapability("command.socrates.terminal.input", "socrates.terminal.input", socratesTerminalInputCommandSchema, "apps/server/src/runtime/runtime.ts"),
+  userCommandCapability("command.socrates.terminal.resize", "socrates.terminal.resize", socratesTerminalResizeCommandSchema, "apps/server/src/runtime/runtime.ts"),
+  userCommandCapability("command.socrates.terminal.rename", "socrates.terminal.rename", socratesTerminalRenameCommandSchema, "apps/server/src/runtime/runtime.ts"),
 ]
 
 export class CapabilitySet {
@@ -483,14 +479,14 @@ function userCommandCapability(
   inputSchema: z.ZodTypeAny,
   implementationPath: string,
 ): CapabilityDefinition {
-  const flow = commandType.startsWith("v2.")
+  const socrates = commandType.startsWith("socrates.")
   const readOnly = commandType.endsWith("subscribe") || commandType.endsWith("unsubscribe")
   return defineCapability({
     id,
     kind: "typed_user_command",
     description: `Validate and dispatch the ${commandType} user command.`,
-    allowedRoles: [flow ? "flow_runtime" : "classic_runtime"],
-    runtimeScopes: ["runtime", commandType.includes("conversation") || flow ? "goal" : "conversation"],
+    allowedRoles: [socrates ? "socrates_runtime" : "classic_runtime"],
+    runtimeScopes: ["runtime", commandType.includes("conversation") || socrates ? "goal" : "conversation"],
     executorBinding: commandType,
     inputSchema,
     resultSchema: z.unknown(),
@@ -510,11 +506,11 @@ function userCommandCapability(
     },
     source: {
       owner: "apps/server",
-      definitionPath: flow ? "packages/contracts/src/v2Flow.ts" : "packages/contracts/src/websocket.ts",
+      definitionPath: socrates ? "packages/contracts/src/socrates.ts" : "packages/contracts/src/websocket.ts",
       implementationPath,
-      callers: [flow ? "apps/server/src/v2/runtime.ts" : "apps/server/src/ws/commandDispatcher.ts"],
-      tests: [flow ? "apps/server/src/test/v2FlowRuntime.test.ts" : "apps/server/src/test/server.test.ts", "packages/contracts/src/contracts.test.ts"],
-      status: flow ? "canonical" : "migration_compatibility",
+      callers: [implementationPath],
+      tests: ["apps/server/src/test/server.test.ts", "packages/contracts/src/contracts.test.ts"],
+      status: socrates ? "canonical" : "migration_compatibility",
     },
   })
 }
@@ -587,7 +583,7 @@ function testsForService(kind: CapabilityDefinition["kind"]): readonly string[] 
     ? ["packages/core/src/test/AgentInstance.test.ts", "packages/core/src/test/AgentRuntime.test.ts"]
     : kind === "context_stage"
       ? ["packages/core/src/test/prepareTurnContext.test.ts", "packages/core/src/test/contextCompression.test.ts"]
-      : ["apps/server/src/test/v2FlowRuntime.test.ts"]
+      : ["apps/server/src/test/server.test.ts"]
 }
 
 function isModelToolCapability(capability: CapabilityDefinition): capability is ModelToolCapabilityDefinition {

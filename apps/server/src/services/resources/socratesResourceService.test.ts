@@ -2,6 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
+import type { McpRuntime } from "@socrates/mcp"
 import { FileFreshnessTracker } from "@socrates/workspace"
 import type { SocratesStore } from "../store"
 import {
@@ -19,13 +20,17 @@ const testContext = (input: { identity?: string; notes?: string } = {}) => {
   const workspacePath = fs.mkdtempSync(path.join(os.tmpdir(), "socrates-governed-resource-"))
   roots.push(workspacePath)
   let notes = input.notes ?? "Keep the capability catalog canonical."
+  const skillWorkspacePaths: Array<string | undefined> = []
   const store = {
     runSoulTool: () => ({ content: input.identity ?? "Socrates identity", truncation: { truncated: false, charLimit: 80_000, returnedLength: 18 } }),
     runUserProfileTool: () => ({ content: "User profile", truncation: { truncated: false, charLimit: 80_000, returnedLength: 12 } }),
     runToolDocsTool: () => ({ results: [{ path: "tool_usage/read_search.md", content: "Read and search guidance" }] }),
-    runSkillsTool: (_projectId: string, input: { operation: string; name?: string }) => input.operation === "list"
-      ? { operation: "list", skills: [{ scope: "project", name: "build-protocol", description: "Follow the canonical build protocol.", enabled: true }], totalMatches: 1, truncation: { truncated: false, charLimit: 80_000, returnedLength: 1 } }
-      : { operation: "read", skills: [], totalMatches: 1, content: "---\nname: build-protocol\ndescription: Follow the canonical build protocol.\n---", truncation: { truncated: false, charLimit: 80_000, returnedLength: 1 } },
+    runSkillsTool: (_projectId: string, input: { operation: string; name?: string }, requestedWorkspacePath?: string) => {
+      skillWorkspacePaths.push(requestedWorkspacePath)
+      return input.operation === "list"
+        ? { operation: "list", skills: [{ scope: "project", name: "build-protocol", description: "Follow the canonical build protocol.", enabled: true }], totalMatches: 1, truncation: { truncated: false, charLimit: 80_000, returnedLength: 1 } }
+        : { operation: "read", skills: [], totalMatches: 1, content: "---\nname: build-protocol\ndescription: Follow the canonical build protocol.\n---", truncation: { truncated: false, charLimit: 80_000, returnedLength: 1 } }
+    },
     listResources: () => [],
     runProjectDocsTool: (_projectId: string, _workspacePath: string, input: { operation: string; area: string; sectionId?: string; oldText?: string; newText?: string }) => {
       if (input.operation === "patch_section") {
@@ -39,6 +44,7 @@ const testContext = (input: { identity?: string; notes?: string } = {}) => {
   return {
     context: { store, projectId: "project-test", workspacePath, fileFreshness: new FileFreshnessTracker() },
     notes: () => notes,
+    skillWorkspacePaths,
   }
 }
 
@@ -51,6 +57,36 @@ describe("governed Socrates resources", () => {
     expect(identity.kind).toBe("resource")
     expect(identity.content).toBe("Socrates identity")
     expect(capabilities.matches.some((match) => match.text?.includes("build protocol"))).toBe(true)
+  })
+
+  it("passes the global working path into project-skill discovery and exact reads", async () => {
+    const { context, skillWorkspacePaths } = testContext()
+    const listed = await readSocratesResource({ path: "socrates://skills" }, context)
+    const exact = await readSocratesResource({ path: "socrates://skills/project/build-protocol" }, context)
+
+    expect(listed.content).toContain("build-protocol")
+    expect(exact.content).toContain("name: build-protocol")
+    expect(skillWorkspacePaths).toEqual([context.workspacePath, context.workspacePath])
+  })
+
+  it("exposes an enabled MCP server after its exact capability card is read", async () => {
+    const { context } = testContext()
+    const exposed: string[] = []
+    const mcpRuntime = {
+      handleRegistryTool: async () => ({
+        operation: "list",
+        servers: [{ id: "e2e-proof", label: "E2E Proof MCP", enabled: true, toolCount: 1 }],
+      }),
+    } as unknown as McpRuntime
+
+    const result = await readSocratesResource({ path: "socrates://capabilities/mcp:e2e-proof" }, {
+      ...context,
+      mcpRuntime,
+      onMcpCapabilityRead: (serverId) => exposed.push(serverId),
+    })
+
+    expect(result.content).toContain('"id": "mcp:e2e-proof"')
+    expect(exposed).toEqual(["e2e-proof"])
   })
 
   it("hard-caps governed reads and continues by exact character offset", async () => {

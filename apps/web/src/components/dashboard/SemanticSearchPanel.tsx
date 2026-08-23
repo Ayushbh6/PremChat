@@ -159,32 +159,29 @@ function EmbeddingSetupDialog({
       return;
     }
     let cancelled = false;
-    setIsLoadingOllamaModels(true);
-    void api
-      .listOllamaEmbeddingModels({ ollamaBaseUrl })
-      .then((response) => {
-        if (cancelled) {
-          return;
-        }
-        setOllamaDiscovery(response);
-        if (response.suggestedModelId && (ollamaModel === DEFAULT_OLLAMA_MODEL || currentStatus?.providerId !== "ollama")) {
-          setOllamaModel(response.suggestedModelId);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not list Ollama models.");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsLoadingOllamaModels(false);
-        }
-      });
+    const timer = window.setTimeout(() => {
+      setIsLoadingOllamaModels(true);
+      void api
+        .listOllamaEmbeddingModels({ ollamaBaseUrl })
+        .then((response) => {
+          if (cancelled) return;
+          setOllamaDiscovery(response);
+          if (response.suggestedModelId && (ollamaModel === DEFAULT_OLLAMA_MODEL || currentStatus?.providerId !== "ollama")) {
+            setOllamaModel(response.suggestedModelId);
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) setError(err instanceof Error ? err.message : "Could not list Ollama models.");
+        })
+        .finally(() => {
+          if (!cancelled) setIsLoadingOllamaModels(false);
+        });
+    }, 0);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [currentStatus?.providerId, ollamaBaseUrl, providerId]);
+  }, [currentStatus?.providerId, ollamaBaseUrl, ollamaModel, providerId]);
 
   const handleRefreshOllamaModels = async () => {
     setIsLoadingOllamaModels(true);
@@ -262,6 +259,7 @@ function EmbeddingSetupDialog({
     <Modal
       title="Semantic search"
       description="Choose a hosted or local embedding provider for this project."
+      onClose={isConfiguring ? undefined : onClose}
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onClose}>

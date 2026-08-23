@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"
-import { fileURLToPath } from "node:url"
 import type { BashToolInput, BashToolOutput } from "@socrates/contracts"
 import { SocratesError, type ErrorDetails } from "@socrates/shared"
-import { terminalHostSocketPath, terminalSupervisorSocketPath } from "./terminalSupervisorPaths"
+import type { TerminalContainment } from "@socrates/workspace"
+import { terminalChildProcessArgs, terminalHostSocketPath, terminalSupervisorSocketPath } from "./terminalSupervisorPaths"
 
 type SupervisorMethod = "start" | "status" | "output" | "stop" | "input" | "resize" | "has" | "health" | "shutdown-host" | "shutdown-if-idle" | "shutdown"
 type SupervisorRequest = {
@@ -14,6 +14,7 @@ type SupervisorRequest = {
   workspacePath?: string
   processId?: string
   input?: BashToolInput
+  containment?: TerminalContainment
   text?: string
   cols?: number
   rows?: number
@@ -43,13 +44,13 @@ export class TerminalSupervisorClient {
 
   constructor(
     scope = process.cwd(),
-    private readonly options: { idleShutdownMs?: number; hostStartupTimeoutMs?: number } = {},
+    private readonly options: { idleShutdownMs?: number; hostStartupTimeoutMs?: number; supervisorStartupTimeoutMs?: number } = {},
   ) {
     this.socketPath = terminalSupervisorSocketPath(scope)
   }
 
-  async start(terminalId: string, workspacePath: string, input: BashToolInput): Promise<BashToolOutput> {
-    const response = await this.request({ method: "start", terminalId, workspacePath, input })
+  async start(terminalId: string, workspacePath: string, input: BashToolInput, containment: TerminalContainment): Promise<BashToolOutput> {
+    const response = await this.request({ method: "start", terminalId, workspacePath, input, containment })
     return requireOutput(response)
   }
 
@@ -146,8 +147,22 @@ export class TerminalSupervisorClient {
     try {
       return await this.send(input)
     } catch (firstError) {
+      if (firstError instanceof SocratesError && /supervisor is shutting down/i.test(firstError.message)) {
+        await this.waitForDisconnect()
+        await this.ensureRunning()
+        return this.send(input)
+      }
       if (firstError instanceof SocratesError && firstError.code !== "terminal_supervisor_timeout") {
         throw firstError
+      }
+      // A timed-out start may still be completing inside the supervisor. Retrying
+      // the same start can replace an already-created PTY and execute the command
+      // twice, so start has a longer deadline and is never replayed here.
+      if (input.method === "start") {
+        throw new SocratesError("terminal_supervisor_start_timeout", "Terminal start did not complete before its startup deadline.", {
+          details: { cause: firstError instanceof Error ? firstError.message : String(firstError) },
+          recoverable: true,
+        })
       }
       // A request timeout is not proof that the supervisor is dead. Never replace a
       // potentially healthy supervisor (and its PTYs) from an ordinary operation.
@@ -188,10 +203,7 @@ export class TerminalSupervisorClient {
     if (process.platform !== "win32" && fs.existsSync(this.socketPath)) {
       fs.unlinkSync(this.socketPath)
     }
-    const currentPath = fileURLToPath(import.meta.url)
-    const isBuilt = currentPath.endsWith(".js")
-    const supervisorPath = fileURLToPath(new URL(isBuilt ? "./terminalSupervisorProcess.js" : "./terminalSupervisorProcess.ts", import.meta.url))
-    const args = isBuilt ? [supervisorPath, this.socketPath] : ["--import", "tsx", supervisorPath, this.socketPath]
+    const args = terminalChildProcessArgs(import.meta.url, "terminalSupervisorProcess", [this.socketPath])
     const child = spawn(process.execPath, args, {
       detached: true,
       stdio: "ignore",
@@ -203,7 +215,7 @@ export class TerminalSupervisorClient {
       },
     })
     child.unref()
-    const deadline = Date.now() + 3_000
+    const deadline = Date.now() + Math.min(60_000, Math.max(3_000, this.options.supervisorStartupTimeoutMs ?? 30_000))
     while (Date.now() < deadline) {
       if (await this.canConnect()) {
         return
@@ -218,7 +230,7 @@ export class TerminalSupervisorClient {
   }
 
   private async waitForDisconnect(): Promise<void> {
-    const deadline = Date.now() + 1_000
+    const deadline = Date.now() + 5_000
     while (Date.now() < deadline) {
       if (!(await this.canConnect())) {
         return
@@ -271,7 +283,11 @@ export class TerminalSupervisorClient {
         cleanup()
         reject(error)
       })
-      socket.setTimeout(5_000, () => {
+      const requestTimeoutMs =
+        input.method === "start"
+          ? Math.min(10 * 60_000 + 5_000, Math.max(10_000, (this.options.hostStartupTimeoutMs ?? 30_000) + 5_000))
+          : 5_000
+      socket.setTimeout(requestTimeoutMs, () => {
         cleanup()
         reject(new SocratesError("terminal_supervisor_timeout", "Terminal supervisor request timed out.", { recoverable: true }))
       })
